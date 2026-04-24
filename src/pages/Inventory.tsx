@@ -57,6 +57,16 @@ const Inventory: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [typeFilter, setTypeFilter] = useState<'All' | 'Regular' | 'Pack' | 'RawMaterial'>('All');
   const [showDisabled, setShowDisabled] = useState(false);
+  const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
+  const [adjustmentData, setAdjustmentData] = useState({
+    itemId: '',
+    itemName: '',
+    itemType: 'material' as 'material' | 'product',
+    type: 'in' as 'in' | 'out',
+    quantity: 0,
+    reason: 'manual_adjustment',
+    location: 'none' as 'shop' | 'freezer' | 'none'
+  });
   const [viewMode, setViewMode] = useState<'list' | 'card'>(() => {
     return (localStorage.getItem('inventoryViewMode') as 'list' | 'card') || 'card';
   });
@@ -205,6 +215,77 @@ const Inventory: React.FC = () => {
     } catch (error) {
       console.error('Error restoring material:', error, id);
       toast.error(t('errorRestoringMaterial') || 'Error restoring material');
+    }
+  };
+
+  const handleAdjustStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustmentData.itemId || adjustmentData.quantity <= 0) return;
+
+    try {
+      const collectionName = adjustmentData.itemType === 'material' ? 'rawMaterials' : 'products';
+      const itemRef = doc(db, collectionName, adjustmentData.itemId);
+      const itemSnap = await getDoc(itemRef);
+
+      if (!itemSnap.exists()) {
+        toast.error('Item not found');
+        return;
+      }
+
+      const currentData = itemSnap.data();
+      const previousTotalStock = adjustmentData.itemType === 'material' ? currentData.currentStock : currentData.stock;
+      
+      let newTotalStock = previousTotalStock;
+      const updateData: any = {};
+
+      if (adjustmentData.itemType === 'material') {
+        const diff = adjustmentData.type === 'in' ? adjustmentData.quantity : -adjustmentData.quantity;
+        newTotalStock = Math.max(0, previousTotalStock + diff);
+        updateData.currentStock = newTotalStock;
+      } else {
+        // Product stock logic (shop vs freezer)
+        const diff = adjustmentData.type === 'in' ? adjustmentData.quantity : -adjustmentData.quantity;
+        if (adjustmentData.location === 'shop') {
+          updateData.shopStock = Math.max(0, (currentData.shopStock || 0) + diff);
+        } else if (adjustmentData.location === 'freezer') {
+          updateData.freezerStock = Math.max(0, (currentData.freezerStock || 0) + diff);
+        }
+        newTotalStock = (updateData.shopStock ?? currentData.shopStock ?? 0) + (updateData.freezerStock ?? currentData.freezerStock ?? 0);
+        updateData.stock = newTotalStock;
+      }
+
+      await updateDoc(itemRef, updateData);
+
+      // Record movement
+      if (currentUserProfile) {
+        await addDoc(collection(db, 'stockMovements'), {
+          itemId: adjustmentData.itemId,
+          itemName: adjustmentData.itemName,
+          itemType: adjustmentData.itemType,
+          type: adjustmentData.type,
+          quantity: adjustmentData.quantity,
+          previousStock: previousTotalStock,
+          newStock: newTotalStock,
+          location: adjustmentData.location,
+          reason: adjustmentData.reason,
+          userId: currentUserProfile.id,
+          userName: currentUserProfile.name,
+          timestamp: Timestamp.now()
+        });
+
+        await logActivity(
+          currentUserProfile.id,
+          currentUserProfile.name,
+          'stock_adjusted',
+          `Adjusted ${adjustmentData.itemType} ${adjustmentData.itemName}: ${adjustmentData.type === 'in' ? '+' : '-'}${adjustmentData.quantity}`
+        );
+      }
+
+      toast.success(t('stockAdjustedSuccessfully') || 'Stock adjusted successfully');
+      setIsAdjustmentModalOpen(false);
+    } catch (error) {
+      console.error('Error adjusting stock:', error);
+      toast.error(t('errorAdjustingStock') || 'Error adjusting stock');
     }
   };
 
@@ -859,6 +940,25 @@ const Inventory: React.FC = () => {
                         )}>
                           {product.stock < product.minStock && <AlertTriangle className="w-4 h-4" />}
                           {product.stock} {t('units')}
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAdjustmentData({
+                                itemId: product.id,
+                                itemName: product.name,
+                                itemType: 'product',
+                                type: 'in',
+                                quantity: 0,
+                                reason: 'manual_adjustment',
+                                location: 'shop'
+                              });
+                              setIsAdjustmentModalOpen(true);
+                            }}
+                            className="p-1 rounded-md bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors ml-1"
+                            title={t('adjustStock') || 'Adjust Stock'}
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
                         </div>
                         <div className="flex items-center gap-3 mt-1">
                           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 dark:text-slate-600">
@@ -1199,7 +1299,28 @@ const Inventory: React.FC = () => {
                         <h3 className="font-bold text-slate-900 dark:text-white">{tProduct(material.name)}</h3>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{material.currentStock} {material.unit}</p>
+                        <div className="flex items-center justify-end gap-2">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{material.currentStock} {material.unit}</p>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAdjustmentData({
+                                itemId: material.id,
+                                itemName: material.name,
+                                itemType: 'material',
+                                type: 'in',
+                                quantity: 0,
+                                reason: 'manual_adjustment',
+                                location: 'none'
+                              });
+                              setIsAdjustmentModalOpen(true);
+                            }}
+                            className="p-1 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                            title={t('adjustStock') || 'Adjust Stock'}
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
                         <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('stock')}</p>
                       </div>
                     </div>
@@ -1300,10 +1421,29 @@ const Inventory: React.FC = () => {
                   </td>
                   <td className="px-8 py-5">
                     <div className={clsx(
-                      "font-bold text-sm whitespace-nowrap",
+                      "font-bold text-sm whitespace-nowrap flex items-center gap-2",
                       material.currentStock < material.minStock ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"
                     )}>
                       {material.currentStock} {t(material.unit)}
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAdjustmentData({
+                            itemId: material.id,
+                            itemName: material.name,
+                            itemType: 'material',
+                            type: 'in',
+                            quantity: 0,
+                            reason: 'manual_adjustment',
+                            location: 'none'
+                          });
+                          setIsAdjustmentModalOpen(true);
+                        }}
+                        className="p-1 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                        title={t('adjustStock') || 'Adjust Stock'}
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
                     </div>
                   </td>
                   <td className="px-8 py-5 font-semibold text-slate-400 dark:text-slate-500 text-sm whitespace-nowrap">
@@ -2017,6 +2157,93 @@ const Inventory: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAdjustmentModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="card w-full max-w-md shadow-2xl border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+              {t('adjustStock') || 'Adjust Stock'} - {adjustmentData.itemName}
+            </h2>
+            <form onSubmit={handleAdjustStock} className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('type')}</label>
+                  <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
+                    <button 
+                      type="button"
+                      onClick={() => setAdjustmentData({...adjustmentData, type: 'in'})}
+                      className={clsx(
+                        "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all",
+                        adjustmentData.type === 'in' ? "bg-white dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500"
+                      )}
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                      {t('in') || 'In'}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setAdjustmentData({...adjustmentData, type: 'out'})}
+                      className={clsx(
+                        "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all",
+                        adjustmentData.type === 'out' ? "bg-white dark:bg-red-600 text-red-600 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500"
+                      )}
+                    >
+                      <ArrowDownRight className="w-4 h-4" />
+                      {t('out') || 'Out'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('quantity')}</label>
+                  <input 
+                    type="number" 
+                    step="0.001"
+                    className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
+                    placeholder="0.00" 
+                    required
+                    value={adjustmentData.quantity || ''}
+                    onChange={(e) => setAdjustmentData({...adjustmentData, quantity: Number(e.target.value)})}
+                  />
+                </div>
+
+                {adjustmentData.itemType === 'product' && (
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('location')}</label>
+                    <select 
+                      className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                      value={adjustmentData.location}
+                      onChange={(e) => setAdjustmentData({...adjustmentData, location: e.target.value as any})}
+                    >
+                      <option value="shop">{t('shop')}</option>
+                      <option value="freezer">{t('freezer')}</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('reason')}</label>
+                  <select 
+                    className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                    value={adjustmentData.reason}
+                    onChange={(e) => setAdjustmentData({...adjustmentData, reason: e.target.value})}
+                  >
+                    <option value="manual_adjustment">{t('manual_adjustment') || 'Manual Adjustment'}</option>
+                    <option value="purchase">{t('purchase') || 'Purchase / Receiving'}</option>
+                    <option value="damage">{t('damage') || 'Damage / Waste'}</option>
+                    <option value="correction">{t('correction') || 'Inventory Correction'}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setIsAdjustmentModalOpen(false)} className="flex-1 btn-secondary justify-center dark:bg-zinc-800 dark:border-white/10 dark:text-slate-300">{t('cancel')}</button>
+                <button type="submit" className="flex-1 btn-primary justify-center dark:bg-primary-600 dark:hover:bg-primary-700">{t('confirm')}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

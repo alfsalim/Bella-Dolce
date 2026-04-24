@@ -381,25 +381,45 @@ const Production: React.FC = () => {
           }
         } else if (wasActive && isNowActive) {
           // Adjusting stock if quantities or ingredients changed
-          // Simplified: Revert all and re-deduct
-          if (selectedBatch.ingredients) {
-            for (const ingredient of selectedBatch.ingredients) {
-              const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
+          // We calculate the net difference per material to record accurate movements
+          const oldIngredients = selectedBatch.ingredients || [];
+          const newIngredients = newBatch.ingredients || [];
+          
+          // Get all material IDs involved
+          const allMaterialIds = Array.from(new Set([
+            ...oldIngredients.map(i => i.materialId),
+            ...newIngredients.map(i => i.materialId)
+          ]));
+
+          for (const materialId of allMaterialIds) {
+            const oldQty = oldIngredients.find(i => i.materialId === materialId)?.quantity || 0;
+            const newQty = newIngredients.find(i => i.materialId === materialId)?.quantity || 0;
+            
+            if (oldQty !== newQty) {
+              const diff = newQty - oldQty; // Positive means we need to deduct more
+              const rawMaterialRef = doc(db, 'rawMaterials', materialId);
               const rawMaterialSnap = await getDoc(rawMaterialRef);
+              
               if (rawMaterialSnap.exists()) {
                 const currentStock = rawMaterialSnap.data().currentStock || 0;
-                const newStock = currentStock + ingredient.quantity;
+                const newStock = Math.max(0, currentStock - diff);
                 await updateDoc(rawMaterialRef, { currentStock: newStock });
+                
+                // Record movement for the adjustment
+                await addDoc(collection(db, 'stockMovements'), {
+                  itemId: materialId,
+                  itemType: 'material',
+                  type: diff > 0 ? 'out' : 'in',
+                  quantity: Math.abs(diff),
+                  previousStock: currentStock,
+                  newStock: newStock,
+                  reason: 'production_adjustment',
+                  referenceId: batchId,
+                  userId: profile?.id || 'system',
+                  userName: profile?.name || 'System',
+                  timestamp: new Date().toISOString()
+                });
               }
-            }
-          }
-          for (const ingredient of newBatch.ingredients) {
-            const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
-            const rawMaterialSnap = await getDoc(rawMaterialRef);
-            if (rawMaterialSnap.exists()) {
-              const currentStock = rawMaterialSnap.data().currentStock || 0;
-              const newStock = Math.max(0, currentStock - ingredient.quantity);
-              await updateDoc(rawMaterialRef, { currentStock: newStock });
             }
           }
         }
