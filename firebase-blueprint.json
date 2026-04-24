@@ -1,0 +1,385 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user with role-based access",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "manager", "cashier", "baker", "delivery_guy", "customer_business", "customer_customers"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["active", "inactive"] }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Pastry or bakery item",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "sellingPrice": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "shelfLife": { "type": "number", "description": "Shelf life in hours" },
+        "imageUrl": { "type": "string" },
+        "stock": { "type": "number" },
+        "shopStock": { "type": "number" },
+        "freezerStock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "description": { "type": "string" },
+        "specifications": { "type": "string" },
+        "ingredients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "materialId": { "type": "string" },
+              "quantity": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["name", "category", "sellingPrice"]
+    },
+    "RawMaterial": {
+      "title": "Raw Material",
+      "description": "Ingredients used in production",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "unit": { "type": "string" },
+        "currentStock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "status": { "type": "string", "enum": ["none", "ordered", "requested", "cancelled"] }
+      },
+      "required": ["name", "unit", "currentStock"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "B2B or B2C order",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "preparing", "out-for-delivery", "delivered", "cancelled"] },
+        "type": { "type": "string", "enum": ["b2b", "b2c"] },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "deliveryId": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["customerId", "totalAmount", "status", "type", "items"]
+    },
+    "Delivery": {
+      "title": "Delivery",
+      "description": "Delivery tracking information",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "deliveryGuyId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "assigned", "picked-up", "delivered"] },
+        "trackingUrl": { "type": "string" },
+        "comments": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "status"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "System activity tracking",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "action", "timestamp"]
+    },
+    "Recipe": {
+      "title": "Recipe",
+      "description": "Instructions for producing a product",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "batchSize": { "type": "number" },
+        "prepTime": { "type": "number" },
+        "ingredients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "materialId": { "type": "string" },
+              "quantity": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["productId", "batchSize", "ingredients"]
+    },
+    "ProductionBatch": {
+      "title": "Production Batch",
+      "description": "A specific production run",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "recipeId": { "type": "string" },
+        "plannedQty": { "type": "number" },
+        "actualQty": { "type": "number" },
+        "status": { "type": "string", "enum": ["planned", "in-progress", "completed", "cancelled"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "status", "plannedQty"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Customer transaction",
+      "type": "object",
+      "properties": {
+        "cashierId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "card", "mobile"] },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["cashierId", "totalAmount", "items"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Raw material provider",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "contact": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "materials": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Regular customer",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "type": { "type": "string", "enum": ["b2b", "b2c"] },
+        "email": { "type": "string", "format": "email" }
+      },
+      "required": ["name", "type", "email"]
+    },
+    "RolePermission": {
+      "title": "Role Permission",
+      "description": "Allowed paths for a specific role",
+      "type": "object",
+      "properties": {
+        "allowedPaths": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["allowedPaths"]
+    },
+    "Account": {
+      "title": "Financial Account",
+      "description": "PCN Account",
+      "type": "object",
+      "properties": {
+        "number": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["ACTIF", "PASSIF", "CAPITAUX", "PRODUIT", "CHARGE", "CMV"] },
+        "parent": { "type": "string" },
+        "isCategory": { "type": "boolean" },
+        "normalBalance": { "type": "string", "enum": ["DÉBIT", "CRÉDIT"] },
+        "active": { "type": "boolean" }
+      },
+      "required": ["number", "name", "type", "normalBalance"]
+    },
+    "JournalEntry": {
+      "title": "Journal Entry",
+      "description": "Double-entry journal record",
+      "type": "object",
+      "properties": {
+        "number": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "period": { "type": "string" },
+        "label": { "type": "string" },
+        "status": { "type": "string", "enum": ["BROUILLON", "EN_ATTENTE_VALIDATION", "APPROUVÉ", "COMPTABILISÉ", "ANNULÉ"] },
+        "sourceModule": { "type": "string" }
+      },
+      "required": ["number", "date", "period", "label", "status"]
+    },
+    "JournalLine": {
+      "title": "Journal Line",
+      "description": "Individual line of a journal entry",
+      "type": "object",
+      "properties": {
+        "journalId": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "debit": { "type": "number" },
+        "credit": { "type": "number" }
+      },
+      "required": ["journalId", "accountNumber", "debit", "credit"]
+    },
+    "PayrollRun": {
+      "title": "Payroll Run",
+      "description": "Monthly payroll execution",
+      "type": "object",
+      "properties": {
+        "period": { "type": "string" },
+        "executionDate": { "type": "string", "format": "date" },
+        "totalNet": { "type": "number" },
+        "status": { "type": "string", "enum": ["BROUILLON", "CALCULÉ", "VÉRIFIÉ", "APPROUVÉ", "PAYÉ"] }
+      },
+      "required": ["period", "executionDate", "totalNet", "status"]
+    },
+    "SupplierInvoice": {
+      "title": "Supplier Invoice",
+      "description": "Invoice from a supplier",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "amountTTC": { "type": "number" },
+        "status": { "type": "string", "enum": ["BROUILLON", "EN_ATTENTE", "APPROUVÉ", "PROGRAMMÉ", "PAYÉ", "ANNULÉ"] }
+      },
+      "required": ["invoiceNumber", "supplierId", "date", "amountTTC", "status"]
+    },
+    "FixedAsset": {
+      "title": "Fixed Asset",
+      "description": "Tangible asset for depreciation",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "acquisitionCost": { "type": "number" },
+        "usefulLifeYears": { "type": "number" }
+      },
+      "required": ["code", "name", "acquisitionCost", "usefulLifeYears"]
+    },
+    "DailyCashReconciliation": {
+      "title": "Cash Reconciliation",
+      "description": "Daily cash register check",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "systemClosingBalance": { "type": "number" },
+        "physicalClosingBalance": { "type": "number" },
+        "discrepancy": { "type": "number" }
+      },
+      "required": ["date", "systemClosingBalance", "physicalClosingBalance"]
+    },
+    "RiskSnapshot": {
+      "title": "Risk Snapshot",
+      "description": "Daily financial risk assessment",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "compositeScore": { "type": "number" },
+        "riskLevel": { "type": "string", "enum": ["FAIBLE", "MODÉRÉ", "ÉLEVÉ", "CRITIQUE"] }
+      },
+      "required": ["date", "compositeScore", "riskLevel"]
+    },
+    "FinancialEmployee": {
+      "title": "Financial Employee",
+      "description": "Payroll and administrative data for an employee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "matricule": { "type": "string" },
+        "nin": { "type": "string" },
+        "baseSalary": { "type": "number" },
+        "transportAllowance": { "type": "number" },
+        "otherAllowances": { "type": "number" },
+        "bankAccount": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIF", "INACTIF"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "matricule", "baseSalary"]
+    },
+    "StockMovement": {
+      "title": "Stock Movement",
+      "description": "Record of stock changes",
+      "type": "object",
+      "properties": {
+        "itemId": { "type": "string" },
+        "itemType": { "type": "string", "enum": ["product", "material"] },
+        "type": { "type": "string", "enum": ["in", "out", "adjustment", "transfer"] },
+        "quantity": { "type": "number" },
+        "previousStock": { "type": "number" },
+        "newStock": { "type": "number" },
+        "location": { "type": "string", "enum": ["shop", "freezer", "warehouse"] },
+        "reason": { "type": "string", "enum": ["production", "sale", "waste", "restock", "adjustment", "transfer", "cancellation"] },
+        "referenceId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["itemId", "itemType", "type", "quantity", "previousStock", "newStock", "reason", "userId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users": { "schema": "User", "description": "System users" },
+    "products": { "schema": "Product", "description": "Pastry products" },
+    "rawMaterials": { "schema": "RawMaterial", "description": "Inventory ingredients" },
+    "recipes": { "schema": "Recipe", "description": "Product recipes" },
+    "batches": { "schema": "ProductionBatch", "description": "Production history" },
+    "sales": { "schema": "Sale", "description": "Sales transactions" },
+    "suppliers": { "schema": "Supplier", "description": "Supplier directory" },
+    "customers": { "schema": "Customer", "description": "Customer directory" },
+    "orders": { "schema": "Order", "description": "B2B and B2C orders" },
+    "deliveries": { "schema": "Delivery", "description": "Delivery tracking" },
+    "activityLogs": { "schema": "ActivityLog", "description": "System activity logs" },
+    "rolePermissions": { "schema": "RolePermission", "description": "Role-based access control rules" },
+    "accounts": { "schema": "Account", "description": "PCN Accounts" },
+    "journalEntries": { "schema": "JournalEntry", "description": "GL Headers" },
+    "journalLines": { "schema": "JournalLine", "description": "GL Lines" },
+    "payrollRuns": { "schema": "PayrollRun", "description": "Monthly payroll runs" },
+    "payslips": { "schema": "Payslip", "description": "Individual payslips" },
+    "supplierInvoices": { "schema": "SupplierInvoice", "description": "AP Invoices" },
+    "customerInvoices": { "schema": "CustomerInvoice", "description": "B2B AR Invoices" },
+    "fixedAssets": { "schema": "FixedAsset", "description": "Asset register" },
+    "cashReconciliations": { "schema": "DailyCashReconciliation", "description": "Daily cash reports" },
+    "riskSnapshots": { "schema": "RiskSnapshot", "description": "Daily risk history" },
+    "budgets": { "schema": "Budget", "description": "Annual budgets" },
+    "financialEmployees": { "schema": "FinancialEmployee", "description": "Payroll employee data" },
+    "stockMovements": { "schema": "StockMovement", "description": "Stock movement history" }
+  }
+}

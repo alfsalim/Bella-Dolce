@@ -1,0 +1,271 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "alfsalim@gmail.com" ||
+         request.auth.token.email == "alfsalim@bakery.local" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isManager() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "alfsalim@gmail.com" ||
+         request.auth.token.email == "alfsalim@bakery.local" ||
+         isAdmin() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['manager', 'inventory']));
+    }
+
+    function isStaff() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "alfsalim@gmail.com" ||
+         request.auth.token.email == "alfsalim@bakery.local" ||
+         isManager() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['cashier', 'baker', 'delivery_guy']));
+    }
+
+    match /system/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // User validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'role', 'username', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.email.size() < 100 &&
+             data.username is string && data.username.size() < 50 &&
+             data.createdAt is string &&
+             data.role in ['admin', 'manager', 'cashier', 'baker', 'delivery_guy', 'inventory', 'customer_business', 'customer_customers'];
+    }
+
+    function isValidPromotion(data) {
+      return data.keys().hasAll(['imageUrl', 'expiryDate', 'active', 'createdAt']) &&
+             data.imageUrl is string &&
+             data.expiryDate is string &&
+             data.active is bool &&
+             data.createdAt is string;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['customerId', 'items', 'totalAmount', 'status', 'type', 'createdAt']) &&
+             data.customerId is string && data.customerId.size() < 50 &&
+             data.items is list && data.items.size() < 50 &&
+             data.totalAmount is number &&
+             data.status in ['pending', 'confirmed', 'preparing', 'out-for-delivery', 'delivered', 'cancelled'] &&
+             data.type in ['b2b', 'b2c'] &&
+             data.createdAt is string && data.createdAt.size() < 50;
+    }
+
+    function isValidDelivery(data) {
+      return data.keys().hasAll(['orderId', 'status', 'updatedAt']) &&
+             data.orderId is string &&
+             data.status in ['pending', 'assigned', 'picked-up', 'delivered'] &&
+             data.updatedAt is string;
+    }
+
+    function isValidActivityLog(data) {
+      return data.keys().hasAll(['userId', 'action', 'timestamp']) &&
+             data.userId is string &&
+             data.action is string && data.action.size() < 100 &&
+             data.timestamp is string;
+     }
+ 
+     function isValidRolePermission(data) {
+       return data.keys().hasAll(['allowedPaths']) &&
+              data.allowedPaths is list;
+     }
+
+     function isValidStockMovement(data) {
+       return data.keys().hasAll(['itemId', 'itemType', 'type', 'quantity', 'previousStock', 'newStock', 'reason', 'userId', 'timestamp']) &&
+              data.itemId is string &&
+              data.itemType in ['product', 'material'] &&
+              data.type in ['in', 'out', 'adjustment', 'transfer'] &&
+              data.quantity is number &&
+              data.previousStock is number &&
+              data.newStock is number &&
+              data.reason in ['production', 'sale', 'waste', 'restock', 'adjustment', 'transfer', 'cancellation'] &&
+              data.userId is string &&
+              data.timestamp is string;
+     }
+
+     function isValidAccount(data) {
+       return data.keys().hasAll(['number', 'name', 'type', 'normalBalance']) &&
+              data.number is string && data.name is string &&
+              data.type in ['ACTIF', 'PASSIF', 'CAPITAUX', 'PRODUIT', 'CHARGE', 'CMV'] &&
+              data.normalBalance in ['DÉBIT', 'CRÉDIT'];
+     }
+
+     function isValidJournalEntry(data) {
+       return data.keys().hasAll(['number', 'date', 'period', 'label', 'status']) &&
+              data.number is string && data.date is string &&
+              data.period is string && data.label is string &&
+              data.status in ['BROUILLON', 'EN_ATTENTE_VALIDATION', 'APPROUVÉ', 'COMPTABILISÉ', 'ANNULÉ'];
+     }
+
+     function isValidJournalLine(data) {
+       return data.keys().hasAll(['journalId', 'accountNumber', 'debit', 'credit']) &&
+              data.journalId is string && data.accountNumber is string &&
+              data.debit is number && data.credit is number;
+     }
+ 
+      match /users/{userId} {
+        // Allow reading profile if it's your own, or if you are staff, or if it's an invited account being claimed
+        allow read: if isAuthenticated() && (isOwner(userId) || isStaff() || userId.size() < 20);
+        allow create, update: if isAuthenticated() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+        // Allow deleting if admin OR if the user is claiming an invited account (matching username)
+        allow delete: if isAdmin() || (isAuthenticated() && 
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == resource.data.username);
+      }
+ 
+     match /rolePermissions/{roleId} {
+       allow read: if isAuthenticated();
+       allow write: if isAdmin() && isValidRolePermission(request.resource.data);
+     }
+ 
+     match /products/{productId} {
+      allow read: if true;
+      allow write: if isManager();
+    }
+
+    match /rawMaterials/{materialId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /recipes/{recipeId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /batches/{batchId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.customerId) || isStaff());
+      allow create: if (
+        (isAuthenticated() && request.resource.data.customerId == request.auth.uid) ||
+        (!isAuthenticated() && request.resource.data.customerId == 'anonymous')
+      ) && isValidOrder(request.resource.data);
+      allow update: if (isStaff() || isAdmin()) && isValidOrder(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /deliveries/{deliveryId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff() && isValidDelivery(request.resource.data);
+    }
+
+    match /settings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /promotions/{promoId} {
+      allow read: if true;
+      allow write: if isManager() && isValidPromotion(request.resource.data);
+    }
+
+    match /activityLogs/{logId} {
+      allow read: if isManager();
+      allow create: if isAuthenticated() && isValidActivityLog(request.resource.data);
+    }
+
+    match /accounts/{accountId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidAccount(request.resource.data);
+    }
+
+    match /journalEntries/{entryId} {
+      allow read: if isManager();
+      allow write: if isManager() && isValidJournalEntry(request.resource.data);
+    }
+
+    match /journalLines/{lineId} {
+      allow read: if isManager();
+      allow write: if isManager() && isValidJournalLine(request.resource.data);
+    }
+
+    match /payrollRuns/{runId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /payslips/{payslipId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.employeeId) || isManager());
+      allow write: if isManager();
+    }
+
+    match /supplierInvoices/{invoiceId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /customerInvoices/{invoiceId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /fixedAssets/{assetId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /cashReconciliations/{reconcileId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /riskSnapshots/{snapshotId} {
+      allow read: if isManager();
+      allow write: if isAdmin();
+    }
+
+    match /budgets/{budgetId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /financialEmployees/{employeeId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /stockMovements/{movementId} {
+      allow read: if isManager();
+      allow create: if isAuthenticated() && isValidStockMovement(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,342 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model RolePermission {
+  id           String @id
+  allowedPaths String // Array of strings (JSON)
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String?  @unique
+  password  String?  // Local authentication
+  name      String
+  email     String   @unique
+  phone     String?
+  role      String
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activityLogs ActivityLog[]
+}
+
+model Product {
+  id             String   @id @default(uuid())
+  name           String
+  category       String
+  sellingPrice   Float
+  costPrice      Float
+  shelfLife      Int      @default(24) // in hours
+  imageUrl       String?
+  stock          Float    @default(0)
+  shopStock      Float    @default(0)
+  freezerStock   Float    @default(0)
+  minStock       Float    @default(0)
+  description    String?
+  specifications String?
+  ingredients    String?  // Array of {materialId, quantity} (JSON)
+  itemType       String   @default("product")
+  isPack         Boolean  @default(false)
+  packItems      String?  // Array of {productId, quantity} (JSON)
+  disabled       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  batches ProductionBatch[]
+  recipes Recipe[]
+}
+
+model RawMaterial {
+  id           String   @id @default(uuid())
+  name         String
+  category     String
+  unit         String
+  currentStock Float    @default(0)
+  minStock     Float    @default(0)
+  status       String   @default("none")
+  imageUrl     String?
+  brand        String?
+  disabled     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Recipe {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  batchSize  Float
+  prepTime   Int
+  ingredients String   // Array of {materialId, quantity, type} (JSON)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Order {
+  id             String   @id @default(uuid())
+  customerId     String
+  clientName     String?
+  description    String?
+  totalAmount    Float
+  status         String   @default("pending")
+  deliveryStatus String?
+  type           String
+  items          String   // Array of {productId, quantity, price} (JSON)
+  deliveryId     String?
+  notes          String?
+  expectedTime   String?
+  expectedDate   String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Delivery {
+  id             String   @id @default(uuid())
+  orderId        String
+  deliveryGuyId  String?
+  status         String   @default("pending")
+  trackingUrl    String?
+  comments       String?
+  updatedAt      DateTime @updatedAt
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  userName  String
+  action    String
+  details   String
+  timestamp DateTime @default(now())
+}
+
+model ProductionBatch {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  recipeId   String
+  plannedQty Float
+  actualQty  Float?
+  status     String   @default("planned")
+  startDate  DateTime @default(now())
+  endDate    DateTime?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Sale {
+  id            String   @id @default(uuid())
+  cashierId     String
+  customerId    String?
+  totalAmount   Float
+  paymentMethod String
+  items         String   // Array of {productId, quantity, price} (JSON)
+  createdAt     DateTime @default(now())
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  materials String?  // Array of material names or IDs (JSON)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  address   String?
+  type      String   @default("b2c")
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Promotion {
+  id          String   @id @default(uuid())
+  title       String?
+  description String?
+  imageUrl    String?
+  expiryDate  DateTime
+  active      Boolean  @default(true)
+  type        String   @default("banner")
+  createdAt   DateTime @default(now())
+}
+
+model Account {
+  id            String   @id @default(uuid())
+  number        String   @unique
+  name          String
+  type          String
+  parent        String?
+  isCategory    Boolean  @default(false)
+  normalBalance String
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+}
+
+model JournalEntry {
+  id           String   @id @default(uuid())
+  number       String   @unique
+  date         DateTime
+  period       String
+  label        String
+  reference    String?
+  sourceModule String
+  sourceId     String?
+  status       String   @default("BROUILLON")
+  createdBy    String
+  approvedBy   String?
+  approvedAt   DateTime?
+  postedAt     DateTime?
+  createdAt    DateTime @default(now())
+}
+
+model JournalLine {
+  id            String @id @default(uuid())
+  journalId     String
+  accountNumber String
+  debit         Float
+  credit        Float
+  label         String?
+}
+
+model PayrollRun {
+  id            String   @id @default(uuid())
+  period        String
+  executionDate DateTime
+  totalNet      Float
+  status        String   @default("BROUILLON")
+  createdAt     DateTime @default(now())
+}
+
+model Payslip {
+  id               String @id @default(uuid())
+  runId            String
+  employeeId       String
+  period           String
+  baseSalary       Float
+  grossSalary      Float
+  netSalary        Float
+  totalEmployerCost Float
+}
+
+model SupplierInvoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  supplierId    String
+  supplierName  String?
+  date          DateTime
+  dueDate       DateTime?
+  amountHT      Float?
+  tvaAmount     Float?
+  totalAmount   Float
+  amountPaid    Float    @default(0)
+  status        String   @default("BROUILLON")
+  createdAt     DateTime @default(now())
+}
+
+model FixedAsset {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  acquisitionCost Float
+  usefulLifeYears Int
+  acquisitionDate DateTime @default(now())
+}
+
+model DailyCashReconciliation {
+  id                     String   @id @default(uuid())
+  date                   DateTime @unique
+  systemClosingBalance   Float
+  physicalClosingBalance Float
+  discrepancy            Float
+  closedBy               String?
+  createdAt              DateTime @default(now())
+}
+
+model RiskSnapshot {
+  id             String   @id @default(uuid())
+  date           DateTime @unique
+  compositeScore Float
+  riskLevel      String
+}
+
+model FinancialEmployee {
+  id         String   @id @default(uuid())
+  name       String
+  role       String
+  matricule  String   @unique
+  nin        String?
+  baseSalary Float
+  status     String   @default("ACTIF")
+  createdAt  DateTime @default(now())
+}
+
+model StockMovement {
+  id            String   @id @default(uuid())
+  itemId        String
+  itemType      String
+  type          String
+  quantity      Float
+  previousStock Float
+  newStock      Float
+  location      String?
+  reason        String
+  referenceId   String?
+  userId        String
+  userName      String?
+  timestamp     DateTime @default(now())
+}
+
+model CustomerInvoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  customerId    String
+  date          DateTime
+  dueDate       DateTime
+  amountHT      Float
+  amountTVA     Float
+  amountTTC     Float
+  amountPaid    Float    @default(0)
+  status        String   @default("BROUILLON")
+  paymentMethod String   @default("CASH")
+  journalId     String?
+  createdAt     DateTime @default(now())
+}
+
+model System {
+  id          String   @id
+  performed   Boolean?
+  performedAt String?
+  performedBy String?
+  data        String?  // JSON stringified data for other uses
+}
+
+model Budget {
+  id            String   @id @default(uuid())
+  year          Int
+  accountNumber String
+  monthlyAmounts String  // Array of 12 numbers (JSON)
+  totalAmount   Float
+  status        String   @default("BROUILLON")
+  approvedBy    String?
+  createdAt     DateTime @default(now())
+}

@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:./prisma/dev.db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./prisma_data:/app/prisma
+    restart: always
+
+# If you want to use PostgreSQL, uncomment these and change provider in schema.prisma to "postgresql"
+#   db:
+#     image: postgres:15-alpine
+#     environment:
+#       - POSTGRES_USER=postgres
+#       - POSTGRES_PASSWORD=postgres
+#       - POSTGRES_DB=belladolce
+#     ports:
+#       - "5432:5432"
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U postgres"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  # postgres_data:
+  prisma_data:

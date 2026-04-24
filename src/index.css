@@ -1,0 +1,152 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700;1,800&family=Cairo:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: "Cairo", sans-serif;
+  
+  --color-primary-50: #fffbeb;
+  --color-primary-100: #fef3c7;
+  --color-primary-200: #fde68a;
+  --color-primary-300: #fcd34d;
+  --color-primary-400: #fbbf24;
+  --color-primary-500: #f59e0b;
+  --color-primary-600: #d97706;
+  --color-primary-700: #b45309;
+  --color-primary-800: #92400e;
+  --color-primary-900: #78350f;
+  --color-primary-950: #451a03;
+}
+
+/* Force class-based dark mode in Tailwind v4 */
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    @apply font-sans bg-white text-slate-900 antialiased transition-colors duration-200;
+  }
+  
+  .dark body {
+    @apply bg-black text-white;
+  }
+  
+  [dir="rtl"] body {
+    @apply font-arabic;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-bold tracking-tight text-slate-900 transition-colors duration-200;
+  }
+
+  .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+    @apply text-white;
+  }
+
+  [dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3, [dir="rtl"] h4, [dir="rtl"] h5, [dir="rtl"] h6 {
+    @apply font-arabic;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/80 backdrop-blur-xl border border-white/20 shadow-xl;
+  }
+  
+  .dark .glass {
+    @apply bg-black/80 border-[#3d2b1f];
+  }
+
+  .glass-dark {
+    @apply bg-[#1a1512]/95 backdrop-blur-xl border border-[#3d2b1f] shadow-2xl;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-semibold transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none bg-primary-600 text-white hover:bg-primary-700 shadow-lg shadow-primary-600/20;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-semibold transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 shadow-sm;
+  }
+
+  .dark .btn-secondary {
+    @apply bg-[#1a1512] text-white border-[#3d2b1f] hover:bg-[#2a1e17];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-semibold transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+  }
+
+  .dark .btn-ghost {
+    @apply text-slate-400 hover:bg-[#1a1512] hover:text-white;
+  }
+
+  .input {
+    @apply w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all;
+  }
+
+  .dark .input {
+    @apply bg-black border-[#2a1e17] text-white placeholder:text-slate-600;
+  }
+
+  .card {
+    @apply bg-white border border-slate-100 shadow-sm rounded-2xl p-6 transition-all duration-200;
+  }
+
+  .dark .card {
+    @apply bg-[#0a0a0a] border-[#2a1e17] shadow-none;
+  }
+}
+
+@layer base {
+  @media print {
+    body {
+      background: white !important;
+      color: black !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    
+    /* Hide everything except the print-visible element */
+    #root > *:not(.print-visible) {
+      display: none !important;
+    }
+    
+    .print-visible {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      visibility: visible !important;
+      display: block !important;
+      background: white !important;
+      z-index: 9999 !important;
+    }
+    
+    .print-hidden {
+      display: none !important;
+    }
+    
+    /* Fix for dark mode colors in print */
+    .dark body {
+      background: white !important;
+      color: black !important;
+    }
+    
+    .dark .text-white, .dark .text-slate-200, .dark .text-slate-400 {
+      color: black !important;
+    }
+    
+    .dark .bg-black, .dark .bg-zinc-900, .dark .bg-[#1a1512], .dark .bg-[#0a0a0a] {
+      background: white !important;
+    }
+    
+    .dark .border-white\/10, .dark .border-[#2a1e17], .dark .border-[#3d2b1f] {
+      border-color: #f1f5f9 !important;
+    }
+  }
+}
