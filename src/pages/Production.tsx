@@ -81,51 +81,62 @@ const Production: React.FC = () => {
         endDate: selectedBatch.endDate ? new Date(selectedBatch.endDate).toISOString().slice(0, 16) : undefined,
         location: selectedBatch.location || 'shop'
       });
-    } else if (!isEditingBatch) {
-      setNewBatch({
-        productId: '',
-        recipeId: '',
-        plannedQty: 0,
-        ingredients: [],
-        startDate: new Date().toISOString().slice(0, 16),
-        location: 'shop'
+    } else if (isModalOpen && !isEditingBatch) {
+      // Only reset when modal opens for a new batch
+      setNewBatch(prev => {
+        if (prev.productId === '') return prev;
+        return {
+          productId: '',
+          recipeId: '',
+          plannedQty: 0,
+          ingredients: [],
+          startDate: new Date().toISOString().slice(0, 16),
+          location: 'shop'
+        };
       });
     }
-  }, [isEditingBatch, selectedBatch]);
+  }, [isEditingBatch, selectedBatch, isModalOpen]);
 
   useEffect(() => {
-    if (newBatch.productId && !isEditingBatch) {
+    // Only auto-populate if we just selected a product and ingredients are empty
+    if (newBatch.productId && !isEditingBatch && newBatch.ingredients.length === 0) {
       const recipe = recipes.find(r => r.productId === newBatch.productId);
-      if (recipe && recipe.ingredients) {
-        const defaultQty = recipe.batchSize || 10;
+      const product = products.find(p => p.id === newBatch.productId);
+      
+      // Try recipe first, then product ingredients
+      const sourceIngredients = recipe?.ingredients || product?.ingredients;
+      const batchSize = recipe?.batchSize || 10;
+
+      if (sourceIngredients && sourceIngredients.length > 0) {
         setNewBatch(prev => ({
           ...prev,
-          ingredients: recipe.ingredients.map(ing => ({ 
+          ingredients: sourceIngredients.map(ing => ({ 
             ...ing, 
-            quantity: (ing.quantity / (recipe.batchSize || 1)) * defaultQty 
+            quantity: Number(((ing.quantity / (batchSize || 1)) * batchSize).toFixed(3))
           })),
-          plannedQty: defaultQty
+          plannedQty: batchSize,
+          recipeId: recipe?.id || ''
         }));
-      } else {
-        setNewBatch(prev => ({ ...prev, ingredients: [], plannedQty: 0 }));
       }
     }
-  }, [newBatch.productId, recipes]);
+  }, [newBatch.productId, recipes, products, isEditingBatch]);
 
   const getMaxPossible = () => {
-    if (!newBatch.productId) return 0;
-    const recipe = recipes.find(r => r.productId === newBatch.productId);
-    if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0) return 0;
+    if (newBatch.ingredients.length === 0) return 0;
 
     let minPossible = Infinity;
-    recipe.ingredients.forEach(recipeIng => {
-      const material = rawMaterials.find(m => m.id === recipeIng.materialId);
-      if (material && recipeIng.quantity > 0) {
-        // quantity in recipe is for batchSize
-        const qtyPerUnit = recipeIng.quantity / (recipe.batchSize || 1);
-        const possible = Math.floor(material.currentStock / qtyPerUnit);
-        if (possible < minPossible) minPossible = possible;
-      } else {
+    newBatch.ingredients.forEach(ing => {
+      if (!ing.materialId) return;
+      const material = rawMaterials.find(m => m.id === ing.materialId);
+      if (material && ing.quantity > 0) {
+        // Current quantity is for the current plannedQty
+        // We want to know how many units we can produce with current proportions
+        const qtyPerUnit = ing.quantity / (newBatch.plannedQty || 1);
+        if (qtyPerUnit > 0) {
+          const possible = Math.floor(material.currentStock / qtyPerUnit);
+          if (possible < minPossible) minPossible = possible;
+        }
+      } else if (!material && ing.materialId) {
         minPossible = 0;
       }
     });
@@ -133,46 +144,60 @@ const Production: React.FC = () => {
     return minPossible === Infinity ? 0 : minPossible;
   };
 
+  const isShortValue = (ing: any) => {
+    if (!ing.materialId) return false;
+    const material = rawMaterials.find(m => m.id === ing.materialId);
+    if (!material) return false;
+    const qty = typeof ing.quantity === 'number' ? ing.quantity : parseFloat(ing.quantity) || 0;
+    return material.currentStock < qty;
+  };
+
   const handlePlannedQtyChange = (qty: number) => {
-    if (!newBatch.productId) {
-      setNewBatch(prev => ({ ...prev, plannedQty: qty }));
-      return;
-    }
+    const safeQty = Math.max(0, qty);
+    const oldQty = newBatch.plannedQty;
     
-    const recipe = recipes.find(r => r.productId === newBatch.productId);
-    if (!recipe || !recipe.ingredients) {
-      setNewBatch(prev => ({ ...prev, plannedQty: qty }));
-      return;
-    }
+    setNewBatch(prev => {
+      // If old qty was 0 or invalid, we can't scale. We just update the qty.
+      if (!oldQty || oldQty <= 0) {
+        return { ...prev, plannedQty: safeQty };
+      }
 
-    const updatedIngredients = recipe.ingredients.map(recipeIng => ({
-      ...recipeIng,
-      quantity: (recipeIng.quantity / (recipe.batchSize || 1)) * qty
-    }));
-
-    setNewBatch(prev => ({
-      ...prev,
-      plannedQty: qty,
-      ingredients: updatedIngredients
-    }));
-  };
-
-  const handleIngredientChange = (index: number, field: string, value: any) => {
-    const updatedIngredients = [...newBatch.ingredients];
-    updatedIngredients[index] = { ...updatedIngredients[index], [field]: value };
-    setNewBatch({ ...newBatch, ingredients: updatedIngredients });
-  };
-
-  const addIngredient = () => {
-    setNewBatch({
-      ...newBatch,
-      ingredients: [...newBatch.ingredients, { materialId: '', quantity: 1, type: 'quantity' }]
+      const ratio = safeQty / oldQty;
+      
+      // Scale current ingredients proportionally to preserve manual additions
+      const updatedIngredients = prev.ingredients.map(ing => ({
+        ...ing,
+        quantity: Number((ing.quantity * ratio).toFixed(3))
+      }));
+      
+      return { 
+        ...prev, 
+        plannedQty: safeQty,
+        ingredients: updatedIngredients
+      };
     });
   };
 
+  const handleIngredientChange = (index: number, field: string, value: any) => {
+    setNewBatch(prev => {
+      const updatedIngredients = [...prev.ingredients];
+      updatedIngredients[index] = { ...updatedIngredients[index], [field]: value };
+      return { ...prev, ingredients: updatedIngredients };
+    });
+  };
+
+  const addIngredient = () => {
+    setNewBatch(prev => ({
+      ...prev,
+      ingredients: [...prev.ingredients, { materialId: '', quantity: 1, type: 'quantity' }]
+    }));
+  };
+
   const removeIngredient = (index: number) => {
-    const updatedIngredients = newBatch.ingredients.filter((_, i) => i !== index);
-    setNewBatch({ ...newBatch, ingredients: updatedIngredients });
+    setNewBatch(prev => ({
+      ...prev,
+      ingredients: prev.ingredients.filter((_, i) => i !== index)
+    }));
   };
 
   useEffect(() => {
@@ -226,7 +251,12 @@ const Production: React.FC = () => {
 
   useEffect(() => {
     const unsubscribeMaterials = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
-      setRawMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const mats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setRawMaterials(prev => {
+        // Only keep active ones and merge with current to avoid flickering
+        const newMats = mats.filter(m => !m.disabled);
+        return newMats;
+      });
     }, (error) => handleFirestoreError(error, OperationType.GET, 'rawMaterials'));
     return () => unsubscribeMaterials();
   }, []);
@@ -1073,7 +1103,7 @@ const Production: React.FC = () => {
                     ) : (
                       newBatch.ingredients.map((ing, idx) => {
                         const material = rawMaterials.find(m => m.id === ing.materialId);
-                        const isShort = material && material.currentStock < ing.quantity;
+                        const isShort = isShortValue(ing);
                         
                         return (
                           <div key={idx} className="flex flex-col sm:flex-row gap-3 p-4 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-white/10 relative group">
@@ -1085,21 +1115,25 @@ const Production: React.FC = () => {
                                 onChange={(e) => handleIngredientChange(idx, 'materialId', e.target.value)}
                                 required
                               >
-                                <option value="">{t('selectMaterial')}</option>
+                                <option value="">{t('selectMaterial') || 'Select Material'}</option>
                                   {rawMaterials
-                                    .filter(m => !newBatch.ingredients.some((otherIng, otherIdx) => otherIdx !== idx && otherIng.materialId === m.id))
+                                    .filter(m => !m.disabled && !newBatch.ingredients.some((otherIng, otherIdx) => otherIdx !== idx && otherIng.materialId === m.id))
+                                    .sort((a, b) => a.name.localeCompare(b.name))
                                     .map(m => (
                                     <option key={m.id} value={m.id}>
-                                      {tProduct(m.name)} {m.brand ? `(${m.brand})` : ''} - {m.currentStock} {t(m.unit)}
+                                      {tProduct(m.name)} {m.brand ? `(${m.brand})` : ''} - {m.currentStock} {t(m.unit) || m.unit}
                                     </option>
                                   ))}
                               </select>
                             </div>
-                            <div className="w-full sm:w-32">
-                                <div className="flex justify-between items-center mb-1">
-                                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase">{t('totalQuantity')}</label>
+                            <div className="w-full sm:w-40">
+                                <div className="flex justify-between items-center mb-1 gap-2">
+                                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase whitespace-nowrap">{t('totalQuantity')}</label>
                                   {material && (
-                                    <span className="text-[9px] font-bold text-primary-600 dark:text-primary-400">
+                                    <span className={clsx(
+                                      "text-[9px] font-bold whitespace-nowrap",
+                                      isShort ? "text-red-500" : "text-primary-600 dark:text-primary-400"
+                                    )}>
                                       {t('available')}: {material.currentStock}
                                     </span>
                                   )}
@@ -1108,16 +1142,17 @@ const Production: React.FC = () => {
                                 <input
                                   type="number"
                                   className={clsx(
-                                    "input py-1.5 text-sm pr-8 dark:bg-zinc-900",
+                                    "input py-1.5 text-sm pr-12 dark:bg-zinc-900",
                                     isShort && "border-red-300 dark:border-red-900/30 bg-red-50 dark:bg-red-900/20"
                                   )}
                                   value={ing.quantity || ''}
-                                  onChange={(e) => handleIngredientChange(idx, 'quantity', Number(e.target.value))}
+                                  onChange={(e) => handleIngredientChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
                                   required
                                   min="0"
+                                  step="0.001"
                                 />
                                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase">
-                                  {material?.unit}
+                                  {t(material?.unit || '')}
                                 </span>
                               </div>
                             </div>
