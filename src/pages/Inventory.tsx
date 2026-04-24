@@ -1796,7 +1796,7 @@ const Inventory: React.FC = () => {
                         <div key={idx} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-white/10">
                           <select 
                             className="input py-1 text-sm flex-1"
-                            value={item.productId}
+                            value={item.productId || ''}
                             onChange={(e) => {
                               const packItems = [...(editFormData.packItems || [])];
                               packItems[idx] = { ...item, productId: e.target.value };
@@ -1811,7 +1811,7 @@ const Inventory: React.FC = () => {
                           <input 
                             type="number" 
                             className="input py-1 text-sm w-20"
-                            value={item.quantity}
+                            value={item.quantity || 0}
                             onChange={(e) => {
                               const packItems = [...(editFormData.packItems || [])];
                               packItems[idx] = { ...item, quantity: Number(e.target.value) };
@@ -1834,7 +1834,7 @@ const Inventory: React.FC = () => {
                         <div key={idx} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-white/10">
                           <select 
                             className="input py-1 text-sm flex-1"
-                            value={ing.materialId}
+                            value={ing.materialId || ''}
                             onChange={(e) => {
                               const ingredients = [...(editFormData.ingredients || [])];
                               ingredients[idx] = { ...ing, materialId: e.target.value };
@@ -1849,7 +1849,7 @@ const Inventory: React.FC = () => {
                           <input 
                             type="number" 
                             className="input py-1 text-sm w-24"
-                            value={ing.quantity}
+                            value={ing.quantity || 0}
                             onChange={(e) => {
                               const ingredients = [...(editFormData.ingredients || [])];
                               ingredients[idx] = { ...ing, quantity: Number(e.target.value) };

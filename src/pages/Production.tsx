@@ -319,25 +319,16 @@ const Production: React.FC = () => {
 
     try {
       const recipe = recipes.find(r => r.productId === newBatch.productId);
-      const batchRef = isEditingBatch && selectedBatch 
-        ? doc(db, 'batches', selectedBatch.id)
-        : await addDoc(collection(db, 'batches'), {
-            productId: newBatch.productId,
-            recipeId: recipe?.id || '',
-            plannedQty: Number(newBatch.plannedQty),
-            ingredients: newBatch.ingredients,
-            status: 'planned',
-            startDate: new Date(newBatch.startDate || Date.now()).toISOString(),
-            createdBy: profile?.name || 'Unknown',
-            location: newBatch.location || 'shop'
-          });
-
-      const batchId = isEditingBatch && selectedBatch ? selectedBatch.id : batchRef.id;
+      const initialStatus = newBatch.status || 'planned';
 
       if (isEditingBatch && selectedBatch) {
-        // If the batch was already started, we need to adjust stock
-        if (selectedBatch.status !== 'planned' && selectedBatch.status !== 'cancelled') {
-          // 1. Revert old deductions
+        const batchId = selectedBatch.id;
+        // Logic for inventory sync
+        const wasActive = selectedBatch.status !== 'planned' && selectedBatch.status !== 'cancelled';
+        const isNowActive = newBatch.status !== 'planned' && newBatch.status !== 'cancelled';
+
+        if (wasActive && !isNowActive) {
+          // Returning stock (Active -> Non-active)
           if (selectedBatch.ingredients) {
             for (const ingredient of selectedBatch.ingredients) {
               const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
@@ -347,7 +338,6 @@ const Production: React.FC = () => {
                 const newStock = currentStock + ingredient.quantity;
                 await updateDoc(rawMaterialRef, { currentStock: newStock });
                 
-                // Record movement (reversion)
                 await addDoc(collection(db, 'stockMovements'), {
                   itemId: ingredient.materialId,
                   itemType: 'material',
@@ -355,7 +345,7 @@ const Production: React.FC = () => {
                   quantity: ingredient.quantity,
                   previousStock: currentStock,
                   newStock: newStock,
-                  reason: 'adjustment',
+                  reason: 'adjustment_revert',
                   referenceId: batchId,
                   userId: profile?.id || 'system',
                   userName: profile?.name || 'System',
@@ -364,33 +354,52 @@ const Production: React.FC = () => {
               }
             }
           }
-
-          // 2. Apply new deductions (only if the new status is still active)
-          const newStatus = newBatch.status || selectedBatch.status;
-          if (newStatus !== 'planned' && newStatus !== 'cancelled') {
-            for (const ingredient of newBatch.ingredients) {
+        } else if (!wasActive && isNowActive) {
+          // Deducting stock (Non-active -> Active)
+          for (const ingredient of newBatch.ingredients) {
+            const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
+            const rawMaterialSnap = await getDoc(rawMaterialRef);
+            if (rawMaterialSnap.exists()) {
+              const currentStock = rawMaterialSnap.data().currentStock || 0;
+              const newStock = Math.max(0, currentStock - ingredient.quantity);
+              await updateDoc(rawMaterialRef, { currentStock: newStock });
+              
+              await addDoc(collection(db, 'stockMovements'), {
+                itemId: ingredient.materialId,
+                itemType: 'material',
+                type: 'out',
+                quantity: ingredient.quantity,
+                previousStock: currentStock,
+                newStock: newStock,
+                reason: 'production_started',
+                referenceId: batchId,
+                userId: profile?.id || 'system',
+                userName: profile?.name || 'System',
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+        } else if (wasActive && isNowActive) {
+          // Adjusting stock if quantities or ingredients changed
+          // Simplified: Revert all and re-deduct
+          if (selectedBatch.ingredients) {
+            for (const ingredient of selectedBatch.ingredients) {
               const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
               const rawMaterialSnap = await getDoc(rawMaterialRef);
               if (rawMaterialSnap.exists()) {
                 const currentStock = rawMaterialSnap.data().currentStock || 0;
-                const newStock = Math.max(0, currentStock - ingredient.quantity);
+                const newStock = currentStock + ingredient.quantity;
                 await updateDoc(rawMaterialRef, { currentStock: newStock });
-                
-                // Record movement
-                await addDoc(collection(db, 'stockMovements'), {
-                  itemId: ingredient.materialId,
-                  itemType: 'material',
-                  type: 'out',
-                  quantity: ingredient.quantity,
-                  previousStock: currentStock,
-                  newStock: newStock,
-                  reason: 'production',
-                  referenceId: batchId,
-                  userId: profile?.id || 'system',
-                  userName: profile?.name || 'System',
-                  timestamp: new Date().toISOString()
-                });
               }
+            }
+          }
+          for (const ingredient of newBatch.ingredients) {
+            const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
+            const rawMaterialSnap = await getDoc(rawMaterialRef);
+            if (rawMaterialSnap.exists()) {
+              const currentStock = rawMaterialSnap.data().currentStock || 0;
+              const newStock = Math.max(0, currentStock - ingredient.quantity);
+              await updateDoc(rawMaterialRef, { currentStock: newStock });
             }
           }
         }
@@ -409,7 +418,83 @@ const Production: React.FC = () => {
 
         toast.success(t('batchUpdatedSuccessfully') || 'Batch updated successfully');
       } else {
-        // For new batches, we just save them as 'planned' without deducting stock
+        const batchRef = await addDoc(collection(db, 'batches'), {
+          productId: newBatch.productId,
+          recipeId: recipe?.id || '',
+          plannedQty: Number(newBatch.plannedQty),
+          ingredients: newBatch.ingredients,
+          status: initialStatus,
+          startDate: new Date(newBatch.startDate || Date.now()).toISOString(),
+          createdBy: profile?.name || 'Unknown',
+          location: newBatch.location || 'shop'
+        });
+
+        const batchId = batchRef.id;
+
+        // If created with active status, deduct stock immediately
+        if (initialStatus !== 'planned' && initialStatus !== 'cancelled') {
+          for (const ing of newBatch.ingredients || []) {
+            const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
+            const rawMaterialSnap = await getDoc(rawMaterialRef);
+            if (rawMaterialSnap.exists()) {
+              const currentStock = rawMaterialSnap.data().currentStock || 0;
+              const newStock = Math.max(0, currentStock - ing.quantity);
+              await updateDoc(rawMaterialRef, { currentStock: newStock });
+              
+              // Record movement
+              await addDoc(collection(db, 'stockMovements'), {
+                itemId: ing.materialId,
+                itemType: 'material',
+                type: 'out',
+                quantity: ing.quantity,
+                previousStock: currentStock,
+                newStock: newStock,
+                reason: 'production',
+                referenceId: batchId,
+                userId: profile?.id || 'system',
+                userName: profile?.name || 'System',
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+        }
+
+        // If created as completed, also add products
+        if (initialStatus === 'completed') {
+          const product = products.find(p => p.id === newBatch.productId);
+          if (product) {
+            const productRef = doc(db, 'products', product.id);
+            const location = newBatch.location || 'shop';
+            const updateFields: any = {
+              stock: (product.stock || 0) + Number(newBatch.plannedQty)
+            };
+            
+            if (location === 'shop') {
+              updateFields.shopStock = (product.shopStock || 0) + Number(newBatch.plannedQty);
+            } else {
+              updateFields.freezerStock = (product.freezerStock || 0) + Number(newBatch.plannedQty);
+            }
+            
+            await updateDoc(productRef, updateFields);
+
+            // Record movement
+            await addDoc(collection(db, 'stockMovements'), {
+              itemId: product.id,
+              itemType: 'product',
+              type: 'in',
+              quantity: Number(newBatch.plannedQty),
+              previousStock: product.stock || 0,
+              newStock: (product.stock || 0) + Number(newBatch.plannedQty),
+              location: location,
+              reason: 'production',
+              referenceId: batchId,
+              userId: profile?.id || 'system',
+              userName: profile?.name || 'System',
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+
         toast.success(t('batchCreatedSuccessfully') || 'Batch created successfully');
       }
 
@@ -969,7 +1054,13 @@ const Production: React.FC = () => {
                   <select 
                     className="input"
                     value={newBatch.productId}
-                    onChange={(e) => setNewBatch({...newBatch, productId: e.target.value})}
+                    onChange={(e) => setNewBatch({
+                      ...newBatch, 
+                      productId: e.target.value, 
+                      ingredients: [], 
+                      plannedQty: 0,
+                      recipeId: ''
+                    })}
                     required
                     disabled={isEditingBatch}
                   >
@@ -1020,7 +1111,7 @@ const Production: React.FC = () => {
                   <input 
                     type="datetime-local" 
                     className="input"
-                    value={newBatch.endDate}
+                    value={newBatch.endDate || ''}
                     onChange={(e) => setNewBatch({...newBatch, endDate: e.target.value})}
                     required
                   />
@@ -1059,24 +1150,22 @@ const Production: React.FC = () => {
                 </div>
               </div>
 
-              {isEditingBatch && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('status')}</label>
-                  <select 
-                    className="input"
-                    value={newBatch.status}
-                    onChange={(e) => setNewBatch({...newBatch, status: e.target.value as ProductionBatch['status']})}
-                    required
-                  >
-                    <option value="planned">{t('planned')}</option>
-                    <option value="started">{t('started')}</option>
-                    <option value="in-progress">{t('in-progress')}</option>
-                    <option value="termination">{t('termination')}</option>
-                    <option value="completed">{t('completed')}</option>
-                    <option value="cancelled">{t('cancelled')}</option>
-                  </select>
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('status')}</label>
+                <select 
+                  className="input"
+                  value={newBatch.status || 'planned'}
+                  onChange={(e) => setNewBatch({...newBatch, status: e.target.value as ProductionBatch['status']})}
+                  required
+                >
+                  <option value="planned">{t('planned')}</option>
+                  <option value="started">{t('started')}</option>
+                  <option value="in-progress">{t('in-progress')}</option>
+                  <option value="termination">{t('termination')}</option>
+                  <option value="completed">{t('completed')}</option>
+                  <option value="cancelled">{t('cancelled')}</option>
+                </select>
+              </div>
 
               {newBatch.productId && (
                 <div className="space-y-4">
@@ -1111,7 +1200,7 @@ const Production: React.FC = () => {
                               <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase mb-1">{t('rawMaterial')}</label>
                               <select
                                 className="input py-1.5 text-sm dark:bg-zinc-900 dark:border-white/10"
-                                value={ing.materialId}
+                                value={ing.materialId || ''}
                                 onChange={(e) => handleIngredientChange(idx, 'materialId', e.target.value)}
                                 required
                               >

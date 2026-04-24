@@ -49,9 +49,37 @@ const getModel = (collectionName: string) => {
     'system': prisma.system,
     'financialEmployees': prisma.financialEmployee,
     'stockMovements': prisma.stockMovement,
-    'promotions': prisma.promotion
+    'promotions': prisma.promotion,
+    'settings': prisma.setting
   };
-  return mapping[collectionName];
+  const model = mapping[collectionName];
+  if (!model && collectionName !== 'health') {
+    console.warn(`Collection model not found for: ${collectionName}. Available: ${Object.keys(mapping).join(', ')}`);
+  }
+  return model;
+};
+
+const wrapDataIfNeeded = (collection: string, body: any) => {
+  if (collection === 'settings') {
+    const { id, ...data } = body;
+    return {
+      id: id,
+      data: JSON.stringify(data)
+    };
+  }
+  return body;
+};
+
+const unwrapDataIfNeeded = (collection: string, item: any) => {
+  if (collection === 'settings' && item && item.data) {
+    try {
+      const parsed = JSON.parse(item.data);
+      return { id: item.id, ...parsed };
+    } catch (e) {
+      return item;
+    }
+  }
+  return item;
 };
 
 async function startServer() {
@@ -136,9 +164,9 @@ async function startServer() {
         take: take ? parseInt(take as string) : undefined,
       });
 
-      // Auto-parse JSON strings back to objects for the client
       const data = rawData.map((item: any) => {
-        const parsedItem = { ...item };
+        const unwrapped = unwrapDataIfNeeded(collection, item);
+        const parsedItem = { ...unwrapped };
         for (const key in parsedItem) {
           const val = parsedItem[key];
           if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
@@ -167,8 +195,8 @@ async function startServer() {
       const rawData = await model.findUnique({ where: { id } });
       if (!rawData) return res.json(null);
 
-      // Auto-parse JSON strings back to objects for the client
-      const data = { ...rawData };
+      const unwrapped = unwrapDataIfNeeded(collection, rawData);
+      const data = { ...unwrapped };
       for (const key in data) {
         const val = data[key];
         if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
@@ -192,8 +220,9 @@ async function startServer() {
       const model = getModel(collection);
       if (!model) return res.status(404).json({ error: `Collection ${collection} not found` });
 
+      const preparedBody = wrapDataIfNeeded(collection, req.body);
       // Auto-stringify objects for SQLite String-based JSON fields
-      const dataToSave = { ...req.body };
+      const dataToSave = { ...preparedBody };
       for (const key in dataToSave) {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
@@ -201,7 +230,7 @@ async function startServer() {
       }
 
       const data = await model.create({ data: dataToSave });
-      res.json(data);
+      res.json(unwrapDataIfNeeded(collection, data));
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -213,20 +242,30 @@ async function startServer() {
       const model = getModel(collection);
       if (!model) return res.status(404).json({ error: `Collection ${collection} not found` });
 
+      const preparedBody = wrapDataIfNeeded(collection, req.body);
       // Auto-stringify objects for SQLite String-based JSON fields
-      const dataToSave = { ...req.body };
+      const dataToSave = { ...preparedBody };
       for (const key in dataToSave) {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
         }
       }
 
-      const data = await model.upsert({
-        where: { id },
-        update: dataToSave,
-        create: { ...dataToSave, id }
-      });
-      res.json(data);
+      // Check if it exists for upsert
+      const existing = await model.findUnique({ where: { id } });
+      let data;
+      if (existing) {
+        data = await model.update({
+          where: { id },
+          data: dataToSave
+        });
+      } else {
+        // If not exists, try to create. This might still fail if data is incomplete.
+        data = await model.create({
+          data: { ...dataToSave, id }
+        });
+      }
+      res.json(unwrapDataIfNeeded(collection, data));
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -285,11 +324,10 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", async () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
-    // Auto-seed admin user if missing
+    // Auto-seed admin user and default settings if missing
     try {
       const prisma = getPrisma();
       
-      // Check for specific admin user
       const adminUser = await prisma.user.findFirst({
         where: {
           OR: [
@@ -316,12 +354,19 @@ async function startServer() {
           }
         });
         console.log("Default admin ensured: admin / password");
-      } else {
-        console.log("Admin user already exists.");
       }
 
-      // Also ensure basic role permissions exist in Firestore if needed, 
-      // but here we are using Prisma for users.
+      // Ensure categories exist
+      const categoriesSetting = await prisma.setting.findUnique({ where: { id: 'categories' } });
+      if (!categoriesSetting) {
+        console.log("Seeding default categories...");
+        await prisma.setting.create({
+          data: {
+            id: 'categories',
+            data: JSON.stringify({ list: ["Breads", "Pastries", "Cakes", "Cookies", "Savory"] })
+          }
+        });
+      }
       
     } catch (error) {
       console.error("Error during auto-seeding:", error);
