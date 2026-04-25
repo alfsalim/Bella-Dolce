@@ -64,10 +64,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(error.error || 'Invalid credentials');
       }
 
-      const userData = await res.json();
+      const { user: userData, token } = await res.json();
       setUser(userData);
       setProfile(userData as UserProfile);
       localStorage.setItem('bakery_user', JSON.stringify(userData));
+      localStorage.setItem('bakery_token', token);
 
       // Fetch permissions
       if (userData.role === 'admin') {
@@ -100,11 +101,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(error.error || 'Registration failed');
       }
 
-      const userData = await res.json();
+      const { user: userData } = await res.json();
       setUser(userData);
       setProfile(userData as UserProfile);
       localStorage.setItem('bakery_user', JSON.stringify(userData));
-      
+
       // Fetch permissions
       if (userData.role === 'admin') {
         setPermissions(['*']);
@@ -127,6 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
     setPermissions(null);
     localStorage.removeItem('bakery_user');
+    localStorage.removeItem('bakery_token');
   };
 
   return (

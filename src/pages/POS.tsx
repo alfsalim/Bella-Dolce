@@ -14,7 +14,7 @@ import {
   X,
   User
 } from 'lucide-react';
-import { db, collection, onSnapshot, addDoc, Timestamp, doc, updateDoc, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, collection, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, SaleItem, Customer } from '../types';
 import { clsx } from 'clsx';
 import { CATEGORIES, CURRENCY } from '../constants';
@@ -90,25 +90,25 @@ const POS: React.FC = () => {
     if (cart.length === 0) return;
 
     try {
-      // 1. Create Sale Record
-      await addDoc(collection(db, 'sales'), {
-        cashierId: profile?.id || 'unknown',
-        customerId: selectedCustomer || null,
-        totalAmount: total,
-        paymentMethod,
-        items: cart,
-        createdAt: new Date().toISOString(),
+      const token = localStorage.getItem('bakery_token');
+      const res = await fetch('/api/sale', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          cashierId: profile?.id || 'unknown',
+          customerId: selectedCustomer || null,
+          totalAmount: total,
+          paymentMethod,
+          items: cart
+        })
       });
 
-      // 2. Deduct Product Stock
-      for (const item of cart) {
-        const productRef = doc(db, 'products', item.productId);
-        const product = products.find(p => p.id === item.productId);
-        if (product) {
-          await updateDoc(productRef, {
-            stock: Math.max(0, (product.stock || 0) - item.quantity)
-          });
-        }
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Checkout failed');
       }
 
       if (profile) {
@@ -122,8 +122,9 @@ const POS: React.FC = () => {
         setIsSuccess(false);
         setIsCheckoutOpen(false);
       }, 2000);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Checkout error:", error);
+      alert(error.message || 'Checkout failed. Please try again.');
     }
   };
 

@@ -36,6 +36,8 @@ The objective of this application is to replace manual processes with a digital 
 
 ### 5.4 Inventory & Stock Control
 *   **Product Management:** Track finished goods with minimum stock level alerts.
+*   **Product Images:** Products display professional images sourced from Unsplash API for visual identification.
+*   **Auto-Image Loading (Future Enhancement):** When new products are created, system automatically fetches and assigns relevant product images via Unsplash API based on product name/category, eliminating manual image upload requirement.
 *   **Raw Material Management:** Monitor ingredients (flour, sugar, etc.) with low-stock notifications.
 *   **Stock History:** Track movements and adjustments in inventory levels.
 

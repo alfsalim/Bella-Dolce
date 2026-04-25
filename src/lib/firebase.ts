@@ -96,13 +96,19 @@ export function limit(value: number) {
   return { type: 'limit', value };
 }
 
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('bakery_token');
+  const base: HeadersInit = { 'Content-Type': 'application/json' };
+  return token ? { ...base, 'Authorization': `Bearer ${token}` } : base;
+}
+
 export async function getDocs(queryRef: any) {
   const url = new URL(`/api/db/${queryRef.path}`, window.location.origin);
   if (queryRef.params?.where) url.searchParams.set('where', JSON.stringify(queryRef.params.where));
   if (queryRef.params?.orderBy) url.searchParams.set('orderBy', JSON.stringify(queryRef.params.orderBy));
   if (queryRef.params?.limit) url.searchParams.set('take', queryRef.params.limit.toString());
-  
-  const res = await fetch(url.toString());
+
+  const res = await fetch(url.toString(), { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return {
@@ -118,7 +124,7 @@ export async function getDocs(queryRef: any) {
 }
 
 export async function getDoc(docRef: any) {
-  const res = await fetch(`/api/db/${docRef.path}`);
+  const res = await fetch(`/api/db/${docRef.path}`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(await res.text());
   const item = await res.json();
   return {
@@ -131,7 +137,7 @@ export async function getDoc(docRef: any) {
 export async function addDoc(collectionRef: any, data: any) {
   const res = await fetch(`/api/db/${collectionRef.path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   if (!res.ok) throw new Error(await res.text());
@@ -142,7 +148,7 @@ export async function addDoc(collectionRef: any, data: any) {
 export async function updateDoc(docRef: any, data: any) {
   const res = await fetch(`/api/db/${docRef.path}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   if (!res.ok) throw new Error(await res.text());
@@ -155,7 +161,8 @@ export async function setDoc(docRef: any, data: any, options?: any) {
 
 export async function deleteDoc(docRef: any) {
   const res = await fetch(`/api/db/${docRef.path}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: getAuthHeaders()
   });
   if (!res.ok) throw new Error(await res.text());
 }
@@ -223,6 +230,7 @@ export const auth = {
   },
   signOut: async () => {
     localStorage.removeItem('bakery_user');
+    localStorage.removeItem('bakery_token');
   }
 } as any;
 export const googleProvider = {};
@@ -231,6 +239,7 @@ export const signInWithPopup = async () => {
 };
 export const signOut = async () => {
   localStorage.removeItem('bakery_user');
+  localStorage.removeItem('bakery_token');
 };
 export const onAuthStateChanged = (auth: any, cb: any) => {
   // Simple periodic check for locality or just return unsubscribe

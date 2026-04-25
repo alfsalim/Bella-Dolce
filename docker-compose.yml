@@ -1,13 +1,16 @@
 services:
-  app:
+  bella-dolce2:
+    container_name: bella-dolce2
     build: .
     ports:
-      - "3000:3000"
+      - "3500:3500"
     environment:
-      - DATABASE_URL=file:./prisma/dev.db
+      - PORT=3500
+      - DATABASE_URL=file:/app/prisma_data/dev.db
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-bella-dolce-secret-change-in-production}
     volumes:
-      - ./prisma_data:/app/prisma
+      - ./prisma_data:/app/prisma_data
     restart: always
 
 # If you want to use PostgreSQL, uncomment these and change provider in schema.prisma to "postgresql"
