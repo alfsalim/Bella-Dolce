@@ -706,12 +706,13 @@ const ProductManagement: React.FC = () => {
                         <div className="mt-4 pt-4 border-t border-slate-50 dark:border-[#2a1e17] flex justify-end">
                           <button 
                             onClick={() => {
-                              setSelectedProductForDetails(product);
-                              setIsDetailsModalOpen(true);
+                              setEditingProduct(product);
+                              setFormData(product!);
+                              setIsModalOpen(true);
                             }}
                             className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-bold text-xs flex items-center gap-1 group/btn"
                           >
-                            {t('details')}
+                            {t('edit')}
                             <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
                           </button>
                         </div>

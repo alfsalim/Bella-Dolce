@@ -303,7 +303,12 @@ export const seedDatabase = async () => {
     }
 
     console.log('Seeding complete!');
-  } catch (error) {
+  } catch (error: any) {
+    const errorMsg = error.message || '';
+    if (errorMsg.includes('Unauthorized') || errorMsg.includes('Invalid or expired token')) {
+      // Ignore unauthorized errors during initial seed (user not logged in yet)
+      return;
+    }
     console.error('Error seeding database:', error);
   }
 };

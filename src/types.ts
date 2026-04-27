@@ -64,6 +64,7 @@ export interface RawMaterial {
   status?: 'none' | 'ordered' | 'requested' | 'cancelled';
   imageUrl?: string;
   brand?: string;
+  expiryDate?: string;
   createdAt?: string;
   disabled?: boolean;
 }

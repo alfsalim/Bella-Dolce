@@ -8,8 +8,28 @@ export enum OperationType {
   WRITE = 'write',
 }
 
+export function isAuthError(error: any): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return msg.includes('unauthorized') || 
+         msg.includes('token') || 
+         msg.includes('expired') || 
+         msg.includes('unauthenticated') ||
+         msg.includes('credentials') ||
+         msg.includes('jwt');
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  console.error(`Postgres Migration Error [${operationType}] at ${path}:`, error);
+  if (isAuthError(error)) {
+    // Proactively clear stale session markers
+    localStorage.removeItem('bakery_token');
+    localStorage.removeItem('bakery_user');
+    // Dispatch event to allow AuthContext to trigger global logout/redirect
+    window.dispatchEvent(new CustomEvent('bakery_auth_error', { detail: { error, operationType, path } }));
+    // Silent warn, avoid console.error noise
+    console.warn(`Auth session error during [${operationType}] at ${path}. Token cleared.`);
+  } else {
+    console.error(`Postgres Migration Error [${operationType}] at ${path}:`, error);
+  }
   throw error;
 }
 
@@ -109,7 +129,10 @@ export async function getDocs(queryRef: any) {
   if (queryRef.params?.limit) url.searchParams.set('take', queryRef.params.limit.toString());
 
   const res = await fetch(url.toString(), { headers: getAuthHeaders() });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const error = await res.text();
+    handleFirestoreError(new Error(error), OperationType.LIST, queryRef.path);
+  }
   const data = await res.json();
   return {
     docs: data.map((item: any) => ({
@@ -125,7 +148,10 @@ export async function getDocs(queryRef: any) {
 
 export async function getDoc(docRef: any) {
   const res = await fetch(`/api/db/${docRef.path}`, { headers: getAuthHeaders() });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const error = await res.text();
+    handleFirestoreError(new Error(error), OperationType.GET, docRef.path);
+  }
   const item = await res.json();
   return {
     id: item?.id || docRef.id,
@@ -140,7 +166,10 @@ export async function addDoc(collectionRef: any, data: any) {
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const error = await res.text();
+    handleFirestoreError(new Error(error), OperationType.CREATE, collectionRef.path);
+  }
   const item = await res.json();
   return { id: item.id } as any;
 }
@@ -151,7 +180,10 @@ export async function updateDoc(docRef: any, data: any) {
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const error = await res.text();
+    handleFirestoreError(new Error(error), OperationType.UPDATE, docRef.path);
+  }
   return await res.json();
 }
 
@@ -164,22 +196,40 @@ export async function deleteDoc(docRef: any) {
     method: 'DELETE',
     headers: getAuthHeaders()
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const error = await res.text();
+    handleFirestoreError(new Error(error), OperationType.DELETE, docRef.path);
+  }
 }
 
 export function onSnapshot(queryRef: any, callback: (snapshot: any) => void, errorCallback?: (error: any) => void) {
+  let intervalId: any = null;
+
   const fetchData = async () => {
+    if (!localStorage.getItem('bakery_token')) {
+      if (intervalId) clearInterval(intervalId);
+      return;
+    }
     try {
       const snap = await getDocs(queryRef);
       callback(snap);
-    } catch (e) {
+    } catch (e: any) {
+      if (isAuthError(e)) {
+        if (intervalId) clearInterval(intervalId);
+        // Silently fail snapshot on auth error to allow AuthContext to handle redirect
+        return;
+      }
+
       if (errorCallback) errorCallback(e);
       else console.error('Snapshot error:', e);
     }
   };
+
   fetchData();
-  const id = setInterval(fetchData, 5000);
-  return () => clearInterval(id);
+  intervalId = setInterval(fetchData, 5000);
+  return () => {
+    if (intervalId) clearInterval(intervalId);
+  };
 }
 
 export const Timestamp = {

@@ -4,6 +4,12 @@ export const db = {
   // Mock db object that will be used by our compatibility layer
 };
 
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('bakery_token');
+  const base: HeadersInit = { 'Content-Type': 'application/json' };
+  return token ? { ...base, 'Authorization': `Bearer ${token}` } : base;
+}
+
 export async function getDocsFromApi(collectionPath: string, queryParams?: any) {
   const url = new URL(`/api/db/${collectionPath}`, window.location.origin);
   if (queryParams) {
@@ -11,7 +17,7 @@ export async function getDocsFromApi(collectionPath: string, queryParams?: any) 
     if (queryParams.orderBy) url.searchParams.set('orderBy', JSON.stringify(queryParams.orderBy));
     if (queryParams.limit) url.searchParams.set('take', queryParams.limit.toString());
   }
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return {
@@ -26,7 +32,7 @@ export async function getDocsFromApi(collectionPath: string, queryParams?: any) 
 }
 
 export async function getDocFromApi(collectionPath: string, id: string) {
-  const res = await fetch(`/api/db/${collectionPath}/${id}`);
+  const res = await fetch(`/api/db/${collectionPath}/${id}`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(await res.text());
   const item = await res.json();
   return {
@@ -39,7 +45,7 @@ export async function getDocFromApi(collectionPath: string, id: string) {
 export async function addDocToApi(collectionPath: string, data: any) {
   const res = await fetch(`/api/db/${collectionPath}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   if (!res.ok) throw new Error(await res.text());
@@ -51,7 +57,7 @@ export async function setDocToApi(collectionPath: string, id: string, data: any,
   // For simplicity, we'll use PUT which handles both create and update in our API
   const res = await fetch(`/api/db/${collectionPath}/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   if (!res.ok) throw new Error(await res.text());
@@ -61,7 +67,7 @@ export async function setDocToApi(collectionPath: string, id: string, data: any,
 export async function updateDocInApi(collectionPath: string, id: string, data: any) {
   const res = await fetch(`/api/db/${collectionPath}/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   if (!res.ok) throw new Error(await res.text());
@@ -70,7 +76,8 @@ export async function updateDocInApi(collectionPath: string, id: string, data: a
 
 export async function deleteDocFromApi(collectionPath: string, id: string) {
   const res = await fetch(`/api/db/${collectionPath}/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: getAuthHeaders()
   });
   if (!res.ok) throw new Error(await res.text());
   return await res.json();

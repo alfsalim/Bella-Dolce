@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { db, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc } from '../lib/firebase';
+import { db, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, isAuthError } from '../lib/firebase';
 import { UserProfile, Role } from '../types';
 
 interface AuthContextType {
@@ -21,34 +21,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const handleAuthError = () => {
+      console.warn('Authentication error detected, logging out...');
+      logout();
+    };
+
+    window.addEventListener('bakery_auth_error', handleAuthError);
+
     const initAuth = async () => {
       try {
         const storedUser = localStorage.getItem('bakery_user');
-        if (storedUser) {
+        const storedToken = localStorage.getItem('bakery_token');
+        
+        if (storedUser && storedToken) {
           const userData = JSON.parse(storedUser);
-          setUser(userData);
-          setProfile(userData as UserProfile);
           
-          // Fetch permissions
-          if (userData.role === 'admin') {
-            setPermissions(['*']);
-          } else {
-            const permSnap = await getDoc(doc(db, 'rolePermissions', userData.role));
-            if (permSnap.exists()) {
-              setPermissions(permSnap.data().allowedPaths);
+          // Fetch permissions - this also verifies the token
+          try {
+            if (userData.role === 'admin') {
+              setPermissions(['*']);
             } else {
-              setPermissions([]);
+              const permSnap = await getDoc(doc(db, 'rolePermissions', userData.role));
+              if (permSnap.exists()) {
+                setPermissions(permSnap.data().allowedPaths);
+              } else {
+                setPermissions([]);
+              }
             }
+             setUser(userData);
+            setProfile(userData as UserProfile);
+          } catch (error: any) {
+            if (isAuthError(error)) {
+              console.warn('Stale session detected, logging out...');
+              logout();
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          // If either is missing, ensure clean slate
+          if (storedUser || storedToken) {
+            logout();
           }
         }
       } catch (error) {
         console.error('Error initializing local auth:', error);
+        logout();
       } finally {
         setLoading(false);
       }
     };
 
     initAuth();
+    return () => window.removeEventListener('bakery_auth_error', handleAuthError);
   }, []);
 
   const login = async (username: string, password: string) => {
