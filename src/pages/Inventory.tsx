@@ -577,6 +577,7 @@ const Inventory: React.FC = () => {
             currentStock: Number(formData.stock),
             minStock: Number(formData.minStock),
             imageUrl: formData.imageUrl || '',
+            expiryDate: formData.expiryDate || '',
             updatedAt: new Date().toISOString()
           }, { merge: true });
         } else if (activeTab === 'materials') {

@@ -61,6 +61,7 @@ model RawMaterial {
   status       String   @default("none")
   imageUrl     String?
   brand        String?
+  expiryDate   String?
   disabled     Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
