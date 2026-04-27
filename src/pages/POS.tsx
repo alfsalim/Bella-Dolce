@@ -51,6 +51,8 @@ const POS: React.FC = () => {
   }, []);
 
   const filteredProducts = products.filter(p => {
+    const isFrozen = p.status === 'frozen';
+    if (isFrozen) return false;
     const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCategory && matchesSearch;

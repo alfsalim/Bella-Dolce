@@ -51,6 +51,13 @@ const Production: React.FC = () => {
   });
   const [error, setError] = useState<string | null>(null);
   const [rawMaterials, setRawMaterials] = useState<any[]>([]);
+  // Helper to convert Date to Local ISO string for datetime-local input (YYYY-MM-DDTHH:mm)
+  const toLocalISO = (date: Date) => {
+    const tzOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
+    const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+    return localISOTime;
+  };
+
   const [newBatch, setNewBatch] = useState<{
     productId: string;
     recipeId: string;
@@ -58,14 +65,13 @@ const Production: React.FC = () => {
     ingredients: { materialId: string; quantity: number; type: 'quantity' | 'weight' | 'percentage' }[];
     status?: string;
     startDate?: string;
-    endDate?: string;
     location?: 'shop' | 'freezer';
   }>({
     productId: '',
     recipeId: '',
     plannedQty: 0,
     ingredients: [],
-    startDate: new Date().toISOString().slice(0, 16),
+    startDate: toLocalISO(new Date()),
     location: 'shop'
   });
 
@@ -77,22 +83,17 @@ const Production: React.FC = () => {
         plannedQty: selectedBatch.plannedQty,
         ingredients: selectedBatch.ingredients || [],
         status: selectedBatch.status,
-        startDate: selectedBatch.startDate ? new Date(selectedBatch.startDate).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
-        endDate: selectedBatch.endDate ? new Date(selectedBatch.endDate).toISOString().slice(0, 16) : undefined,
+        startDate: selectedBatch.startDate ? toLocalISO(new Date(selectedBatch.startDate)) : toLocalISO(new Date()),
         location: selectedBatch.location || 'shop'
       });
     } else if (isModalOpen && !isEditingBatch) {
-      // Only reset when modal opens for a new batch
-      setNewBatch(prev => {
-        if (prev.productId === '') return prev;
-        return {
-          productId: '',
-          recipeId: '',
-          plannedQty: 0,
-          ingredients: [],
-          startDate: new Date().toISOString().slice(0, 16),
-          location: 'shop'
-        };
+      setNewBatch({
+        productId: '',
+        recipeId: '',
+        plannedQty: 0,
+        ingredients: [],
+        startDate: toLocalISO(new Date()),
+        location: 'shop'
       });
     }
   }, [isEditingBatch, selectedBatch, isModalOpen]);
@@ -157,8 +158,9 @@ const Production: React.FC = () => {
     const oldQty = newBatch.plannedQty;
     
     setNewBatch(prev => {
-      // If old qty was 0 or invalid, we can't scale. We just update the qty.
-      if (!oldQty || oldQty <= 0) {
+      // If old qty was 0 or invalid, or new qty is 0, we can't scale. We just update the qty.
+      // This prevents ingredients from being zeroed out when the user is typing/clearing the field.
+      if (!oldQty || oldQty <= 0 || safeQty <= 0) {
         return { ...prev, plannedQty: safeQty };
       }
 
@@ -313,6 +315,86 @@ const Production: React.FC = () => {
     };
   }, [currentPage, pageSize, statusFilter, userFilter]);
 
+  const handleDeleteBatch = async (batch: ProductionBatch) => {
+    if (!window.confirm(t('confirmDeleteBatch') || 'Are you sure you want to delete this batch?')) return;
+
+    try {
+      // 1. Revert ingredients if batch was active (deducted stock)
+      if (batch.status !== 'planned' && batch.status !== 'cancelled') {
+        for (const ing of batch.ingredients || []) {
+          const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
+          const rawMaterialSnap = await getDoc(rawMaterialRef);
+          if (rawMaterialSnap.exists()) {
+            const currentStock = rawMaterialSnap.data().currentStock || 0;
+            const newStock = currentStock + ing.quantity;
+            await updateDoc(rawMaterialRef, { currentStock: newStock });
+            
+            await addDoc(collection(db, 'stockMovements'), {
+              itemId: ing.materialId,
+              itemName: rawMaterialSnap.data().name,
+              itemType: 'material',
+              type: 'in',
+              quantity: ing.quantity,
+              previousStock: currentStock,
+              newStock: newStock,
+              reason: 'cancellation',
+              referenceId: batch.id,
+              userId: profile?.id || 'system',
+              userName: profile?.name || 'System',
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      }
+
+      // 2. Revert produced products if batch was completed
+      if (batch.status === 'completed') {
+        const product = products.find(p => p.id === batch.productId);
+        if (product) {
+          const productRef = doc(db, 'products', product.id);
+          const qty = batch.actualQty || batch.plannedQty;
+          const location = (batch as any).location || 'shop';
+          
+          const currentStock = product.stock || 0;
+          const newStock = Math.max(0, currentStock - qty);
+          
+          const updateFields: any = { stock: newStock };
+          if (location === 'shop') {
+            updateFields.shopStock = Math.max(0, (product.shopStock || 0) - qty);
+          } else {
+            updateFields.freezerStock = Math.max(0, (product.freezerStock || 0) - qty);
+          }
+          
+          await updateDoc(productRef, updateFields);
+          
+          await addDoc(collection(db, 'stockMovements'), {
+            itemId: product.id,
+            itemName: product.name,
+            itemType: 'product',
+            type: 'out',
+            quantity: qty,
+            previousStock: currentStock,
+            newStock: newStock,
+            reason: 'cancellation',
+            referenceId: batch.id,
+            userId: profile?.id || 'system',
+            userName: profile?.name || 'System',
+            location: location,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      await deleteDoc(doc(db, 'batches', batch.id));
+      setIsModalOpen(false);
+      setIsEditingBatch(false);
+      setSelectedBatch(null);
+      toast.success(t('batchDeleted') || 'Batch deleted successfully');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'batches');
+    }
+  };
+
   const handleAddBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBatch.productId || !newBatch.plannedQty) return;
@@ -340,6 +422,7 @@ const Production: React.FC = () => {
                 
                 await addDoc(collection(db, 'stockMovements'), {
                   itemId: ingredient.materialId,
+                  itemName: rawMaterialSnap.data().name,
                   itemType: 'material',
                   type: 'in',
                   quantity: ingredient.quantity,
@@ -366,6 +449,7 @@ const Production: React.FC = () => {
               
               await addDoc(collection(db, 'stockMovements'), {
                 itemId: ingredient.materialId,
+                itemName: rawMaterialSnap.data().name,
                 itemType: 'material',
                 type: 'out',
                 quantity: ingredient.quantity,
@@ -408,6 +492,7 @@ const Production: React.FC = () => {
                 // Record movement for the adjustment
                 await addDoc(collection(db, 'stockMovements'), {
                   itemId: materialId,
+                  itemName: rawMaterialSnap.data().name,
                   itemType: 'material',
                   type: diff > 0 ? 'out' : 'in',
                   quantity: Math.abs(diff),
@@ -424,6 +509,81 @@ const Production: React.FC = () => {
           }
         }
 
+        // --- NEW: Sync finished product stock if status changed to/from completed ---
+        const wasCompleted = selectedBatch.status === 'completed';
+        const isNowCompleted = newBatch.status === 'completed';
+        
+        if (wasCompleted !== isNowCompleted) {
+          const product = products.find(p => p.id === newBatch.productId);
+          if (product) {
+            const productRef = doc(db, 'products', product.id);
+            const location = newBatch.location || 'shop';
+            const qty = Number(newBatch.plannedQty);
+            
+            if (!wasCompleted && isNowCompleted) {
+              // Now completed -> Add stock
+              const currentStock = product.stock || 0;
+              const newTotalStock = currentStock + qty;
+              const updateFields: any = { 
+                stock: newTotalStock,
+                status: location === 'freezer' ? 'frozen' : 'none'
+              };
+              if (location === 'shop') {
+                updateFields.shopStock = (product.shopStock || 0) + qty;
+              } else {
+                updateFields.freezerStock = (product.freezerStock || 0) + qty;
+              }
+              await updateDoc(productRef, updateFields);
+              
+              await addDoc(collection(db, 'stockMovements'), {
+                itemId: product.id,
+                itemName: product.name,
+                itemType: 'product',
+                type: 'in',
+                quantity: qty,
+                previousStock: currentStock,
+                newStock: newTotalStock,
+                location: location,
+                reason: 'production',
+                referenceId: batchId,
+                userId: profile?.id || 'system',
+                userName: profile?.name || 'System',
+                timestamp: new Date().toISOString()
+              });
+            } else if (wasCompleted && !isNowCompleted) {
+              // Status moved away from completed -> Revert stock
+              const currentStock = product.stock || 0;
+              const newTotalStock = Math.max(0, currentStock - qty);
+              const updateFields: any = { stock: newTotalStock };
+              
+              const oldLocation = (selectedBatch as any).location || 'shop';
+              if (oldLocation === 'shop') {
+                updateFields.shopStock = Math.max(0, (product.shopStock || 0) - qty);
+              } else {
+                updateFields.freezerStock = Math.max(0, (product.freezerStock || 0) - qty);
+              }
+              await updateDoc(productRef, updateFields);
+              
+              await addDoc(collection(db, 'stockMovements'), {
+                itemId: product.id,
+                itemName: product.name,
+                itemType: 'product',
+                type: 'out',
+                quantity: qty,
+                previousStock: currentStock,
+                newStock: newTotalStock,
+                location: oldLocation,
+                reason: 'cancellation',
+                referenceId: batchId,
+                userId: profile?.id || 'system',
+                userName: profile?.name || 'System',
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+        }
+        // --- END NEW ---
+
         // Update the batch
         await updateDoc(doc(db, 'batches', selectedBatch.id), {
           productId: newBatch.productId,
@@ -432,7 +592,6 @@ const Production: React.FC = () => {
           ingredients: newBatch.ingredients,
           status: newBatch.status || selectedBatch.status,
           startDate: new Date(newBatch.startDate || Date.now()).toISOString(),
-          endDate: newBatch.endDate ? new Date(newBatch.endDate).toISOString() : null,
           location: newBatch.location || 'shop'
         });
 
@@ -464,6 +623,7 @@ const Production: React.FC = () => {
               // Record movement
               await addDoc(collection(db, 'stockMovements'), {
                 itemId: ing.materialId,
+                itemName: rawMaterialSnap.data().name,
                 itemType: 'material',
                 type: 'out',
                 quantity: ing.quantity,
@@ -486,7 +646,8 @@ const Production: React.FC = () => {
             const productRef = doc(db, 'products', product.id);
             const location = newBatch.location || 'shop';
             const updateFields: any = {
-              stock: (product.stock || 0) + Number(newBatch.plannedQty)
+              stock: (product.stock || 0) + Number(newBatch.plannedQty),
+              status: location === 'freezer' ? 'frozen' : 'none'
             };
             
             if (location === 'shop') {
@@ -500,6 +661,7 @@ const Production: React.FC = () => {
             // Record movement
             await addDoc(collection(db, 'stockMovements'), {
               itemId: product.id,
+              itemName: product.name,
               itemType: 'product',
               type: 'in',
               quantity: Number(newBatch.plannedQty),
@@ -539,54 +701,58 @@ const Production: React.FC = () => {
       const previousStatus = batch.status;
       const updateData: any = { status };
 
-      // Validation and Stock Deduction when starting production
-      if (status === 'started' && previousStatus === 'planned') {
-        const insufficient = [];
-        for (const ing of batch.ingredients || []) {
-          const material = rawMaterials.find(m => m.id === ing.materialId);
-          if (!material || material.currentStock < ing.quantity) {
-            insufficient.push({
-              name: material ? tProduct(material.name) : t('unknownMaterial'),
-              short: ing.quantity - (material?.currentStock || 0),
-              unit: material?.unit || ''
-            });
+      if (status === 'completed' || status === 'started' || status === 'in-progress' || status === 'termination') {
+        const needsMaterialDeduction = previousStatus === 'planned';
+        
+        if (needsMaterialDeduction) {
+          const insufficient = [];
+          for (const ing of batch.ingredients || []) {
+            const material = rawMaterials.find(m => m.id === ing.materialId);
+            if (!material || material.currentStock < ing.quantity) {
+              insufficient.push({
+                name: material ? tProduct(material.name) : t('unknownMaterial'),
+                short: ing.quantity - (material?.currentStock || 0),
+                unit: material?.unit || ''
+              });
+            }
           }
-        }
 
-        if (insufficient.length > 0) {
-          const message = insufficient.map(i => `${i.name}: -${i.short.toFixed(2)} ${t(i.unit)}`).join(', ');
-          toast.error(`${t('insufficientStock')}: ${message}`, { duration: 5000 });
-          return;
-        }
+          if (insufficient.length > 0) {
+            const message = insufficient.map(i => `${i.name}: -${i.short.toFixed(2)} ${t(i.unit)}`).join(', ');
+            toast.error(`${t('insufficientStock')}: ${message}`, { duration: 5000 });
+            return;
+          }
 
-        // Deduct stock now
-        for (const ing of batch.ingredients || []) {
-          const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
-          const rawMaterialSnap = await getDoc(rawMaterialRef);
-          if (rawMaterialSnap.exists()) {
-            const currentStock = rawMaterialSnap.data().currentStock || 0;
-            const newStock = Math.max(0, currentStock - ing.quantity);
-            await updateDoc(rawMaterialRef, { currentStock: newStock });
-            
-            // Record movement
-            await addDoc(collection(db, 'stockMovements'), {
-              itemId: ing.materialId,
-              itemType: 'material',
-              type: 'out',
-              quantity: ing.quantity,
-              previousStock: currentStock,
-              newStock: newStock,
-              reason: 'production',
-              referenceId: id,
-              userId: profile?.id || 'system',
-              userName: profile?.name || 'System',
-              timestamp: new Date().toISOString()
-            });
+          // Deduct stock now
+          for (const ing of batch.ingredients || []) {
+            const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
+            const rawMaterialSnap = await getDoc(rawMaterialRef);
+            if (rawMaterialSnap.exists()) {
+              const currentStock = rawMaterialSnap.data().currentStock || 0;
+              const newStock = Math.max(0, currentStock - ing.quantity);
+              await updateDoc(rawMaterialRef, { currentStock: newStock });
+              
+              // Record movement
+              await addDoc(collection(db, 'stockMovements'), {
+                itemId: ing.materialId,
+                itemName: rawMaterialSnap.data().name,
+                itemType: 'material',
+                type: 'out',
+                quantity: ing.quantity,
+                previousStock: currentStock,
+                newStock: newStock,
+                reason: 'production',
+                referenceId: id,
+                userId: profile?.id || 'system',
+                userName: profile?.name || 'System',
+                timestamp: new Date().toISOString()
+              });
+            }
           }
         }
       }
 
-      if (status === 'started' || status === 'in-progress') {
+      if (status === 'started' || status === 'in-progress' || status === 'termination') {
         if (!batch.startDate) {
           updateData.startDate = new Date().toISOString();
         }
@@ -595,13 +761,14 @@ const Production: React.FC = () => {
       if (status === 'completed') {
         updateData.endDate = new Date().toISOString();
         
-        // Update product stock
+        // Update product stock and status (Sell / Frozen)
         const product = products.find(p => p.id === batch.productId);
         if (product) {
           const productRef = doc(db, 'products', product.id);
           const location = (batch as any).location || 'shop';
           const updateFields: any = {
-            stock: (product.stock || 0) + batch.plannedQty
+            stock: (product.stock || 0) + batch.plannedQty,
+            status: location === 'freezer' ? 'frozen' : 'none'
           };
           
           if (location === 'shop') {
@@ -615,6 +782,7 @@ const Production: React.FC = () => {
           // Record movement
           await addDoc(collection(db, 'stockMovements'), {
             itemId: product.id,
+            itemName: product.name,
             itemType: 'product',
             type: 'in',
             quantity: batch.plannedQty,
@@ -644,6 +812,7 @@ const Production: React.FC = () => {
               // Record movement
               await addDoc(collection(db, 'stockMovements'), {
                 itemId: ingredient.materialId,
+                itemName: rawMaterialSnap.data().name,
                 itemType: 'material',
                 type: 'in',
                 quantity: ingredient.quantity,
@@ -815,18 +984,9 @@ const Production: React.FC = () => {
                           >
                             <Edit2 className="w-5 h-5" />
                           </button>
-                          {profile?.role === 'admin' && (
+                          {(profile?.role === 'admin' || profile?.role === 'manager') && (
                             <button 
-                              onClick={async () => {
-                                if (window.confirm(t('confirmDeleteBatch') || 'Are you sure you want to delete this batch?')) {
-                                  try {
-                                    await deleteDoc(doc(db, 'batches', batch.id));
-                                    toast.success(t('batchDeleted') || 'Batch deleted successfully');
-                                  } catch (error) {
-                                    handleFirestoreError(error, OperationType.DELETE, 'batches');
-                                  }
-                                }
-                              }} 
+                              onClick={() => handleDeleteBatch(batch)} 
                               className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
                               title={t('delete')}
                             >
@@ -965,22 +1125,13 @@ const Production: React.FC = () => {
                                 <Edit2 className="w-4 h-4" />
                                 <span>{t('edit')}</span>
                               </button>
-                              {profile?.role === 'admin' && (
+                              {(profile?.role === 'admin' || profile?.role === 'manager') && (
                                 <button 
-                                  onClick={async () => {
-                                    if (window.confirm(t('confirmDeleteBatch') || 'Are you sure you want to delete this batch?')) {
-                                      try {
-                                        await deleteDoc(doc(db, 'batches', batch.id));
-                                        toast.success(t('batchDeleted') || 'Batch deleted successfully');
-                                      } catch (error) {
-                                        handleFirestoreError(error, OperationType.DELETE, 'batches');
-                                      }
-                                    }
-                                  }} 
+                                  onClick={() => handleDeleteBatch(batch)} 
                                   className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
                                   title={t('delete')}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-5 h-5" />
                                 </button>
                               )}
                               {batch.status === 'planned' && (
@@ -1115,7 +1266,6 @@ const Production: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('startDate')}</label>
                   <input 
@@ -1126,17 +1276,6 @@ const Production: React.FC = () => {
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('endDate')}</label>
-                  <input 
-                    type="datetime-local" 
-                    className="input"
-                    value={newBatch.endDate || ''}
-                    onChange={(e) => setNewBatch({...newBatch, endDate: e.target.value})}
-                    required
-                  />
-                </div>
-              </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('location')}</label>
@@ -1286,22 +1425,10 @@ const Production: React.FC = () => {
               )}
 
               <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-100 dark:border-white/10">
-                {isEditingBatch && profile?.role === 'admin' && (
+                {isEditingBatch && (profile?.role === 'admin' || profile?.role === 'manager') && (
                   <button 
                     type="button" 
-                    onClick={async () => {
-                      if (window.confirm(t('confirmDeleteBatch') || 'Are you sure you want to delete this batch?')) {
-                        try {
-                          await deleteDoc(doc(db, 'batches', selectedBatch!.id));
-                          setIsModalOpen(false);
-                          setIsEditingBatch(false);
-                          setSelectedBatch(null);
-                          toast.success(t('batchDeleted') || 'Batch deleted successfully');
-                        } catch (error) {
-                          handleFirestoreError(error, OperationType.DELETE, 'batches');
-                        }
-                      }
-                    }} 
+                    onClick={() => handleDeleteBatch(selectedBatch!)} 
                     className="btn-secondary text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-100 dark:border-red-900/30"
                   >
                     <Trash2 className="w-4 h-4" />

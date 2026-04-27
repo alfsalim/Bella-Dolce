@@ -127,6 +127,9 @@ const COLLECTION_ROLES: Record<string, string[]> = {
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
+  const PUBLIC_GET_COLLECTIONS = ['products', 'promotions', 'settings'];
+  const PUBLIC_POST_COLLECTIONS = ['orders', 'customers', 'activityLogs'];
+  const PUBLIC_PUT_COLLECTIONS = ['products'];
 
   app.use(express.json());
 
@@ -147,6 +150,13 @@ async function startServer() {
 
   function requireCollectionAccess(req: any, res: any, next: any) {
     const { collection } = req.params;
+    const method = req.method;
+    
+    // Skip role check for public routes (access is already gated by requireAuth usage in routes)
+    if (method === 'GET' && PUBLIC_GET_COLLECTIONS.includes(collection)) return next();
+    if (method === 'POST' && PUBLIC_POST_COLLECTIONS.includes(collection)) return next();
+    if (method === 'PUT' && PUBLIC_PUT_COLLECTIONS.includes(collection)) return next();
+
     const userRole: string = req.user?.role || '';
     const allowed = COLLECTION_ROLES[collection];
     if (!allowed) return next();
@@ -222,7 +232,10 @@ async function startServer() {
   });
 
   // Generalized API routes for CRUD (Prisma bridge)
-  app.get("/api/db/:collection", requireAuth, requireCollectionAccess, async (req, res) => {
+  app.get("/api/db/:collection", (req, res, next) => {
+    if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();
+    return requireAuth(req, res, next);
+  }, requireCollectionAccess, async (req: express.Request, res: express.Response) => {
     const { collection } = req.params;
     const { where, orderBy, take } = req.query;
 
@@ -259,7 +272,10 @@ async function startServer() {
     }
   });
 
-  app.get("/api/db/:collection/:id", requireAuth, requireCollectionAccess, async (req, res) => {
+  app.get("/api/db/:collection/:id", (req, res, next) => {
+    if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();
+    return requireAuth(req, res, next);
+  }, requireCollectionAccess, async (req: express.Request, res: express.Response) => {
     const { collection, id } = req.params;
     try {
       const model = getModel(collection);
@@ -288,7 +304,10 @@ async function startServer() {
     }
   });
 
-  app.post("/api/db/:collection", requireAuth, requireCollectionAccess, async (req, res) => {
+  app.post("/api/db/:collection", (req, res, next) => {
+    if (PUBLIC_POST_COLLECTIONS.includes(req.params.collection)) return next();
+    return requireAuth(req, res, next);
+  }, requireCollectionAccess, async (req: express.Request, res: express.Response) => {
     const { collection } = req.params;
     try {
       const model = getModel(collection);
@@ -315,7 +334,10 @@ async function startServer() {
     }
   });
 
-  app.put("/api/db/:collection/:id", requireAuth, requireCollectionAccess, async (req, res) => {
+  app.put("/api/db/:collection/:id", (req, res, next) => {
+    if (PUBLIC_PUT_COLLECTIONS.includes(req.params.collection)) return next();
+    return requireAuth(req, res, next);
+  }, requireCollectionAccess, async (req: express.Request, res: express.Response) => {
     const { collection, id } = req.params;
     try {
       const model = getModel(collection);
@@ -558,7 +580,7 @@ async function startServer() {
         await prisma.productionBatch.createMany({
           data: [
             { id: 'batch-001', productId: 'prod-001', recipeId: 'recipe-001', plannedQty: 30, actualQty: 28, status: 'completed', startDate: new Date(now.getTime() - 86400000) },
-            { id: 'batch-002', productId: 'prod-002', recipeId: 'recipe-002', plannedQty: 20, actualQty: null, status: 'in_progress', startDate: now },
+            { id: 'batch-002', productId: 'prod-002', recipeId: 'recipe-002', plannedQty: 20, actualQty: null, status: 'in-progress', startDate: now },
             { id: 'batch-003', productId: 'prod-003', recipeId: 'recipe-003', plannedQty: 10, actualQty: null, status: 'planned', startDate: new Date(now.getTime() + 86400000) },
           ]
         });

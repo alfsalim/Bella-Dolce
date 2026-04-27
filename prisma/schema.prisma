@@ -290,6 +290,7 @@ model FinancialEmployee {
 model StockMovement {
   id            String   @id @default(uuid())
   itemId        String
+  itemName      String?
   itemType      String
   type          String
   quantity      Float

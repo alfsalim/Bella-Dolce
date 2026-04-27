@@ -468,7 +468,8 @@ const Inventory: React.FC = () => {
     freezerStock: 0,
     minStock: 0,
     shelfLife: 24,
-    imageUrl: ''
+    imageUrl: '',
+    expiryDate: ''
   });
 
   const handleSave = async (e: React.FormEvent) => {
@@ -476,8 +477,8 @@ const Inventory: React.FC = () => {
 
     // Check for unique name
     const normalizedNewName = formData.name.trim().toLowerCase().replace(/\s+/g, ' ');
-    const productExists = products.some(p => p.name.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedNewName);
-    const materialExists = materials.some(m => m.name.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedNewName);
+    const productExists = products.some(p => p.name.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedNewName && p.id !== selectedProduct?.id);
+    const materialExists = materials.some(m => m.name.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedNewName && m.id !== selectedProduct?.id);
 
     if (productExists || materialExists) {
       toast.error(t('nameExists') || 'Name already exists in products or materials');
@@ -506,7 +507,8 @@ const Inventory: React.FC = () => {
           unit: formData.unit,
           currentStock: Number(formData.stock),
           minStock: Number(formData.minStock),
-          imageUrl: formData.imageUrl
+          imageUrl: formData.imageUrl,
+          expiryDate: formData.expiryDate || ''
         };
 
         await updateDoc(itemRef, updateData);
@@ -669,6 +671,7 @@ const Inventory: React.FC = () => {
             currentStock: Number(formData.stock),
             minStock: Number(formData.minStock),
             imageUrl: formData.imageUrl || '',
+            expiryDate: formData.expiryDate || '',
             createdAt: new Date().toISOString()
           });
           if (currentUserProfile) {
@@ -711,7 +714,8 @@ const Inventory: React.FC = () => {
         freezerStock: 0,
         minStock: 0,
         shelfLife: 24,
-        imageUrl: ''
+        imageUrl: '',
+        expiryDate: ''
       });
     } catch (error) {
       console.error('Error saving inventory item:', error);
@@ -760,7 +764,8 @@ const Inventory: React.FC = () => {
             freezerStock: 0,
             minStock: 0,
             shelfLife: 24,
-            imageUrl: ''
+            imageUrl: '',
+            expiryDate: ''
           });
           setIsModalOpen(true);
         }} className="btn-primary gap-2 w-full sm:w-auto">
@@ -897,7 +902,27 @@ const Inventory: React.FC = () => {
           <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product) => (
-              <div key={product.id} className="card group hover:shadow-xl transition-all duration-300 overflow-hidden p-0 border-slate-100 dark:border-white/10">
+                <div key={product.id} 
+                  onClick={() => {
+                    setSelectedProduct(product);
+                    setFormData({
+                      name: product.name,
+                      brand: '',
+                      category: product.category,
+                      price: product.sellingPrice,
+                      unit: 'units',
+                      stock: product.stock,
+                      shopStock: product.shopStock || 0,
+                      freezerStock: product.freezerStock || 0,
+                      minStock: product.minStock,
+                      shelfLife: product.shelfLife || 24,
+                      imageUrl: product.imageUrl || '',
+                      expiryDate: ''
+                    });
+                    setIsModalOpen(true);
+                  }}
+                  className="card group hover:shadow-xl transition-all duration-300 overflow-hidden p-0 border-slate-100 dark:border-white/10 cursor-pointer"
+                >
                 <div className="h-48 bg-slate-100 dark:bg-zinc-900 relative overflow-hidden">
                   <img 
                     src={product.imageUrl || `https://picsum.photos/seed/${product.name}/400/300`} 
@@ -1039,7 +1064,8 @@ const Inventory: React.FC = () => {
                             freezerStock: product.freezerStock || 0,
                             minStock: product.minStock,
                             shelfLife: product.shelfLife || 24,
-                            imageUrl: product.imageUrl || ''
+                            imageUrl: product.imageUrl || '',
+                            expiryDate: ''
                           });
                           setIsModalOpen(true);
                         }}
@@ -1094,7 +1120,27 @@ const Inventory: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-white/10">
                   {filteredProducts.map((product) => (
-                    <tr key={product.id} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all">
+                    <tr key={product.id} 
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setFormData({
+                          name: product.name,
+                          brand: '',
+                          category: product.category,
+                          price: product.sellingPrice,
+                          unit: 'units',
+                          stock: product.stock,
+                          shopStock: product.shopStock || 0,
+                          freezerStock: product.freezerStock || 0,
+                          minStock: product.minStock,
+                          shelfLife: product.shelfLife || 24,
+                          imageUrl: product.imageUrl || '',
+                          expiryDate: ''
+                        });
+                        setIsModalOpen(true);
+                      }}
+                      className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer"
+                    >
                       <td className="px-8 py-5">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-zinc-900 overflow-hidden shrink-0 border border-slate-200 dark:border-white/10">
@@ -1159,7 +1205,8 @@ const Inventory: React.FC = () => {
                                     freezerStock: product.freezerStock || 0,
                                     minStock: product.minStock,
                                     shelfLife: product.shelfLife || 24,
-                                    imageUrl: product.imageUrl || ''
+                                    imageUrl: product.imageUrl || '',
+                                    expiryDate: ''
                                   });
                                   setIsModalOpen(true);
                                 }}
@@ -1350,7 +1397,8 @@ const Inventory: React.FC = () => {
                                   freezerStock: 0,
                                   minStock: material.minStock,
                                   shelfLife: 24,
-                                  imageUrl: material.imageUrl || ''
+                                  imageUrl: material.imageUrl || '',
+                                  expiryDate: material.expiryDate || ''
                                 });
                                 setSelectedProduct(material as any);
                                 setIsModalOpen(true);
@@ -1485,6 +1533,30 @@ const Inventory: React.FC = () => {
                         </button>
                       ) : (
                         <>
+                          <button 
+                            onClick={() => {
+                              setFormData({
+                                name: material.name,
+                                brand: material.brand || '',
+                                category: material.category,
+                                price: 0,
+                                unit: material.unit,
+                                stock: material.currentStock,
+                                shopStock: 0,
+                                freezerStock: 0,
+                                minStock: material.minStock,
+                                shelfLife: 24,
+                                imageUrl: material.imageUrl || '',
+                                expiryDate: material.expiryDate || ''
+                              });
+                              setSelectedProduct(material as any);
+                              setIsModalOpen(true);
+                            }}
+                            title={t('edit')}
+                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:border-primary-200 dark:hover:border-primary-900/30 transition-all"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
                           <button 
                             onClick={() => updateMaterialStatus(material.id, 'ordered')}
                             title={t('ordered')}
@@ -1626,6 +1698,17 @@ const Inventory: React.FC = () => {
                       required
                       value={formData.stock || 0}
                       onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
+                    />
+                  </div>
+                )}
+                {activeTab === 'materials' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('expiryDate') || 'Expiry Date'}</label>
+                    <input 
+                      type="date" 
+                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
+                      value={formData.expiryDate || ''}
+                      onChange={(e) => setFormData({...formData, expiryDate: e.target.value})}
                     />
                   </div>
                 )}
