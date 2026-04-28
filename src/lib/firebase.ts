@@ -133,7 +133,15 @@ export async function getDocs(queryRef: any) {
     const error = await res.text();
     handleFirestoreError(new Error(error), OperationType.LIST, queryRef.path);
   }
-  const data = await res.json();
+  let data = await res.json();
+  
+  // Safety: if the server returned a single object (e.g. if path was a doc path), wrap it in an array
+  if (data && !Array.isArray(data)) {
+    data = [data];
+  } else if (!data) {
+    data = [];
+  }
+
   return {
     docs: data.map((item: any) => ({
       id: item.id,
@@ -211,8 +219,13 @@ export function onSnapshot(queryRef: any, callback: (snapshot: any) => void, err
       return;
     }
     try {
-      const snap = await getDocs(queryRef);
-      callback(snap);
+      if (queryRef.type === 'document') {
+        const snap = await getDoc(queryRef);
+        callback(snap);
+      } else {
+        const snap = await getDocs(queryRef);
+        callback(snap);
+      }
     } catch (e: any) {
       if (isAuthError(e)) {
         if (intervalId) clearInterval(intervalId);

@@ -51,77 +51,6 @@ const Users: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [isCleaning, setIsCleaning] = useState(false);
-
-  const cleanDatabase = async () => {
-    if (!window.confirm('Are you sure you want to clean the database? This will remove duplicates and ensure data consistency.')) return;
-    
-    setIsCleaning(true);
-    try {
-      const batch = writeBatch(db);
-      
-      // 1. Clean Products
-      const productsSnap = await getDocs(collection(db, 'products'));
-      const productNames = new Set();
-      for (const docSnap of productsSnap.docs) {
-        const data = docSnap.data();
-        const updates: any = {};
-        
-        // Standardize category to lowercase
-        if (data.category && data.category !== data.category.toLowerCase()) {
-          updates.category = data.category.toLowerCase();
-        }
-
-        if (productNames.has(data.name)) {
-          batch.delete(docSnap.ref);
-        } else {
-          productNames.add(data.name);
-          if (Object.keys(updates).length > 0) {
-            batch.update(docSnap.ref, updates);
-          }
-        }
-      }
-
-      // 2. Clean Raw Materials
-      const materialsSnap = await getDocs(collection(db, 'rawMaterials'));
-      const materialNames = new Set();
-      for (const docSnap of materialsSnap.docs) {
-        const data = docSnap.data();
-        const updates: any = {};
-
-        // Standardize category to lowercase
-        if (data.category && data.category !== data.category.toLowerCase()) {
-          updates.category = data.category.toLowerCase();
-        }
-
-        if (materialNames.has(data.name)) {
-          batch.delete(docSnap.ref);
-        } else {
-          materialNames.add(data.name);
-          if (Object.keys(updates).length > 0) {
-            batch.update(docSnap.ref, updates);
-          }
-        }
-      }
-
-      await batch.commit();
-      alert('Database cleaned successfully!');
-      
-      if (currentUserProfile) {
-        await logActivity(
-          currentUserProfile.id,
-          currentUserProfile.name,
-          'database_cleanup',
-          'Performed a database cleanup'
-        );
-      }
-    } catch (error) {
-      console.error('Error cleaning database:', error);
-      alert('Error cleaning database. Check console for details.');
-    } finally {
-      setIsCleaning(false);
-    }
-  };
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -508,30 +437,6 @@ const Users: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {currentUserProfile?.role === 'admin' && (
-            <div className="card border-slate-100">
-              <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-                <Database className="w-5 h-5 text-primary-600" />
-                {t('maintenance')}
-              </h2>
-              <p className="text-sm text-slate-500 mb-6">
-                {t('maintenanceDesc') || 'Clean database and ensure data consistency.'}
-              </p>
-              <button 
-                onClick={cleanDatabase}
-                disabled={isCleaning}
-                className="w-full py-3 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all"
-              >
-                {isCleaning ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                {t('cleanDatabase') || 'Clean Database'}
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

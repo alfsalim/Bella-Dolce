@@ -24,6 +24,7 @@ import Orders from './pages/Orders';
 import Finance from './pages/Finance';
 import AIManager from './pages/AIManager';
 import Suppliers from './pages/Suppliers';
+import InterviewQuestions from './pages/InterviewQuestions';
 import { seedDatabase } from './lib/seedData';
 
 import PublicLayout from './components/PublicLayout';
@@ -76,6 +77,7 @@ const App: React.FC = () => {
               <Route path="/settings" element={<Settings />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/orders" element={<Orders />} />
+              <Route path="/interview-questions" element={<InterviewQuestions />} />
               <Route path="/ai-manager" element={<AIManager />} />
               <Route path="/products/:id" element={<ProductEdit />} />
             </Route>

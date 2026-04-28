@@ -984,7 +984,7 @@ const Production: React.FC = () => {
                           >
                             <Edit2 className="w-5 h-5" />
                           </button>
-                          {(profile?.role === 'admin' || profile?.role === 'manager') && (
+                          {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'baker') && (
                             <button 
                               onClick={() => handleDeleteBatch(batch)} 
                               className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
@@ -1125,7 +1125,7 @@ const Production: React.FC = () => {
                                 <Edit2 className="w-4 h-4" />
                                 <span>{t('edit')}</span>
                               </button>
-                              {(profile?.role === 'admin' || profile?.role === 'manager') && (
+                              {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'baker') && (
                                 <button 
                                   onClick={() => handleDeleteBatch(batch)} 
                                   className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
@@ -1425,7 +1425,7 @@ const Production: React.FC = () => {
               )}
 
               <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-100 dark:border-white/10">
-                {isEditingBatch && (profile?.role === 'admin' || profile?.role === 'manager') && (
+                {isEditingBatch && (profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'baker') && (
                   <button 
                     type="button" 
                     onClick={() => handleDeleteBatch(selectedBatch!)} 

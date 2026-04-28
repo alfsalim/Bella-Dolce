@@ -14,7 +14,8 @@ import {
   ClipboardList,
   Wallet,
   Sparkles,
-  Truck
+  Truck,
+  Brain
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,6 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { icon: ShoppingCart, tKey: 'pos', path: '/pos' },
     { icon: ShoppingCart, tKey: 'businessStore', path: '/b2b' },
     { icon: ClipboardList, tKey: 'orders', path: '/orders' },
+    { icon: Brain, tKey: 'interviewQuestions', path: '/interview-questions' },
     { icon: Store, tKey: 'delivery', path: '/delivery' },
     { icon: Wallet, tKey: 'finance', path: '/finance' },
     { icon: Users, tKey: 'users', path: '/users' },
@@ -86,7 +88,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           <img 
             src="/logo.jpg" 
             alt="Bella Dolce" 
-            className="w-10 h-10 rounded-xl object-cover" 
+            className="w-12 h-12 rounded-xl object-contain bg-white" 
             referrerPolicy="no-referrer" 
           />
           <span className="font-display font-bold text-xl text-slate-900 dark:text-white tracking-tight">
