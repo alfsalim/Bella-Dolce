@@ -7,3 +7,4 @@ coverage/
 .env*
 !.env.example
 prisma_data/*.db
+prisma/dev.db
