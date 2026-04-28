@@ -8,3 +8,5 @@ coverage/
 !.env.example
 prisma_data/*.db
 prisma/dev.db
+bella-dolce2-snapshot.tar
+bella-dolce2-snapshot.tar
