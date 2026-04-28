@@ -105,6 +105,7 @@ export interface SaleItem {
 export interface Sale {
   id: string;
   cashierId: string;
+  cashierName?: string;
   customerId?: string;
   totalAmount: number;
   paymentMethod: 'cash' | 'card' | 'mobile';

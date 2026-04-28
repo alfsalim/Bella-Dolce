@@ -100,7 +100,6 @@ const POS: React.FC = () => {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          cashierId: profile?.id || 'unknown',
           customerId: selectedCustomer || null,
           totalAmount: total,
           paymentMethod,

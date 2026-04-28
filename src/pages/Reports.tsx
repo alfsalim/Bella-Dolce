@@ -16,7 +16,15 @@ import {
   Clock,
   AlertCircle,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Smartphone,
+  Banknote,
+  CreditCard,
+  ChevronLeft,
+  ChevronRight,
+  AlertTriangle,
+  User as UserIcon,
+  Search
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -43,14 +51,18 @@ import {
   subDays 
 } from 'date-fns';
 import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase';
-import { Sale, Product, Order, RawMaterial } from '../types';
+import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem } from '../types';
 import { clsx } from 'clsx';
 import { CURRENCY } from '../constants';
 
 const Reports: React.FC = () => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
   const { profile } = useAuth();
+  const [activeTab, setActiveTab] = useState<'analytics' | 'sales'>('analytics');
+  
   const [sales, setSales] = useState<Sale[]>([]);
+  const [cashiers, setCashiers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
@@ -74,10 +86,45 @@ const Reports: React.FC = () => {
   }, [timeFilter]);
 
   useEffect(() => {
-    const unsubscribeSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
-    });
+    const fetchCashiers = async () => {
+      try {
+        const token = localStorage.getItem('bakery_token');
+        const res = await fetch('/api/cashiers', {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+        if (!res.ok) throw new Error('Failed to fetch cashiers');
+        const data = await res.json();
+        setCashiers(data);
+      } catch (err) {
+        console.error('Error fetching cashiers:', err);
+      }
+    };
+    fetchCashiers();
+  }, []);
 
+  useEffect(() => {
+    const fetchSales = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('bakery_token');
+        const res = await fetch('/api/sales', {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+        if (!res.ok) throw new Error('Failed to fetch sales');
+        const data = await res.json();
+        setSales(data);
+      } catch (err) {
+        console.error('Error fetching sales:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSales();
+    
     const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     });
@@ -91,7 +138,6 @@ const Reports: React.FC = () => {
     });
 
     return () => {
-      unsubscribeSales();
       unsubscribeProducts();
       unsubscribeOrders();
       unsubscribeMaterials();
@@ -129,9 +175,29 @@ const Reports: React.FC = () => {
     });
   });
 
-  const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const [selectedCashier, setSelectedCashier] = useState('all');
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const totalSalesCount = filteredSales.length;
-  const avgOrderValue = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
+  const totalAmount = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalPages = Math.ceil(totalSalesCount / itemsPerPage);
+  const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const getPaymentIcon = (method: string) => {
+    switch (method) {
+      case 'cash': return <Banknote className="w-4 h-4" />;
+      case 'card': return <CreditCard className="w-4 h-4" />;
+      case 'mobile': return <Smartphone className="w-4 h-4" />;
+      default: return null;
+    }
+  };
+
+  const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalSalesCountAll = filteredSales.length; // renamed to disambiguate
+  const avgOrderValue = totalSalesCountAll > 0 ? totalRevenue / totalSalesCountAll : 0;
 
   // Order Stats
   const now = new Date();
@@ -174,7 +240,8 @@ const Reports: React.FC = () => {
   // Top Sellers based on actual sales
   const topSellers = products.map(p => {
     const unitsSold = filteredSales.reduce((sum, s) => {
-      const item = s.items.find(i => i.productId === p.id);
+      const saleItems: SaleItem[] = Array.isArray(s.items) ? s.items : JSON.parse((s.items as any) || '[]');
+      const item = saleItems.find(i => i.productId === p.id);
       return sum + (item ? item.quantity : 0);
     }, 0);
     return { ...p, unitsSold };
@@ -243,78 +310,104 @@ const Reports: React.FC = () => {
           <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('reports')}</h1>
           <p className="text-slate-500 dark:text-zinc-500 font-medium">{t('reportsDesc')}</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <select 
-            className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm font-bold rounded-xl px-4 py-2 focus:ring-amber-500"
-            value={timeFilter}
-            onChange={(e) => setTimeFilter(e.target.value as any)}
+        <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
+          <button 
+            onClick={() => setActiveTab('analytics')}
+            className={clsx(
+              "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+              activeTab === 'analytics' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
           >
-            <option value="day">{t('day')}</option>
-            <option value="week">{t('week')}</option>
-            <option value="month">{t('month')}</option>
-            <option value="year">{t('year')}</option>
-          </select>
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 px-3 py-1 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm">
-            <Calendar className="w-4 h-4 text-amber-500" />
-            <input 
-              type="date" 
-              className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white" 
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-            <span className="text-slate-400 dark:text-zinc-500">-</span>
-            <input 
-              type="date" 
-              className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white" 
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-          <button className="px-6 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2">
-            <Download className="w-4 h-4" />
-            {t('exportPDF')}
+            {t('analytics') || 'Analytics'}
+          </button>
+          <button 
+            onClick={() => setActiveTab('sales')}
+            className={clsx(
+              "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+              activeTab === 'sales' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            {t('salesReport') || 'Sales Log'}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-        <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
-              <DollarSign className="w-5 h-5" />
+      {activeTab === 'analytics' ? (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 dark:bg-white/[0.02] p-4 rounded-3xl border border-slate-100 dark:border-white/5">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select 
+                className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm font-bold rounded-xl px-4 py-2 focus:ring-amber-500"
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value as any)}
+              >
+                <option value="day">{t('day')}</option>
+                <option value="week">{t('week')}</option>
+                <option value="month">{t('month')}</option>
+                <option value="year">{t('year')}</option>
+              </select>
+              <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 px-3 py-1 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm">
+                <Calendar className="w-4 h-4 text-amber-500" />
+                <input 
+                  type="date" 
+                  className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white" 
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+                <span className="text-slate-400 dark:text-zinc-500">-</span>
+                <input 
+                  type="date" 
+                  className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white" 
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <button className="px-6 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2">
+              <Download className="w-4 h-4" />
+              {t('exportPDF')}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('totalRevenue')}</p>
+              <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{totalRevenue.toLocaleString()} {CURRENCY}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('profit')}</p>
+              <h3 className="text-2xl font-display font-bold text-emerald-600 dark:text-emerald-400">{totalProfit.toLocaleString()} {CURRENCY}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-500/20">
+                  <TrendingDown className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('costs')}</p>
+              <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{totalCosts.toLocaleString()} {CURRENCY}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('avgOrderValue')}</p>
+              <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{avgOrderValue.toLocaleString()} {CURRENCY}</h3>
             </div>
           </div>
-          <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('totalRevenue')}</p>
-          <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{totalRevenue.toLocaleString()} {CURRENCY}</h3>
-        </div>
-        <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-          <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('profit')}</p>
-          <h3 className="text-2xl font-display font-bold text-emerald-600 dark:text-emerald-400">{totalProfit.toLocaleString()} {CURRENCY}</h3>
-        </div>
-        <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-500/20">
-              <TrendingDown className="w-5 h-5" />
-            </div>
-          </div>
-          <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('costs')}</p>
-          <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{totalCosts.toLocaleString()} {CURRENCY}</h3>
-        </div>
-        <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
-              <BarChart3 className="w-5 h-5" />
-            </div>
-          </div>
-          <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('avgOrderValue')}</p>
-          <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{avgOrderValue.toLocaleString()} {CURRENCY}</h3>
-        </div>
-      </div>
+
 
       <section className="space-y-6">
         <div className="flex items-center gap-3">
@@ -570,8 +663,8 @@ const Reports: React.FC = () => {
             {inventoryConsumption.map((item, idx) => (
               <div key={idx} className="space-y-2">
                 <div className="flex justify-between text-sm font-bold">
-                  <span className="text-slate-700 dark:text-zinc-300">{tProduct(item.name)}</span>
-                  <span className="text-amber-600 dark:text-amber-500">{item.consumption.toFixed(1)} {t('units')}</span>
+                   <span className="text-slate-700 dark:text-zinc-300">{tProduct(item.name)}</span>
+                   <span className="text-amber-600 dark:text-amber-500">{item.consumption.toFixed(1)} {t('units')}</span>
                 </div>
                 <div className="w-full h-2 bg-slate-100 dark:bg-black rounded-full overflow-hidden border border-slate-200 dark:border-white/5">
                   <div 
@@ -604,6 +697,205 @@ const Reports: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
+      ) : (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('cashier') || 'Cashier'}</label>
+              <div className="relative">
+                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <select 
+                  className="input pl-10 h-10 py-0 text-sm"
+                  value={selectedCashier}
+                  onChange={(e) => {
+                    setSelectedCashier(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <option value="all">{t('allCashiers') || 'All Cashiers'}</option>
+                  {cashiers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('fromDate') || 'From Date'}</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input 
+                  type="date" 
+                  className="input pl-10 h-10 py-0 text-sm" 
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('toDate') || 'To Date'}</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input 
+                  type="date" 
+                  className="input pl-10 h-10 py-0 text-sm" 
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="card p-4 bg-primary-600 border-none flex flex-col justify-center">
+              <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">{t('totalPeriodSales') || 'Total Period Sales'}</p>
+              <h3 className="text-2xl font-display font-bold text-white">{totalAmount.toLocaleString()} {CURRENCY}</h3>
+            </div>
+          </div>
+
+          {totalSalesCount >= 500 && (
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4 rounded-2xl flex items-center gap-4">
+              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
+              <p className="text-sm text-amber-800 dark:text-amber-400 font-medium">
+                {t('maxDataReached') || 'Max data limit reached (500 records). Please narrow your date range to see more specific results.'}
+              </p>
+            </div>
+          )}
+
+          <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
+            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('transactions') || 'Transactions'}</h2>
+              <span className="px-3 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-full text-xs font-bold uppercase tracking-wider">
+                {totalSalesCount} {t('records') || 'Records'}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/5">
+                    <th className="px-8 py-4">{t('timestamp') || 'Timestamp'}</th>
+                    <th className="px-8 py-4">{t('cashier') || 'Cashier'}</th>
+                    <th className="px-8 py-4">{t('payment') || 'Payment'}</th>
+                    <th className="px-8 py-4">{t('products') || 'Products'}</th>
+                    <th className="px-8 py-4 text-right">{t('amount') || 'Amount'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
+                        {t('loading') || 'Loading transactions...'}
+                      </td>
+                    </tr>
+                  ) : paginatedSales.length > 0 ? (
+                    paginatedSales.map((sale) => {
+                      const items = Array.isArray(sale.items) ? sale.items : JSON.parse((sale.items as any) || '[]');
+                      return (
+                        <tr key={sale.id} className="group hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-all">
+                          <td className="px-8 py-5">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900 dark:text-white">{format(new Date(sale.createdAt), 'MMM dd, yyyy')}</span>
+                              <span className="text-xs text-slate-400 font-medium">{format(new Date(sale.createdAt), 'HH:mm:ss')}</span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold text-xs">
+                                {(sale.cashierName || 'U').charAt(0)}
+                              </div>
+                              <span className="font-bold text-slate-700 dark:text-slate-300">{sale.cashierName || 'Unknown'}</span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-5">
+                            <div className={clsx(
+                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                              sale.paymentMethod === 'cash' ? "bg-emerald-100 text-emerald-600" :
+                              sale.paymentMethod === 'card' ? "bg-blue-100 text-blue-600" :
+                              "bg-purple-100 text-purple-600"
+                            )}>
+                              {getPaymentIcon(sale.paymentMethod)}
+                              {sale.paymentMethod}
+                            </div>
+                          </td>
+                          <td className="px-8 py-5">
+                            <div className="flex flex-col gap-1">
+                              {items.map((item: any, idx: number) => (
+                                <span key={idx} className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                                  {item.quantity}x {tProduct(item.name || item.productId)}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-8 py-5 text-right font-display font-bold text-lg text-slate-900 dark:text-white">
+                            {sale.totalAmount.toLocaleString()} {CURRENCY}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
+                        {t('noSalesFound') || 'No sales found for the selected criteria.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="p-6 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/[0.01]">
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                {t('showing') || 'Showing'} <span className="text-slate-900 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-slate-900 dark:text-white">{Math.min(currentPage * itemsPerPage, totalSalesCount)}</span> {t('of') || 'of'} <span className="text-slate-900 dark:text-white">{totalSalesCount}</span> {t('results') || 'results'}
+              </p>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-white/10 hover:bg-white dark:hover:bg-white/5 disabled:opacity-30 transition-all"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <button 
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={clsx(
+                          "w-10 h-10 rounded-xl text-sm font-bold transition-all",
+                          currentPage === pageNum 
+                            ? "bg-primary-600 text-white shadow-lg shadow-primary-600/20" 
+                            : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-slate-400"
+                        )}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  {totalPages > 5 && <span className="px-2 text-slate-400 font-bold">...</span>}
+                </div>
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-white/10 hover:bg-white dark:hover:bg-white/5 disabled:opacity-30 transition-all"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -390,7 +390,9 @@ async function startServer() {
 
   // Atomic POS sale endpoint — creates sale + deducts stock in a single transaction
   app.post("/api/sale", requireAuth, async (req: any, res) => {
-    const { cashierId, customerId, totalAmount, paymentMethod, items } = req.body;
+    const { customerId, totalAmount, paymentMethod, items } = req.body;
+    const cashierId = req.user.id; // Use authenticated user ID instead of client-provided id
+    
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'No items in sale' });
     }
@@ -398,6 +400,10 @@ async function startServer() {
       const prisma = getPrisma();
 
       const result = await prisma.$transaction(async (tx) => {
+        // Get cashier name
+        const cashier = await tx.user.findUnique({ where: { id: cashierId } });
+        const cashierName = cashier?.name || 'Unknown Cashier';
+
         // Validate stock for all items first
         for (const item of items) {
           const product = await tx.product.findUnique({ where: { id: item.productId } });
@@ -419,6 +425,7 @@ async function startServer() {
         return await tx.sale.create({
           data: {
             cashierId,
+            cashierName,
             customerId: customerId || null,
             totalAmount,
             paymentMethod,
@@ -432,6 +439,32 @@ async function startServer() {
       const msg = (error as Error).message;
       const status = msg.startsWith('Insufficient stock') || msg.startsWith('Product not found') ? 409 : 500;
       res.status(status).json({ error: msg });
+    }
+  });
+
+  app.get("/api/sales", requireAuth, async (req: any, res) => {
+    try {
+      const prisma = getPrisma();
+      const sales = await prisma.sale.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 500
+      });
+      res.json(sales);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.get("/api/cashiers", requireAuth, async (req: any, res) => {
+    try {
+      const prisma = getPrisma();
+      const cashiers = await prisma.user.findMany({
+        where: { role: { in: ['admin', 'manager', 'cashier'] } },
+        select: { id: true, name: true, role: true }
+      });
+      res.json(cashiers);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
     }
   });
 

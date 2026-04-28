@@ -30,8 +30,8 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, isPublic }) => {
             </button>
           )}
           
-          <Link to="/" className="flex items-center group lg:hidden">
-            <div className="w-32 h-12 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-all">
+          <Link to="/" className="flex items-center group">
+            <div className="w-40 h-10 flex items-center justify-center overflow-hidden transition-all group-hover:scale-105">
               <img 
                 src="/logo.jpg" 
                 alt="Bella Dolce" 

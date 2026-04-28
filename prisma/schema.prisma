@@ -137,6 +137,7 @@ model ProductionBatch {
 model Sale {
   id            String   @id @default(uuid())
   cashierId     String
+  cashierName   String?
   customerId    String?
   totalAmount   Float
   paymentMethod String

@@ -45,8 +45,8 @@ const Login: React.FC = () => {
         {/* Brand Column */}
         <div className="hidden md:flex flex-col justify-between p-12 bg-primary-600 relative overflow-hidden">
           <div 
-            className="absolute inset-0 opacity-20 bg-cover bg-center" 
-            style={{ backgroundImage: "url('https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&q=80&w=1000')" }}
+            className="absolute inset-0 opacity-40 bg-cover bg-center" 
+            style={{ backgroundImage: "url('https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&q=80&w=1600')" }}
           ></div>
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-8">

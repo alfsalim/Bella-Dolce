@@ -16,7 +16,6 @@ import {
   List,
   Scale,
   Clock,
-  Image as ImageIcon,
   ShoppingCart,
   RefreshCcw,
   LayoutGrid,
@@ -75,24 +74,6 @@ const Inventory: React.FC = () => {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<Product>>({});
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Check file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(t('imageTooLarge') || 'Image is too large (max 5MB)');
-        return;
-      }
-      try {
-        // Compress image to ensure it stays under Firestore 1MB limit
-        const base64 = await compressImage(file, 800, 800, 0.6);
-        setFormData({ ...formData, imageUrl: base64 });
-      } catch (error) {
-        console.error("Error uploading image:", error);
-        toast.error(t('errorUploadingImage') || 'Error uploading image');
-      }
-    }
-  };
 
   const updateMaterialStatus = async (id: string, status: RawMaterial['status']) => {
     try {
@@ -1725,76 +1706,18 @@ const Inventory: React.FC = () => {
                   />
                 </div>
                 {activeTab === 'products' && (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('shelfLife')}</label>
-                      <input 
-                        type="number" 
-                        className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                        placeholder="24" 
-                        required
-                        value={formData.shelfLife || 24}
-                        onChange={(e) => setFormData({...formData, shelfLife: Number(e.target.value)})}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('imageUrl')}</label>
-                      <div className="flex gap-4 items-center">
-                        {formData.imageUrl && (
-                          <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden shrink-0 border border-slate-200 dark:border-white/10">
-                            <img src={formData.imageUrl} alt="" className="w-full h-full object-cover" />
-                          </div>
-                        )}
-                        <label className="flex-1 cursor-pointer">
-                          <div className="input flex items-center gap-2 text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10">
-                            <ImageIcon className="w-4 h-4" />
-                            <span>{formData.imageUrl ? t('changeImage') : t('uploadImage')}</span>
-                          </div>
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            className="hidden" 
-                            onChange={handleImageUpload}
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  </>
-                )}
-                {activeTab === 'materials' && (
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('imageUrl')}</label>
-                    <div className="flex gap-4 items-center">
-                      {formData.imageUrl && (
-                        <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden shrink-0 border border-slate-200 dark:border-white/10">
-                          <img src={formData.imageUrl} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      )}
-                      <label className="flex-1 cursor-pointer">
-                        <div className="input flex items-center gap-2 text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10">
-                          <ImageIcon className="w-4 h-4" />
-                          <span>{formData.imageUrl ? t('changeImage') : t('uploadImage')}</span>
-                        </div>
-                        <input 
-                          type="file" 
-                          accept="image/*"
-                          className="hidden" 
-                          onChange={handleImageUpload}
-                        />
-                      </label>
-                    </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('shelfLife')}</label>
+                    <input 
+                      type="number" 
+                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
+                      placeholder="24" 
+                      required
+                      value={formData.shelfLife || 24}
+                      onChange={(e) => setFormData({...formData, shelfLife: Number(e.target.value)})}
+                    />
                   </div>
                 )}
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('imageUrl') || 'Image URL'}</label>
-                  <input 
-                    type="text" 
-                    className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                    placeholder="https://example.com/image.jpg" 
-                    value={formData.imageUrl || ''}
-                    onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
-                  />
-                </div>
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 btn-secondary justify-center dark:bg-zinc-800 dark:border-white/10 dark:text-slate-300">{t('cancel')}</button>
