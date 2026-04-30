@@ -126,14 +126,10 @@ const COLLECTION_ROLES: Record<string, string[]> = {
 
 async function startServer() {
   const app = express();
-<<<<<<< HEAD
-  const PORT = parseInt(process.env.PORT || '3500', 10);
-=======
   const PORT = parseInt(process.env.PORT || '3000', 10);
   const PUBLIC_GET_COLLECTIONS = ['products', 'promotions', 'settings'];
   const PUBLIC_POST_COLLECTIONS = ['orders', 'customers', 'activityLogs'];
   const PUBLIC_PUT_COLLECTIONS = ['products'];
->>>>>>> 9b048fbe4e335e58c1de56182c159c199a735784
 
   app.use(express.json());
 
@@ -324,6 +320,12 @@ async function startServer() {
 
       const preparedBody = wrapDataIfNeeded(collection, req.body);
       const dataToSave = { ...preparedBody };
+
+      if (collection === 'rawMaterials') {
+        if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
+        else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
+      }
+
       for (const key in dataToSave) {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
@@ -354,6 +356,12 @@ async function startServer() {
 
       const preparedBody = wrapDataIfNeeded(collection, req.body);
       const dataToSave = { ...preparedBody };
+
+      if (collection === 'rawMaterials') {
+        if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
+        else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
+      }
+
       for (const key in dataToSave) {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
           dataToSave[key] = JSON.stringify(dataToSave[key]);

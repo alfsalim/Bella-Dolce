@@ -78,9 +78,9 @@ const Production: React.FC = () => {
   useEffect(() => {
     if (isEditingBatch && selectedBatch) {
       setNewBatch({
-        productId: selectedBatch.productId,
-        recipeId: selectedBatch.recipeId,
-        plannedQty: selectedBatch.plannedQty,
+        productId: selectedBatch.productId || '',
+        recipeId: selectedBatch.recipeId || '',
+        plannedQty: selectedBatch.plannedQty || 0,
         ingredients: selectedBatch.ingredients || [],
         status: selectedBatch.status,
         startDate: selectedBatch.startDate ? toLocalISO(new Date(selectedBatch.startDate)) : toLocalISO(new Date()),
@@ -320,7 +320,7 @@ const Production: React.FC = () => {
 
     try {
       // 1. Revert ingredients if batch was active (deducted stock)
-      if (batch.status !== 'planned' && batch.status !== 'cancelled') {
+      if (batch.status === 'started') {
         for (const ing of batch.ingredients || []) {
           const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
           const rawMaterialSnap = await getDoc(rawMaterialRef);
@@ -399,15 +399,21 @@ const Production: React.FC = () => {
     e.preventDefault();
     if (!newBatch.productId || !newBatch.plannedQty) return;
 
+    // Validate ingredients for non-planned batches or if they are explicitly being tracked
+    if (newBatch.ingredients.length === 0 && newBatch.status !== 'planned' && newBatch.status !== 'cancelled') {
+      toast.error(t('ingredientsRequired') || 'At least one ingredient is required to start production');
+      return;
+    }
+
     try {
       const recipe = recipes.find(r => r.productId === newBatch.productId);
-      const initialStatus = newBatch.status || 'planned';
+      const initialStatus = newBatch.status || 'started';
 
       if (isEditingBatch && selectedBatch) {
         const batchId = selectedBatch.id;
         // Logic for inventory sync
-        const wasActive = selectedBatch.status !== 'planned' && selectedBatch.status !== 'cancelled';
-        const isNowActive = newBatch.status !== 'planned' && newBatch.status !== 'cancelled';
+        const wasActive = selectedBatch.status === 'started';
+        const isNowActive = newBatch.status === 'started';
 
         if (wasActive && !isNowActive) {
           // Returning stock (Active -> Non-active)
@@ -611,7 +617,7 @@ const Production: React.FC = () => {
         const batchId = batchRef.id;
 
         // If created with active status, deduct stock immediately
-        if (initialStatus !== 'planned' && initialStatus !== 'cancelled') {
+        if (initialStatus === 'started') {
           for (const ing of newBatch.ingredients || []) {
             const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
             const rawMaterialSnap = await getDoc(rawMaterialRef);
@@ -701,8 +707,8 @@ const Production: React.FC = () => {
       const previousStatus = batch.status;
       const updateData: any = { status };
 
-      if (status === 'completed' || status === 'started' || status === 'in-progress' || status === 'termination') {
-        const needsMaterialDeduction = previousStatus === 'planned';
+      if (status === 'completed' || status === 'started') {
+        const needsMaterialDeduction = previousStatus === 'cancelled';
         
         if (needsMaterialDeduction) {
           const insufficient = [];
@@ -752,7 +758,7 @@ const Production: React.FC = () => {
         }
       }
 
-      if (status === 'started' || status === 'in-progress' || status === 'termination') {
+      if (status === 'started') {
         if (!batch.startDate) {
           updateData.startDate = new Date().toISOString();
         }
@@ -798,32 +804,34 @@ const Production: React.FC = () => {
         }
       }
 
-      if (status === 'cancelled' && previousStatus !== 'planned' && previousStatus !== 'cancelled') {
-        // Return ingredients to inventory if cancelled AND it was already started/in-progress
-        if (batch.ingredients && batch.ingredients.length > 0) {
-          for (const ingredient of batch.ingredients) {
-            const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
-            const rawMaterialSnap = await getDoc(rawMaterialRef);
-            if (rawMaterialSnap.exists()) {
-              const currentStock = rawMaterialSnap.data().currentStock || 0;
-              const newStock = currentStock + ingredient.quantity;
-              await updateDoc(rawMaterialRef, { currentStock: newStock });
+      if (status === 'cancelled' && previousStatus !== 'cancelled') {
+        // Return ingredients to inventory if it was started
+        if (previousStatus === 'started') {
+          if (batch.ingredients && batch.ingredients.length > 0) {
+            for (const ingredient of batch.ingredients) {
+              const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
+              const rawMaterialSnap = await getDoc(rawMaterialRef);
+              if (rawMaterialSnap.exists()) {
+                const currentStock = rawMaterialSnap.data().currentStock || 0;
+                const newStock = currentStock + ingredient.quantity;
+                await updateDoc(rawMaterialRef, { currentStock: newStock });
 
-              // Record movement
-              await addDoc(collection(db, 'stockMovements'), {
-                itemId: ingredient.materialId,
-                itemName: rawMaterialSnap.data().name,
-                itemType: 'material',
-                type: 'in',
-                quantity: ingredient.quantity,
-                previousStock: currentStock,
-                newStock: newStock,
-                reason: 'cancellation',
-                referenceId: id,
-                userId: profile?.id || 'system',
-                userName: profile?.name || 'System',
-                timestamp: new Date().toISOString()
-              });
+                // Record movement
+                await addDoc(collection(db, 'stockMovements'), {
+                  itemId: ingredient.materialId,
+                  itemName: rawMaterialSnap.data().name,
+                  itemType: 'material',
+                  type: 'in',
+                  quantity: ingredient.quantity,
+                  previousStock: currentStock,
+                  newStock: newStock,
+                  reason: 'cancellation',
+                  referenceId: id,
+                  userId: profile?.id || 'system',
+                  userName: profile?.name || 'System',
+                  timestamp: new Date().toISOString()
+                });
+              }
             }
           }
         }
@@ -844,10 +852,7 @@ const Production: React.FC = () => {
 
   const getStatusColor = (status: ProductionBatch['status']) => {
     switch (status) {
-      case 'planned': return 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-slate-400';
       case 'started': return 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400';
-      case 'in-progress': return 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300';
-      case 'termination': return 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400';
       case 'completed': return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400';
       case 'cancelled': return 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400';
       default: return 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-slate-400';
@@ -938,10 +943,7 @@ const Production: React.FC = () => {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="all">{t('allStatuses')}</option>
-                <option value="planned">{t('planned')}</option>
                 <option value="started">{t('started')}</option>
-                <option value="in-progress">{t('in-progress')}</option>
-                <option value="termination">{t('termination')}</option>
                 <option value="completed">{t('completed')}</option>
                 <option value="cancelled">{t('cancelled')}</option>
               </select>
@@ -1004,41 +1006,14 @@ const Production: React.FC = () => {
                           <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase mb-1">{t('plannedQty')}</p>
                           <p className="text-lg font-display font-bold text-slate-900 dark:text-white">{batch.plannedQty} <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t('units')}</span></p>
                         </div>
-                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900">
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900 overflow-hidden">
                           <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase mb-1">{t('startDate')}</p>
-                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{format(new Date(batch.startDate), 'MMM dd, HH:mm')}</p>
+                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{format(new Date(batch.startDate), 'dd/MM HH:mm')}</p>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        {batch.status === 'planned' && (
-                          <button 
-                            onClick={() => updateBatchStatus(batch.id, 'started')}
-                            className="flex-1 btn bg-amber-600 text-white hover:bg-amber-700 gap-2 justify-center"
-                          >
-                            <Play className="w-4 h-4" />
-                            {t('started')}
-                          </button>
-                        )}
+                      <div className="flex items-center gap-2">
                         {batch.status === 'started' && (
-                          <button 
-                            onClick={() => updateBatchStatus(batch.id, 'in-progress')}
-                            className="flex-1 btn bg-amber-500 text-white hover:bg-amber-600 gap-2 justify-center"
-                          >
-                            <RefreshCcw className="w-4 h-4" />
-                            {t('in-progress')}
-                          </button>
-                        )}
-                        {batch.status === 'in-progress' && (
-                          <button 
-                            onClick={() => updateBatchStatus(batch.id, 'termination')}
-                            className="flex-1 btn bg-amber-500 text-white hover:bg-amber-600 gap-2 justify-center"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            {t('termination')}
-                          </button>
-                        )}
-                        {batch.status === 'termination' && (
                           <button 
                             onClick={() => updateBatchStatus(batch.id, 'completed')}
                             className="flex-1 btn bg-emerald-600 text-white hover:bg-emerald-700 gap-2 justify-center"
@@ -1071,13 +1046,13 @@ const Production: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-left text-slate-400 dark:text-slate-600 text-xs font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/10">
+                    <tr className="text-left text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/10">
                       <th className="px-4 py-5 whitespace-nowrap">{t('product')}</th>
-                      <th className="px-4 py-5 whitespace-nowrap">{t('plannedQty')}</th>
-                      <th className="px-4 py-5 whitespace-nowrap">{t('status')}</th>
-                      <th className="px-4 py-5 whitespace-nowrap">{t('startDate')}</th>
-                      <th className="px-4 py-5 whitespace-nowrap">{t('createdBy')}</th>
-                      <th className="px-4 py-5 text-right whitespace-nowrap min-w-[100px] sticky right-0 bg-white dark:bg-zinc-900 z-10 border-l border-slate-100 dark:border-white/5 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.2)]">{t('actions')}</th>
+                      <th className="px-4 py-5 whitespace-nowrap text-center">{t('plannedQty')}</th>
+                      <th className="px-2 py-5 whitespace-nowrap text-center">{t('status')}</th>
+                      <th className="px-2 py-5 whitespace-nowrap text-center">{t('startDate')}</th>
+                      <th className="px-2 py-5 whitespace-nowrap text-center">{t('createdBy')}</th>
+                      <th className="px-4 py-5 text-right whitespace-nowrap min-w-[120px] sticky right-0 bg-white dark:bg-zinc-900 z-20 border-l border-slate-100 dark:border-white/5 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.05)] dark:shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.3)]">{t('actions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-white/10">
@@ -1085,78 +1060,76 @@ const Production: React.FC = () => {
                       const product = products.find(p => p.id === batch.productId);
                       const productName = product ? tProduct(product.name) : 'Unknown';
                       return (
-                        <tr key={batch.id} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all">
-                          <td className="px-4 py-5">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center shrink-0">
+                        <tr key={batch.id} className="group hover:bg-primary-50/[0.02] dark:hover:bg-primary-900/[0.05] transition-all">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center shrink-0 shadow-sm">
                                 <ChefHat className="w-5 h-5" />
                               </div>
                               <div className="flex flex-col">
-                                <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap">{productName}</span>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600">{tCategory(product?.category || '')}</span>
+                                <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap text-sm leading-tight">{productName}</span>
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mt-0.5">{tCategory(product?.category || '')}</span>
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-5">
-                            <span className="font-bold text-slate-700 dark:text-slate-200">{batch.plannedQty} {t('units')}</span>
+                          <td className="px-4 py-4 text-center">
+                            <span className="font-display font-bold text-slate-900 dark:text-white text-base tracking-tight">{batch.plannedQty}</span>
+                            <span className="ml-1 text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wider">{t('units')}</span>
                           </td>
-                          <td className="px-4 py-5">
-                            <span className={clsx("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider", getStatusColor(batch.status))}>
+                          <td className="px-2 py-4 text-center">
+                            <span className={clsx("px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest inline-flex shadow-sm", getStatusColor(batch.status))}>
                               {t(batch.status)}
                             </span>
                           </td>
-                          <td className="px-4 py-5 font-semibold text-slate-400 dark:text-slate-600 text-sm whitespace-nowrap">
-                            {format(new Date(batch.startDate), 'MMM dd, HH:mm')}
+                          <td className="px-2 py-4 text-center whitespace-nowrap">
+                            <div className="flex flex-col items-center">
+                              <span className="font-bold text-slate-900 dark:text-white text-xs">{format(new Date(batch.startDate), 'dd/MM')}</span>
+                              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase mt-0.5">{format(new Date(batch.startDate), 'HH:mm')}</span>
+                            </div>
                           </td>
-                          <td className="px-4 py-5 font-semibold text-slate-500 dark:text-slate-400 text-sm whitespace-nowrap">
-                            {batch.createdBy || '-'}
+                          <td className="px-2 py-4 text-center">
+                            <span className="font-bold text-slate-600 dark:text-slate-400 text-xs">{batch.createdBy || '-'}</span>
                           </td>
-                          <td className="px-4 py-5 text-right min-w-[100px] sticky right-0 bg-white dark:bg-zinc-900 z-10 group-hover:bg-slate-50 dark:group-hover:bg-zinc-900 transition-all border-l border-slate-100 dark:border-white/5 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.2)]">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-4 py-4 text-right min-w-[120px] sticky right-0 bg-white dark:bg-zinc-900 z-20 group-hover:bg-[#f9fafb] dark:group-hover:bg-[#0c0c0e] transition-all border-l border-slate-100 dark:border-white/5 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.05)] dark:shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.3)]">
+                            <div className="flex items-center justify-end gap-2 px-1">
                               <button 
                                 onClick={() => {
                                   setSelectedBatch(batch);
                                   setIsEditingBatch(true);
                                   setIsModalOpen(true);
                                 }} 
-                                className="flex items-center gap-2 px-3 py-2 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-all border border-primary-100 dark:border-primary-900/30 font-bold text-xs"
+                                className="w-9 h-9 flex items-center justify-center text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-xl transition-all border border-slate-100 dark:border-white/5 shadow-sm bg-white dark:bg-zinc-800"
                                 title={t('edit')}
                               >
                                 <Edit2 className="w-4 h-4" />
-                                <span>{t('edit')}</span>
                               </button>
+                              
+                              {batch.status === 'started' && (
+                                <>
+                                  <button 
+                                    onClick={() => updateBatchStatus(batch.id, 'completed')} 
+                                    className="w-9 h-9 flex items-center justify-center text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-md shadow-emerald-600/20 active:scale-95"
+                                    title={t('completeProduction')}
+                                  >
+                                    <CheckCircle2 className="w-5 h-5" />
+                                  </button>
+                                  <button 
+                                    onClick={() => updateBatchStatus(batch.id, 'cancelled')} 
+                                    className="w-9 h-9 flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl transition-all border border-red-100 dark:border-red-900/30 shadow-sm"
+                                    title={t('cancelled')}
+                                  >
+                                    <XCircle className="w-5 h-5" />
+                                  </button>
+                                </>
+                              )}
+                              
                               {(profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'baker') && (
                                 <button 
                                   onClick={() => handleDeleteBatch(batch)} 
-                                  className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                  className="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-red-600 dark:text-slate-600 dark:hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
                                   title={t('delete')}
                                 >
-                                  <Trash2 className="w-5 h-5" />
-                                </button>
-                              )}
-                              {batch.status === 'planned' && (
-                                <button onClick={() => updateBatchStatus(batch.id, 'started')} className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all">
-                                  <Play className="w-4 h-4" />
-                                </button>
-                              )}
-                              {batch.status === 'started' && (
-                                <button onClick={() => updateBatchStatus(batch.id, 'in-progress')} className="p-2 text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all">
-                                  <RefreshCcw className="w-4 h-4" />
-                                </button>
-                              )}
-                              {batch.status === 'in-progress' && (
-                                <button onClick={() => updateBatchStatus(batch.id, 'termination')} className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all">
-                                  <CheckCircle2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              {batch.status === 'termination' && (
-                                <button onClick={() => updateBatchStatus(batch.id, 'completed')} className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all">
-                                  <CheckCircle2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              {batch.status !== 'completed' && batch.status !== 'cancelled' && (
-                                <button onClick={() => updateBatchStatus(batch.id, 'cancelled')} className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
-                                  <XCircle className="w-4 h-4" />
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               )}
                             </div>
@@ -1224,7 +1197,7 @@ const Production: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('product')}</label>
                   <select 
                     className="input"
-                    value={newBatch.productId}
+                    value={newBatch.productId || ''}
                     onChange={(e) => setNewBatch({
                       ...newBatch, 
                       productId: e.target.value, 
@@ -1271,7 +1244,7 @@ const Production: React.FC = () => {
                   <input 
                     type="datetime-local" 
                     className="input"
-                    value={newBatch.startDate}
+                    value={newBatch.startDate || ''}
                     onChange={(e) => setNewBatch({...newBatch, startDate: e.target.value})}
                     required
                   />
@@ -1311,19 +1284,60 @@ const Production: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('status')}</label>
-                <select 
-                  className="input"
-                  value={newBatch.status || 'planned'}
-                  onChange={(e) => setNewBatch({...newBatch, status: e.target.value as ProductionBatch['status']})}
-                  required
-                >
-                  <option value="planned">{t('planned')}</option>
-                  <option value="started">{t('started')}</option>
-                  <option value="in-progress">{t('in-progress')}</option>
-                  <option value="termination">{t('termination')}</option>
-                  <option value="completed">{t('completed')}</option>
-                  <option value="cancelled">{t('cancelled')}</option>
-                </select>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setNewBatch({...newBatch, status: 'planned'})}
+                    className={clsx(
+                      "py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all uppercase tracking-wider flex items-center justify-center gap-2",
+                      newBatch.status === 'planned' || (!newBatch.status && !isEditingBatch)
+                        ? "border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"
+                        : "border-slate-100 dark:border-white/5 bg-white dark:bg-zinc-900 text-slate-400 dark:text-slate-600 hover:border-slate-200"
+                    )}
+                  >
+                    <Clock className="w-3 h-3" />
+                    {t('planned')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBatch({...newBatch, status: 'started'})}
+                    className={clsx(
+                      "py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all uppercase tracking-wider flex items-center justify-center gap-2",
+                      newBatch.status === 'started'
+                        ? "border-amber-500 bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400"
+                        : "border-slate-100 dark:border-white/5 bg-white dark:bg-zinc-900 text-slate-400 dark:text-slate-600 hover:border-slate-200"
+                    )}
+                  >
+                    <Play className="w-3 h-3" />
+                    {t('started')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBatch({...newBatch, status: 'completed'})}
+                    className={clsx(
+                      "py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all uppercase tracking-wider flex items-center justify-center gap-2",
+                      newBatch.status === 'completed'
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
+                        : "border-slate-100 dark:border-white/5 bg-white dark:bg-zinc-900 text-slate-400 dark:text-slate-600 hover:border-slate-200"
+                    )}
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    {t('completed')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBatch({...newBatch, status: 'cancelled'})}
+                    className={clsx(
+                      "py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all uppercase tracking-wider flex items-center justify-center gap-2",
+                      newBatch.status === 'cancelled'
+                        ? "border-red-500 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400"
+                        : "border-slate-100 dark:border-white/5 bg-white dark:bg-zinc-900 text-slate-400 dark:text-slate-600 hover:border-slate-200"
+                    )}
+                  >
+                    <XCircle className="w-3 h-3" />
+                    {t('cancelled')}
+                  </button>
+                </div>
               </div>
 
               {newBatch.productId && (

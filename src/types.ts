@@ -60,6 +60,7 @@ export interface RawMaterial {
   category: string;
   unit: string;
   currentStock: number;
+  stock?: number;
   minStock: number;
   status?: 'none' | 'ordered' | 'requested' | 'cancelled';
   imageUrl?: string;
@@ -90,7 +91,7 @@ export interface ProductionBatch {
   plannedQty: number;
   actualQty?: number;
   ingredients?: RecipeIngredient[];
-  status: 'planned' | 'started' | 'in-progress' | 'termination' | 'completed' | 'cancelled';
+  status: 'started' | 'completed' | 'cancelled';
   startDate: string;
   endDate?: string;
   createdBy?: string;
