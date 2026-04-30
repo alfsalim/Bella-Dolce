@@ -320,6 +320,12 @@ async function startServer() {
 
       const preparedBody = wrapDataIfNeeded(collection, req.body);
       const dataToSave = { ...preparedBody };
+
+      if (collection === 'rawMaterials') {
+        if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
+        else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
+      }
+
       for (const key in dataToSave) {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
@@ -350,6 +356,12 @@ async function startServer() {
 
       const preparedBody = wrapDataIfNeeded(collection, req.body);
       const dataToSave = { ...preparedBody };
+
+      if (collection === 'rawMaterials') {
+        if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
+        else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
+      }
+
       for (const key in dataToSave) {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
           dataToSave[key] = JSON.stringify(dataToSave[key]);

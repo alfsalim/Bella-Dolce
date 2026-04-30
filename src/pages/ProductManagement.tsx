@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, limit, getCountFromServer } from '../lib/firebase';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, limit, getCountFromServer, getDoc } from '../lib/firebase';
 import { Product, RawMaterial, RecipeIngredient, ProductionBatch, Order } from '../types';
 import { Plus, Search, Edit2, Trash2, Package, Info, List, Image as ImageIcon, Percent, Scale, Hash, Filter, RotateCcw, ChevronRight, X } from 'lucide-react';
 import { logActivity } from '../lib/logger';
@@ -233,72 +233,69 @@ const ProductManagement: React.FC = () => {
     
     // Check for unique name (case-insensitive and trimmed)
     const normalizedNewName = formData.name?.trim().toLowerCase().replace(/\s+/g, ' ');
-    const nameExists = products.some(p => 
+    const nameExists = (activeTab === 'products' ? products : materials).some(p => 
       p.name.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedNewName && 
-      p.id !== editingProduct?.id
+      p.id !== (editingProduct?.id || editingMaterial?.id)
     );
 
     if (nameExists) {
-      toast.error(t('productNameExists'));
+      toast.error(t('itemNameExists') || 'Item name already exists');
       return;
     }
 
     try {
-      if (editingProduct) {
-        await setDoc(doc(db, 'products', editingProduct.id), formData, { merge: true });
+      const isMaterial = activeTab === 'materials' || formData.itemType === 'material' || formData.category === 'raw_material';
+      const collectionName = isMaterial ? 'rawMaterials' : 'products';
+      const currentEditingId = editingProduct?.id || editingMaterial?.id;
+
+      if (currentEditingId) {
+        await setDoc(doc(db, collectionName, currentEditingId), formData, { merge: true });
         
-        // Sync with rawMaterials if category is raw_material or itemType is material
-        if (formData.category === 'raw_material' || formData.itemType === 'material') {
-          await setDoc(doc(db, 'rawMaterials', editingProduct.id), {
-            name: formData.name,
-            category: formData.category || 'cooking',
-            unit: formData.unit || 'g',
-            imageUrl: formData.imageUrl,
-            currentStock: formData.stock || 0,
-            minStock: formData.minStock || 10
-          }, { merge: true });
+        // If it's a material that is ALSO used as a product, sync them
+        if (isMaterial) {
+          try {
+            // Check if it exists in products too (some items are both)
+            const prodSnap = await getDoc(doc(db, 'products', currentEditingId));
+            if (prodSnap.exists()) {
+              await setDoc(doc(db, 'products', currentEditingId), {
+                name: formData.name,
+                category: formData.category,
+                unit: formData.unit,
+                imageUrl: formData.imageUrl,
+                stock: formData.stock,
+                minStock: formData.minStock,
+                itemType: 'material'
+              }, { merge: true });
+            }
+          } catch (e) {}
         }
 
         if (currentUserProfile) {
           await logActivity(
             currentUserProfile.id,
             currentUserProfile.name,
-            'product_updated',
-            `Updated product: ${formData.name}`
+            isMaterial ? 'material_updated' : 'product_updated',
+            `Updated ${isMaterial ? 'material' : 'product'}: ${formData.name}`
           );
         }
       } else {
-        const productRef = await addDoc(collection(db, 'products'), {
+        const itemRef = await addDoc(collection(db, collectionName), {
           ...formData,
-          stock: formData.stock || 0,
-          minStock: formData.minStock || 10,
           createdAt: new Date().toISOString()
         });
-
-        // Sync with rawMaterials if category is raw_material or itemType is material
-        if (formData.category === 'raw_material' || formData.itemType === 'material') {
-          await setDoc(doc(db, 'rawMaterials', productRef.id), {
-            name: formData.name,
-            category: formData.category || 'cooking',
-            unit: formData.unit || 'g',
-            imageUrl: formData.imageUrl,
-            currentStock: formData.stock || 0,
-            minStock: formData.minStock || 10,
-            createdAt: new Date().toISOString()
-          }, { merge: true });
-        }
 
         if (currentUserProfile) {
           await logActivity(
             currentUserProfile.id,
             currentUserProfile.name,
-            'product_added',
-            `Added new product: ${formData.name}`
+            isMaterial ? 'material_added' : 'product_added',
+            `Added new ${isMaterial ? 'material' : 'product'}: ${formData.name}`
           );
         }
       }
       setIsModalOpen(false);
       setEditingProduct(null);
+      setEditingMaterial(null);
       setFormData({
         name: '',
         category: '',
@@ -314,10 +311,11 @@ const ProductManagement: React.FC = () => {
         packItems: [],
         stock: 0,
         minStock: 10,
-        itemType: 'product'
+        itemType: activeTab === 'products' ? 'product' : 'material'
       });
     } catch (error) {
-      console.error("Error saving product:", error);
+      console.error("Error saving item:", error);
+      toast.error(t('errorSavingItem') || 'Error saving item');
     }
   };
 
@@ -443,26 +441,30 @@ const ProductManagement: React.FC = () => {
           <button 
             onClick={() => {
               setEditingProduct(null);
+              setEditingMaterial(null);
               setFormData({
                 name: '',
-                category: '',
+                category: activeTab === 'materials' ? 'cooking' : '',
                 sellingPrice: 0,
                 costPrice: 0,
                 shelfLife: 24,
-                unit: 'g',
+                unit: activeTab === 'materials' ? 'kg' : 'g',
                 imageUrl: '',
                 description: '',
                 specifications: '',
                 ingredients: [],
                 isPack: false,
-                packItems: []
+                packItems: [],
+                stock: 0,
+                minStock: 10,
+                itemType: activeTab === 'materials' ? 'material' : 'product'
               });
               setIsModalOpen(true);
             }}
             className="btn-primary gap-2 w-full sm:w-auto justify-center"
           >
             <Plus className="w-5 h-5" />
-            {t('addProduct')}
+            {activeTab === 'materials' ? t('addMaterial') || 'Add Material' : t('addProduct')}
           </button>
         </div>
       </div>
@@ -611,10 +613,16 @@ const ProductManagement: React.FC = () => {
                             onClick={() => {
                               if (isProduct) {
                                 setEditingProduct(product);
+                                setEditingMaterial(null);
                                 setFormData(product!);
                               } else {
                                 setEditingMaterial(material);
-                                setMaterialFormData(material!);
+                                setEditingProduct(null);
+                                setFormData({
+                                  ...material,
+                                  stock: material.currentStock || 0,
+                                  itemType: 'material'
+                                } as any);
                               }
                               setIsModalOpen(true);
                             }}
@@ -809,10 +817,33 @@ const ProductManagement: React.FC = () => {
                                 onClick={() => {
                                   if (isProduct) {
                                     setEditingProduct(product);
-                                    setFormData(product!);
+                                    setEditingMaterial(null);
+                                    setFormData({
+                                      ...product,
+                                      name: product.name || '',
+                                      category: product.category || '',
+                                      sellingPrice: product.sellingPrice || 0,
+                                      costPrice: product.costPrice || 0,
+                                      stock: product.stock || 0,
+                                      minStock: product.minStock || 0,
+                                      unit: product.unit || 'g',
+                                      description: product.description || '',
+                                      imageUrl: product.imageUrl || '',
+                                      itemType: product.itemType || 'product'
+                                    });
                                   } else {
                                     setEditingMaterial(material);
-                                    setMaterialFormData(material!);
+                                    setEditingProduct(null);
+                                    setFormData({
+                                      ...material,
+                                      name: material.name || '',
+                                      category: material.category || '',
+                                      stock: material.currentStock || 0,
+                                      minStock: material.minStock || 0,
+                                      unit: material.unit || 'g',
+                                      brand: material.brand || 'Generic',
+                                      itemType: 'material'
+                                    } as any);
                                   }
                                   setIsModalOpen(true);
                                 }}
@@ -849,10 +880,17 @@ const ProductManagement: React.FC = () => {
           <div className="bg-white dark:bg-[#0a0a0a] rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 dark:border-[#2a1e17]">
             <div className="p-8 border-b border-slate-100 dark:border-[#2a1e17] flex items-center justify-between sticky top-0 bg-white dark:bg-[#0a0a0a] z-10">
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                {editingProduct ? t('editProduct') : t('addProduct')}
+                {(editingProduct || editingMaterial) ? t('editItem') || 'Edit Item' : t('addItem') || 'Add Item'}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400">
-                <Trash2 className="w-6 h-6" />
+              <button 
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingProduct(null);
+                  setEditingMaterial(null);
+                }} 
+                className="text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400"
+              >
+                <X className="w-6 h-6" />
               </button>
             </div>
             
@@ -932,42 +970,48 @@ const ProductManagement: React.FC = () => {
                   </>
                 )}
                 {(formData.itemType === 'material' || formData.category === 'raw_material') && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('weight') || 'Weight'}</label>
-                      <input 
-                        type="number" 
-                        required
-                        className="input" 
-                        value={formData.stock || 0}
-                        onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('minStock')}</label>
-                      <input 
-                        type="number" 
-                        required
-                        className="input" 
-                        value={formData.minStock || 0}
-                        onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) })}
-                      />
-                    </div>
-                  </>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('currentStock') || 'Current Stock'}</label>
+                    <input 
+                      type="number" 
+                      required
+                      className="input" 
+                      value={formData.stock || 0}
+                      onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
+                    />
+                  </div>
+                )}
+                {(formData.itemType === 'material' || formData.category === 'raw_material') && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('minStock')}</label>
+                    <input 
+                      type="number" 
+                      required
+                      className="input" 
+                      value={formData.minStock || 0}
+                      onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) })}
+                    />
+                  </div>
                 )}
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('unit')}</label>
-                  <select 
-                    className="input"
-                    value={formData.unit || 'g'}
-                    onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                  >
-                    <option value="g">g</option>
-                    <option value="kg">kg</option>
-                    <option value="ml">ml</option>
-                    <option value="l">l</option>
-                    <option value="pcs">pcs</option>
-                  </select>
+                  <div className="flex bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl gap-1">
+                    {['g', 'kg', 'ml', 'l', 'pcs'].map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, unit: u })}
+                        className={clsx(
+                          "flex-1 py-2 rounded-lg text-xs font-bold transition-all",
+                          (formData.unit || 'g') === u
+                            ? "bg-white dark:bg-black text-primary-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+                        )}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('imageUrl')}</label>
@@ -991,18 +1035,20 @@ const ProductManagement: React.FC = () => {
                     </label>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-[#0a0a0a] rounded-2xl border border-slate-100 dark:border-[#2a1e17]">
-                  <input 
-                    type="checkbox" 
-                    id="isPack"
-                    checked={formData.isPack || false}
-                    onChange={(e) => setFormData({ ...formData, isPack: e.target.checked })}
-                    className="w-5 h-5 text-amber-600 focus:ring-amber-500 bg-white dark:bg-black border-slate-300 dark:border-[#2a1e17] rounded"
-                  />
-                  <label htmlFor="isPack" className="text-sm font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
-                    {t('isPack')}
-                  </label>
-                </div>
+                {formData.itemType !== 'material' && (
+                  <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-[#0a0a0a] rounded-2xl border border-slate-100 dark:border-[#2a1e17]">
+                    <input 
+                      type="checkbox" 
+                      id="isPack"
+                      checked={formData.isPack || false}
+                      onChange={(e) => setFormData({ ...formData, isPack: e.target.checked })}
+                      className="w-5 h-5 text-amber-600 focus:ring-amber-500 bg-white dark:bg-black border-slate-300 dark:border-[#2a1e17] rounded"
+                    />
+                    <label htmlFor="isPack" className="text-sm font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                      {t('isPack')}
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">

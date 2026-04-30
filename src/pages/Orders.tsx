@@ -556,28 +556,42 @@ const Orders: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex-1 flex gap-2">
-                        <select 
-                          className="flex-1 input text-sm"
-                          value={order.status}
-                          onChange={(e) => updateOrderStatus(order.id, e.target.value as Order['status'])}
-                        >
-                          <option value="ordered">{t('ordered')}</option>
-                          <option value="in-progress">{t('in-progress')}</option>
-                          <option value="delayed">{t('delayed')}</option>
-                          <option value="delivered">{t('delivered')}</option>
-                          <option value="cancelled">{t('cancelled')}</option>
-                        </select>
-                        <select 
-                          className="flex-1 input text-sm"
-                          value={order.deliveryStatus || 'pending'}
-                          onChange={(e) => updateDeliveryStatus(order.id, e.target.value as Order['deliveryStatus'])}
-                        >
-                          <option value="pending">{t('pending')}</option>
-                          <option value="assigned">{t('assigned')}</option>
-                          <option value="picked-up">{t('picked-up')}</option>
-                          <option value="delivered">{t('delivered')}</option>
-                        </select>
+                      <div className="flex-1 flex flex-wrap gap-2">
+                        {/* Status Buttons */}
+                        <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-[#1a1512] p-1 rounded-xl">
+                          {(['ordered', 'in-progress', 'delivered', 'cancelled'] as Order['status'][]).map((status) => (
+                            <button
+                              key={status}
+                              onClick={() => updateOrderStatus(order.id, status)}
+                              className={clsx(
+                                "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all transition-all",
+                                order.status === status
+                                  ? "bg-white dark:bg-black text-primary-600 dark:text-primary-400 shadow-sm"
+                                  : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+                              )}
+                            >
+                              {t(status)}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Delivery Status Buttons */}
+                        <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-[#1a1512] p-1 rounded-xl">
+                          {(['pending', 'assigned', 'picked-up', 'delivered'] as Order['deliveryStatus'][]).map((ds) => (
+                            <button
+                              key={ds}
+                              onClick={() => updateDeliveryStatus(order.id, ds)}
+                              className={clsx(
+                                "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                                (order.deliveryStatus || 'pending') === ds
+                                  ? "bg-white dark:bg-black text-amber-600 dark:text-amber-400 shadow-sm"
+                                  : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+                              )}
+                            >
+                              {t(ds)}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <button 
                         onClick={() => {
@@ -637,18 +651,23 @@ const Orders: React.FC = () => {
                       <p className="text-sm text-slate-600 dark:text-slate-300">{order.expectedDate} {order.expectedTime}</p>
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <select 
-                          className="input text-xs py-1 h-auto"
-                          value={order.status}
-                          onChange={(e) => updateOrderStatus(order.id, e.target.value as Order['status'])}
-                        >
-                          <option value="ordered">{t('ordered')}</option>
-                          <option value="in-progress">{t('in-progress')}</option>
-                          <option value="delayed">{t('delayed')}</option>
-                          <option value="delivered">{t('delivered')}</option>
-                          <option value="cancelled">{t('cancelled')}</option>
-                        </select>
+                      <div className="flex justify-end items-center gap-3">
+                        <div className="flex bg-slate-50 dark:bg-zinc-900 p-1 rounded-xl border border-slate-100 dark:border-white/5">
+                          {(['ordered', 'in-progress', 'delivered', 'cancelled'] as Order['status'][]).map((status) => (
+                            <button
+                              key={status}
+                              onClick={() => updateOrderStatus(order.id, status)}
+                              className={clsx(
+                                "px-2 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all",
+                                order.status === status
+                                  ? "bg-white dark:bg-black text-primary-600 dark:text-primary-400 shadow-sm"
+                                  : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+                              )}
+                            >
+                              {t(status)}
+                            </button>
+                          ))}
+                        </div>
                         <button 
                           onClick={() => {
                             setSelectedOrderForInvoice(order);

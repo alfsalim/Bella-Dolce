@@ -278,7 +278,7 @@ const Dashboard: React.FC = () => {
                   </span>
                   <div className={clsx(
                     "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
-                    batch.status === 'in-progress' ? "bg-amber-500/10 text-amber-400" : "bg-zinc-800 text-zinc-400"
+                    batch.status === 'started' ? "bg-amber-500/10 text-amber-400" : "bg-zinc-800 text-zinc-400"
                   )}>
                     {t(batch.status)}
                   </div>

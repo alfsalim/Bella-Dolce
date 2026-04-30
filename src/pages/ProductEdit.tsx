@@ -209,7 +209,7 @@ const ProductEdit: React.FC = () => {
                 <input 
                   type="text" 
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700" 
-                  value={product.name}
+                  value={product.name || ''}
                   onChange={(e) => setProduct({...product, name: e.target.value})}
                 />
               </div>
@@ -217,7 +217,7 @@ const ProductEdit: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('category')}</label>
                 <select 
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all appearance-none"
-                  value={product.category}
+                  value={product.category || ''}
                   onChange={(e) => setProduct({...product, category: e.target.value})}
                 >
                   {CATEGORIES.map(c => <option key={c} value={c}>{tCategory(c)}</option>)}
@@ -230,7 +230,7 @@ const ProductEdit: React.FC = () => {
                   <input 
                     type="number" 
                     className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700" 
-                    value={product.shelfLife}
+                    value={product.shelfLife || 0}
                     onChange={(e) => setProduct({...product, shelfLife: Number(e.target.value)})}
                   />
                 </div>
@@ -243,7 +243,7 @@ const ProductEdit: React.FC = () => {
                     type="number" 
                     step="0.01"
                     className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700" 
-                    value={product.sellingPrice}
+                    value={product.sellingPrice || 0}
                     onChange={(e) => setProduct({...product, sellingPrice: Number(e.target.value)})}
                   />
                 </div>
@@ -256,7 +256,7 @@ const ProductEdit: React.FC = () => {
                     type="number" 
                     step="0.01"
                     className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700" 
-                    value={product.costPrice}
+                    value={product.costPrice || 0}
                     onChange={(e) => setProduct({...product, costPrice: Number(e.target.value)})}
                   />
                 </div>
@@ -308,7 +308,7 @@ const ProductEdit: React.FC = () => {
                       <div className="flex-1">
                         <select 
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all appearance-none"
-                          value={ing.materialId}
+                          value={ing.materialId || ''}
                           onChange={(e) => updateIngredient(idx, 'materialId', e.target.value)}
                         >
                           <option value="">{t('selectIngredient')}</option>
@@ -318,7 +318,7 @@ const ProductEdit: React.FC = () => {
                       <div className="w-24">
                         <select 
                           className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all appearance-none text-xs"
-                          value={ing.type}
+                          value={ing.type || 'weight'}
                           onChange={(e) => updateIngredient(idx, 'type', e.target.value)}
                         >
                           <option value="weight">{t('weight')}</option>
@@ -334,7 +334,7 @@ const ProductEdit: React.FC = () => {
                           type="number" 
                           className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
                           placeholder="Qté"
-                          value={ing.quantity}
+                          value={ing.quantity || 0}
                           onChange={(e) => updateIngredient(idx, 'quantity', Number(e.target.value))}
                         />
                       </div>

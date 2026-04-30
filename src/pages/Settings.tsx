@@ -830,7 +830,7 @@ const Settings: React.FC = () => {
                         type="text" 
                         required
                         className="input"
-                        value={promoFormData.title}
+                        value={promoFormData.title || ''}
                         onChange={(e) => setPromoFormData({ ...promoFormData, title: e.target.value })}
                       />
                     </div>
@@ -839,7 +839,7 @@ const Settings: React.FC = () => {
                       <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('description')}</label>
                       <textarea 
                         className="input min-h-[80px]"
-                        value={promoFormData.description}
+                        value={promoFormData.description || ''}
                         onChange={(e) => setPromoFormData({ ...promoFormData, description: e.target.value })}
                       />
                     </div>
@@ -851,7 +851,7 @@ const Settings: React.FC = () => {
                           type="date" 
                           required
                           className="input"
-                          value={promoFormData.expiryDate}
+                          value={promoFormData.expiryDate || ''}
                           onChange={(e) => setPromoFormData({ ...promoFormData, expiryDate: e.target.value })}
                         />
                       </div>
@@ -859,7 +859,7 @@ const Settings: React.FC = () => {
                         <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('type')}</label>
                         <select 
                           className="input"
-                          value={promoFormData.type}
+                          value={promoFormData.type || 'banner'}
                           onChange={(e) => setPromoFormData({ ...promoFormData, type: e.target.value as any })}
                         >
                           <option value="banner">Banner</option>
@@ -895,7 +895,7 @@ const Settings: React.FC = () => {
                       <input 
                         type="checkbox" 
                         id="promoActive"
-                        checked={promoFormData.active}
+                        checked={!!promoFormData.active}
                         onChange={(e) => setPromoFormData({ ...promoFormData, active: e.target.checked })}
                         className="w-5 h-5 text-amber-600 focus:ring-amber-500 bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 rounded"
                       />

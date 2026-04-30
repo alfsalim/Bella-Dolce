@@ -277,7 +277,7 @@ export const seedDatabase = async () => {
         productId: productIds[i],
         recipeId: 'recipe_' + i,
         plannedQty: 50,
-        status: i === 0 ? 'in-progress' : 'completed',
+        status: i === 0 ? 'started' : 'completed',
         startDate: now
       };
       await addDoc(collection(db, 'batches'), batch);

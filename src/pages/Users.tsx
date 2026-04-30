@@ -521,7 +521,7 @@ const Users: React.FC = () => {
                   type="text" 
                   required
                   className="input" 
-                  value={editingUser.name}
+                  value={editingUser.name || ''}
                   onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
                 />
               </div>
@@ -529,7 +529,7 @@ const Users: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t('role')}</label>
                 <select 
                   className="input disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
-                  value={editingUser.role}
+                  value={editingUser.role || 'cashier'}
                   disabled={editingUser.role === 'admin'}
                   onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as Role })}
                 >
