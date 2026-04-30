@@ -11,22 +11,49 @@ DB_URL="file:/app/data/dev.db"
 
 # ── Production (Windows) ─────────────────────────────────
 PROD_DATA_DIR="C:/Users/CD COMPANY/Bella-Dolce/data"
-WINDOWS_TAILSCALE_IP="100.114.12.38"     # fill after Tailscale setup
-DEPLOY_MODE="manual"         # change to "tailscale" later
+WINDOWS_TAILSCALE_IP="100.114.12.38"
+DEPLOY_MODE="tailscale"          # "tailscale" or "manual"
 
 # ── Dev (Mac local) ──────────────────────────────────────
 DEV_CONTAINER_NAME="bella-dolce2-dev"
 DEV_EXT_PORT=3501
-DEV_DATA_DIR="$HOME/bella-dolce-data"   # persisted on Mac, never overwritten
+DEV_DATA_DIR="$HOME/bella-dolce-data"
 
 # ── Helpers ──────────────────────────────────────────────
-log_step() { echo ""; echo "▶▶ $1"; }
-log_ok()   { echo "   ✅ $1"; }
-log_info() { echo "   ℹ  $1"; }
-log_warn() { echo "   ⚠️  $1"; }
-log_err()  { echo "   ❌ $1"; exit 1; }
+log_step() { echo ""; echo ">> $1"; }
+log_ok()   { echo "   OK  $1"; }
+log_info() { echo "   >>  $1"; }
+log_warn() { echo "   !!  $1"; }
+log_err()  { echo "   ERR $1"; exit 1; }
 
-# ── Usage ────────────────────────────────────────────────
+# ── Schema sync helper ────────────────────────────────────
+# Usage: schema_sync <container_name> [docker_host]
+schema_sync() {
+    local container=$1
+    local dhost=${2:-""}
+    log_info "Waiting 12s for entrypoint.sh db push to complete..."
+    sleep 12
+    local logs
+    if [ -n "$dhost" ]; then
+        logs=$(DOCKER_HOST="$dhost" docker logs "$container" 2>&1)
+    else
+        logs=$(docker logs "$container" 2>&1)
+    fi
+    if echo "$logs" | grep -qi "schema\|prisma\|Starting server"; then
+        log_ok "Schema sync confirmed in startup logs"
+    else
+        log_warn "Schema log not found — running manual db push as fallback..."
+        if [ -n "$dhost" ]; then
+            DOCKER_HOST="$dhost" docker exec "$container" sh -c "npx prisma db push --accept-data-loss"
+        else
+            docker exec "$container" sh -c "npx prisma db push --accept-data-loss"
+        fi
+        [ $? -ne 0 ] && log_err "Schema push failed. Check: docker logs $container"
+        log_ok "Schema pushed manually"
+    fi
+}
+
+# ── Usage ─────────────────────────────────────────────────
 MODE=$1
 if [ "$MODE" != "--prod" ] && [ "$MODE" != "--dev" ]; then
     echo ""
@@ -53,7 +80,7 @@ echo "============================================"
 if [ "$MODE" = "--dev" ]; then
 
     # Step 1: Build for local ARM (native Mac M3)
-    log_step "1/3  Building image for local Mac (linux/arm64)"
+    log_step "1/4  Building image for local Mac (linux/arm64)"
     log_info "Image    : $IMAGE_NAME"
     log_info "Platform : native ARM64 (Mac M3)"
     docker build -t "$IMAGE_NAME" .
@@ -61,7 +88,7 @@ if [ "$MODE" = "--dev" ]; then
     log_ok "Image built"
 
     # Step 2: Ensure dev data directory exists — never wipe it
-    log_step "2/3  Checking dev data directory"
+    log_step "2/4  Checking dev data directory"
     if [ ! -d "$DEV_DATA_DIR" ]; then
         log_warn "Dev data dir not found — creating $DEV_DATA_DIR"
         mkdir -p "$DEV_DATA_DIR"
@@ -70,11 +97,11 @@ if [ "$MODE" = "--dev" ]; then
         log_ok "Dev data exists — preserving: $DEV_DATA_DIR"
     fi
 
-    # Step 3: Stop old dev container (data is safe on host)
-    log_step "3/3  Starting dev container"
+    # Step 3: Stop old dev container
+    log_step "3/4  Starting dev container"
     if docker ps -a --format "{{.Names}}" | grep -q "^${DEV_CONTAINER_NAME}$"; then
         log_info "Stopping old dev container..."
-        docker stop "$DEV_CONTAINER_NAME" | Out-Null 2>/dev/null
+        docker stop "$DEV_CONTAINER_NAME" > /dev/null 2>&1
         docker rm "$DEV_CONTAINER_NAME" > /dev/null 2>&1
         log_ok "Old dev container removed"
     fi
@@ -82,14 +109,17 @@ if [ "$MODE" = "--dev" ]; then
     docker run -d \
         --name "$DEV_CONTAINER_NAME" \
         -p "$DEV_EXT_PORT:$INT_PORT" \
-        -e DATABASE_URL=$DB_URL \
+        -e DATABASE_URL="$DB_URL" \
         -e NODE_ENV=production \
         -v "$DEV_DATA_DIR:/app/data" \
         --restart unless-stopped \
         "$IMAGE_NAME"
     [ $? -ne 0 ] && log_err "Failed to start dev container."
 
-    sleep 3
+    # Step 4: Schema sync
+    log_step "4/4  Schema sync"
+    schema_sync "$DEV_CONTAINER_NAME"
+
     STATUS=$(docker ps --filter "name=$DEV_CONTAINER_NAME" --format "{{.Status}}")
     echo ""
     echo "============================================"
@@ -124,29 +154,36 @@ log_ok "Saved: $TAR_FILE ($SIZE)"
 
 if [ "$DEPLOY_MODE" = "tailscale" ] && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
 
-    # ── Tailscale Direct Deploy ───────────────────────────
+    REMOTE="tcp://$WINDOWS_TAILSCALE_IP:2375"
+
+    # Step 3: Stop old container on Windows
     log_step "3/4  Deploying directly to Windows via Tailscale"
     log_info "Target : $WINDOWS_TAILSCALE_IP:2375"
     log_info "Stopping old container on Windows..."
-    DOCKER_HOST="tcp://$WINDOWS_TAILSCALE_IP:2375" docker stop $CONTAINER_NAME 2>/dev/null
-    DOCKER_HOST="tcp://$WINDOWS_TAILSCALE_IP:2375" docker rm $CONTAINER_NAME 2>/dev/null
+    DOCKER_HOST="$REMOTE" docker stop "$CONTAINER_NAME" 2>/dev/null
+    DOCKER_HOST="$REMOTE" docker rm "$CONTAINER_NAME" 2>/dev/null
 
+    # Step 4: Push image and start container
     log_step "4/4  Pushing image and starting container"
     log_info "Streaming image to Windows Docker..."
-    docker save "$IMAGE_NAME" | DOCKER_HOST="tcp://$WINDOWS_TAILSCALE_IP:2375" docker load
+    docker save "$IMAGE_NAME" | DOCKER_HOST="$REMOTE" docker load
     [ $? -ne 0 ] && log_err "Failed to push image to Windows."
 
-    DOCKER_HOST="tcp://$WINDOWS_TAILSCALE_IP:2375" docker run -d \
-        --name $CONTAINER_NAME \
+    DOCKER_HOST="$REMOTE" docker run -d \
+        --name "$CONTAINER_NAME" \
         -p "$EXT_PORT:$INT_PORT" \
-        -e DATABASE_URL=$DB_URL \
+        -e DATABASE_URL="$DB_URL" \
         -e NODE_ENV=production \
         -v "$PROD_DATA_DIR:/app/data" \
         --restart unless-stopped \
         "$IMAGE_NAME"
     [ $? -ne 0 ] && log_err "Failed to start container on Windows."
 
-    STATUS=$(DOCKER_HOST="tcp://$WINDOWS_TAILSCALE_IP:2375" docker ps --filter "name=$CONTAINER_NAME" --format "{{.Status}}")
+    # Step 4b: Schema sync on Windows
+    log_step "4b/4  Schema sync on Windows"
+    schema_sync "$CONTAINER_NAME" "$REMOTE"
+
+    STATUS=$(DOCKER_HOST="$REMOTE" docker ps --filter "name=$CONTAINER_NAME" --format "{{.Status}}")
     echo ""
     echo "============================================"
     echo "   PROD DEPLOYMENT COMPLETE (Tailscale)"
@@ -171,11 +208,12 @@ else
     echo "  File     : $ZIP_FILE ($ZIP_SIZE)"
     echo "  Transfer : Copy to Windows Bella-Dolce folder"
     echo "  Deploy   : Run deploy.ps1 on Windows"
+    echo "             (deploy.ps1 handles schema sync)"
     echo ""
-    echo "  To enable auto-deploy via Tailscale:"
-    echo "  1. Install Tailscale on Windows + Mac"
-    echo "  2. Set WINDOWS_TAILSCALE_IP in this script"
-    echo "  3. Set DEPLOY_MODE=tailscale"
+    echo "  To switch to Tailscale auto-deploy:"
+    echo "  1. brew install tailscale && tailscale up"
+    echo "  2. Confirm WINDOWS_TAILSCALE_IP=$WINDOWS_TAILSCALE_IP"
+    echo "  3. Set DEPLOY_MODE=tailscale  <-- already set"
     echo "============================================"
 
 fi
