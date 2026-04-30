@@ -39,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { icon: Sparkles, tKey: 'aiManager', path: '/ai-manager' },
     { icon: ChefHat, tKey: 'production', path: '/production' },
     { icon: Package, tKey: 'inventory', path: '/inventory' },
-    { icon: Truck, tKey: 'suppliers', path: '/suppliers' },
+    { icon: Truck, tKey: 'procurementAndSuppliers', path: '/procurement' },
     { icon: Users, tKey: 'customers', path: '/customers' },
     { icon: ChefHat, tKey: 'recipesAndProducts', path: '/product-management' },
     { icon: ShoppingCart, tKey: 'pos', path: '/pos' },

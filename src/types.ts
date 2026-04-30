@@ -172,6 +172,22 @@ export interface ActivityLog {
   timestamp: string;
 }
 
+export interface Purchase {
+  id: string;
+  materialId: string;
+  materialName: string;
+  supplierId: string;
+  supplierName: string;
+  quantity: number;
+  price: number;
+  brand: string;
+  purchaseDate: string;
+  expiryDate?: string;
+  createdAt: string;
+  createdBy: string;
+  unit: string;
+}
+
 export interface RolePermission {
   id: Role;
   allowedPaths: string[];

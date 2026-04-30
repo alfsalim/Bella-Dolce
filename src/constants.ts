@@ -1,7 +1,7 @@
 import { Language } from './types';
 
 export const CURRENCY = "DA";
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.2.1";
 
 export const TRANSLATIONS: Record<Language, any> = {
   fr: {
@@ -321,6 +321,20 @@ export const TRANSLATIONS: Record<Language, any> = {
     batchUpdatedSuccessfully: "Lot mis à jour avec succès",
     errorAdjustingStock: "Erreur lors de l'ajustement du stock",
     production_adjustment: "Ajustement de production",
+    purchases: "Achats",
+    procurementAndSuppliers: "Achats & Fournisseurs",
+    procurement: "Achats & Fournisseurs",
+    newPurchase: "Nouvel Achat",
+    purchasePrice: "Prix d'achat",
+    purchaseDate: "Date d'achat",
+    brandName: "Marque",
+    waste: "Perte / Gaspillage",
+    addActivity: "Ajouter une activité",
+    itemNameExists: "Le nom de l'article existe déjà",
+    errorSavingItem: "Erreur lors de l'enregistrement de l'article",
+    addItem: "Ajouter un article",
+    editItem: "Modifier l'article",
+    waste_adjustment: "Perte / Gaspillage",
   },
   ar: {
     dashboard: "لوحة القيادة",
@@ -565,8 +579,20 @@ export const TRANSLATIONS: Record<Language, any> = {
     l: "لتر",
     ml: "مل",
     orderReport: "تقرير الطلبات",
-    roleManagement: "إدارة الأدوار",
-    permissions: "الأذونات",
+    purchases: "المشتريات",
+    procurementAndSuppliers: "المشتريات والموردين",
+    procurement: "المشتريات والموردين",
+    newPurchase: "شراء جديد",
+    purchasePrice: "سعر الشراء",
+    purchaseDate: "تاريخ الشراء",
+    brandName: "العلامة التجارية",
+    waste: "نفايات",
+    addActivity: "إضافة نشاط",
+    itemNameExists: "اسم العنصر موجود بالفعل",
+    errorSavingItem: "خطأ في حفظ العنصر",
+    addItem: "إضافة عنصر",
+    editItem: "تعديل العنصر",
+    waste_adjustment: "نفايات / خسارة",
     allowedRoutes: "المسارات المسموح بها",
     adminRoleImmutable: "دور المسؤول غير قابل للتغيير",
     manager: "مدير",
