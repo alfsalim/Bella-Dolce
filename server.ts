@@ -126,14 +126,10 @@ const COLLECTION_ROLES: Record<string, string[]> = {
 
 async function startServer() {
   const app = express();
-<<<<<<< HEAD
-  const PORT = parseInt(process.env.PORT || '3500', 10);
-=======
   const PORT = parseInt(process.env.PORT || '3000', 10);
   const PUBLIC_GET_COLLECTIONS = ['products', 'promotions', 'settings'];
   const PUBLIC_POST_COLLECTIONS = ['orders', 'customers', 'activityLogs'];
   const PUBLIC_PUT_COLLECTIONS = ['products'];
->>>>>>> 9b048fbe4e335e58c1de56182c159c199a735784
 
   app.use(express.json());
 

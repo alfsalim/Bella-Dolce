@@ -31,6 +31,5 @@ COPY --from=build /app/prisma ./prisma
 EXPOSE 3500
 
 ENV NODE_ENV=production
-ENV DATABASE_URL="file:./prisma/dev.db"
 
-CMD npx prisma db push --accept-data-loss --skip-generate 2>/dev/null; node -r tsx ./server.ts
+CMD ["sh", "-c", "npx prisma migrate deploy && node -r tsx ./server.ts"]
