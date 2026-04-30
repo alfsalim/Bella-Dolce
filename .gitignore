@@ -9,4 +9,6 @@ coverage/
 prisma_data/*.db
 prisma/dev.db
 bella-dolce2-snapshot.tar
-bella-dolce2-snapshot.tar
+bella-dolce-production.zip
+bella-dolce.tar
+prisma/dev.db-journal
