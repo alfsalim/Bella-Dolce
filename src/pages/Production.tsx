@@ -1049,10 +1049,10 @@ const Production: React.FC = () => {
                     <tr className="text-left text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/10">
                       <th className="px-4 py-5 whitespace-nowrap">{t('product')}</th>
                       <th className="px-4 py-5 whitespace-nowrap text-center">{t('plannedQty')}</th>
-                      <th className="px-2 py-5 whitespace-nowrap text-center">{t('status')}</th>
+                      <th className="px-4 py-5 whitespace-nowrap text-center">{t('status')}</th>
                       <th className="px-2 py-5 whitespace-nowrap text-center">{t('startDate')}</th>
                       <th className="px-2 py-5 whitespace-nowrap text-center">{t('createdBy')}</th>
-                      <th className="px-4 py-5 text-right whitespace-nowrap min-w-[120px] sticky right-0 bg-white dark:bg-zinc-900 z-20 border-l border-slate-100 dark:border-white/5 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.05)] dark:shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.3)]">{t('actions')}</th>
+                      <th className="px-4 py-5 text-right whitespace-nowrap min-w-[120px]">{t('actions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-white/10">
@@ -1090,7 +1090,7 @@ const Production: React.FC = () => {
                           <td className="px-2 py-4 text-center">
                             <span className="font-bold text-slate-600 dark:text-slate-400 text-xs">{batch.createdBy || '-'}</span>
                           </td>
-                          <td className="px-4 py-4 text-right min-w-[120px] sticky right-0 bg-white dark:bg-zinc-900 z-20 group-hover:bg-[#f9fafb] dark:group-hover:bg-[#0c0c0e] transition-all border-l border-slate-100 dark:border-white/5 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.05)] dark:shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.3)]">
+                          <td className="px-4 py-4 text-right min-w-[120px]">
                             <div className="flex items-center justify-end gap-2 px-1">
                               <button 
                                 onClick={() => {

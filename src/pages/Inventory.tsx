@@ -36,7 +36,11 @@ import { compressImage } from '../lib/utils';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
 
-const Inventory: React.FC = () => {
+interface InventoryProps {
+  defaultTab?: 'products' | 'materials' | 'activities';
+}
+
+const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
   const { profile: currentUserProfile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,7 +50,7 @@ const Inventory: React.FC = () => {
   const [totalProductsPages, setTotalProductsPages] = useState(1);
   const [totalMaterialsPages, setTotalMaterialsPages] = useState(1);
   const [pageSize] = useState(25);
-  const [activeTab, setActiveTab] = useState<'products' | 'materials' | 'movements'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'materials' | 'activities'>(defaultTab || 'products');
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [movementsPage, setMovementsPage] = useState(1);
   const [totalMovementsPages, setTotalMovementsPages] = useState(1);
@@ -793,15 +797,15 @@ const Inventory: React.FC = () => {
           {t('rawMaterials')}
         </button>
         <button 
-          onClick={() => setActiveTab('movements')}
+          onClick={() => setActiveTab('activities')}
           className={clsx(
             "px-6 py-2.5 rounded-xl text-sm font-bold transition-all",
-            activeTab === 'movements' ? "bg-white dark:bg-primary-600 text-primary-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+            activeTab === 'activities' ? "bg-white dark:bg-primary-600 text-primary-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
           )}
         >
           <div className="flex items-center gap-2">
             <History className="w-4 h-4" />
-            {t('movements')}
+            {t('activities')}
           </div>
         </button>
       </div>
@@ -1228,9 +1232,30 @@ const Inventory: React.FC = () => {
               onPageChange={setProductsPage}
             />
           </div>
-        )
-      ) : activeTab === 'movements' ? (
-        <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
+      )) : activeTab === 'activities' ? (
+          <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('activities')}</h2>
+            <button 
+              onClick={() => {
+                setAdjustmentData({
+                  itemId: '',
+                  itemName: '',
+                  itemType: 'material',
+                  type: 'out',
+                  quantity: 0,
+                  reason: 'waste_adjustment',
+                  location: 'none'
+                });
+                setIsAdjustmentModalOpen(true);
+              }}
+              className="btn-secondary gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              {t('addActivity')}
+            </button>
+          </div>
+          <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -1299,6 +1324,7 @@ const Inventory: React.FC = () => {
             onPageChange={setMovementsPage}
           />
         </div>
+      </div>
       ) : (
         viewMode === 'card' ? (
           <div className="space-y-6">
@@ -1574,8 +1600,8 @@ const Inventory: React.FC = () => {
           onPageChange={setMaterialsPage}
         />
         </div>
-      )
-    )}
+      ))
+    }
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
@@ -1630,13 +1656,23 @@ const Inventory: React.FC = () => {
                       onChange={(e) => setFormData({...formData, price: Number(e.target.value)})}
                     />
                   ) : (
-                    <select 
-                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                      value={formData.unit || 'kg'}
-                      onChange={(e) => setFormData({...formData, unit: e.target.value})}
-                    >
-                      {UNITS.map(u => <option key={u} value={u}>{t(u)}</option>)}
-                    </select>
+                    <div className="flex bg-slate-50 dark:bg-zinc-800 p-1 rounded-xl border border-slate-200 dark:border-white/10 gap-1 overflow-x-auto">
+                      {UNITS.map(u => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => setFormData({...formData, unit: u})}
+                          className={clsx(
+                            "px-3 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap min-w-[50px]",
+                            (formData.unit || 'kg') === u
+                              ? "bg-primary-600 text-white shadow-sm"
+                              : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+                          )}
+                        >
+                          {t(u)}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
                 {activeTab === 'products' ? (
@@ -2170,12 +2206,64 @@ const Inventory: React.FC = () => {
 
       {isAdjustmentModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-          <div className="card w-full max-w-md shadow-2xl border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
+          <div className="card w-full max-w-md shadow-2xl border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900 border-none shadow-primary-600/10">
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-              {t('adjustStock') || 'Adjust Stock'} - {adjustmentData.itemName}
+              {t('adjustStock') || 'Adjust Stock'} {adjustmentData.itemName ? `- ${adjustmentData.itemName}` : ''}
             </h2>
             <form onSubmit={handleAdjustStock} className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
+                {!adjustmentData.itemId && (
+                  <>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('itemType')}</label>
+                      <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
+                        <button 
+                          type="button"
+                          onClick={() => setAdjustmentData({...adjustmentData, itemType: 'product', itemId: '', itemName: ''})}
+                          className={clsx(
+                            "flex-1 py-1 px-3 rounded-lg text-xs font-bold transition-all",
+                            adjustmentData.itemType === 'product' ? "bg-white dark:bg-primary-600 text-primary-600 dark:text-white shadow-sm" : "text-slate-400"
+                          )}
+                        >
+                          {t('product')}
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => setAdjustmentData({...adjustmentData, itemType: 'material', itemId: '', itemName: ''})}
+                          className={clsx(
+                            "flex-1 py-1 px-3 rounded-lg text-xs font-bold transition-all",
+                            adjustmentData.itemType === 'material' ? "bg-white dark:bg-primary-600 text-primary-600 dark:text-white shadow-sm" : "text-slate-400"
+                          )}
+                        >
+                          {t('rawMaterial')}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('item')}</label>
+                      <select 
+                        required
+                        className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                        value={adjustmentData.itemId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const name = adjustmentData.itemType === 'product' 
+                            ? products.find(p => p.id === id)?.name 
+                            : materials.find(m => m.id === id)?.name;
+                          setAdjustmentData({...adjustmentData, itemId: id, itemName: name || ''});
+                        }}
+                      >
+                        <option value="">{t('selectItem') || 'Select Item'}</option>
+                        {adjustmentData.itemType === 'product' 
+                          ? products.filter(p => !p.disabled).sort((a, b) => a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)
+                          : materials.filter(m => !m.disabled).sort((a, b) => a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                        }
+                      </select>
+                    </div>
+                  </>
+                )}
+
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('type')}</label>
                   <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
@@ -2239,8 +2327,7 @@ const Inventory: React.FC = () => {
                     onChange={(e) => setAdjustmentData({...adjustmentData, reason: e.target.value})}
                   >
                     <option value="manual_adjustment">{t('manual_adjustment') || 'Manual Adjustment'}</option>
-                    <option value="purchase">{t('purchase') || 'Purchase / Receiving'}</option>
-                    <option value="damage">{t('damage') || 'Damage / Waste'}</option>
+                    <option value="waste_adjustment">{t('waste_adjustment') || 'Waste / Loss'}</option>
                     <option value="correction">{t('correction') || 'Inventory Correction'}</option>
                   </select>
                 </div>
