@@ -22,7 +22,7 @@ import {
   Download,
   X
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, limit, where, handleFirestoreError, OperationType, getDoc, getCountFromServer } from '../lib/firebase';
+import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, limit, where, handleFirestoreError, OperationType, getDoc, getCountFromServer } from '../lib/firebase-compat';
 import { toast } from 'react-hot-toast';
 import { Order, Product } from '../types';
 import { clsx } from 'clsx';

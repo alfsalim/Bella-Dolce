@@ -25,7 +25,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { db, collection, onSnapshot, query, orderBy, limit, where, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, collection, onSnapshot, query, orderBy, limit, where, handleFirestoreError, OperationType } from '../lib/firebase-compat';
 import { ProductionBatch, Sale, Product, RawMaterial, Order } from '../types';
 import { CURRENCY } from '../constants';
 import { clsx } from 'clsx';

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { db, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, isAuthError } from '../lib/firebase';
+import { db, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, isAuthError } from '../lib/firebase-compat';
 import { UserProfile, Role } from '../types';
 
 interface AuthContextType {

@@ -21,7 +21,7 @@ import {
   Database,
   RefreshCw
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, limit, setDoc, where, getDocs, writeBatch, handleFirestoreError, OperationType, getCountFromServer } from '../lib/firebase';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, limit, setDoc, where, getDocs, writeBatch, handleFirestoreError, OperationType, getCountFromServer } from '../lib/firebase-compat';
 import { UserProfile, Role, ActivityLog } from '../types';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';

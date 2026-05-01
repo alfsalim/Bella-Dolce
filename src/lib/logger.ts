@@ -1,4 +1,4 @@
-import { db, collection, addDoc, handleFirestoreError, OperationType } from './firebase';
+import { db, collection, addDoc, handleFirestoreError, OperationType } from '../lib/firebase-compat';
 import { ActivityLog } from '../types';
 
 export const logActivity = async (userId: string, userName: string, action: string, details: string) => {

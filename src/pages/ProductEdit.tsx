@@ -15,7 +15,7 @@ import {
   Scale,
   Image as ImageIcon
 } from 'lucide-react';
-import { db, doc, getDoc, updateDoc, onSnapshot, collection, setDoc, deleteDoc } from '../lib/firebase';
+import { db, doc, getDoc, updateDoc, onSnapshot, collection, setDoc, deleteDoc } from '../lib/firebase-compat';
 import { Product, Recipe, RawMaterial, RecipeIngredient } from '../types';
 import { clsx } from 'clsx';
 import { CATEGORIES, UNITS, CURRENCY } from '../constants';

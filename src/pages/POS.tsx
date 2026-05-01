@@ -14,7 +14,7 @@ import {
   X,
   User
 } from 'lucide-react';
-import { db, collection, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, collection, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase-compat';
 import { Product, SaleItem, Customer } from '../types';
 import { clsx } from 'clsx';
 import { CATEGORIES, CURRENCY } from '../constants';

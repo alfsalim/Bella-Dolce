@@ -20,7 +20,7 @@ import {
   Activity,
   AlertCircle
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy, Timestamp, getDoc } from '../lib/firebase';
+import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy, Timestamp, getDoc } from '../lib/firebase-compat';
 import { Supplier, RawMaterial, Purchase } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
@@ -36,6 +36,13 @@ const Procurement: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+
+  const getDefaultExpiryDate = () => {
+    const date = new Date();
+    date.setMonth(date.getMonth() + 3);
+    return date.toISOString().split('T')[0];
+  };
+
   const [purchaseFormData, setPurchaseFormData] = useState({
     materialId: '',
     supplierId: '',
@@ -43,7 +50,7 @@ const Procurement: React.FC = () => {
     price: 0,
     brand: '',
     purchaseDate: new Date().toISOString().split('T')[0],
-    expiryDate: ''
+    expiryDate: getDefaultExpiryDate()
   });
 
   useEffect(() => {
@@ -81,8 +88,14 @@ const Procurement: React.FC = () => {
         return;
       }
 
-      // 1. Create Purchase Record
-      const purchaseData: any = {
+      const token = localStorage.getItem('bakery_token');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` })
+      };
+
+      // 1. Create Purchase Record via API
+      const purchaseData = {
         ...purchaseFormData,
         materialName: material.name,
         supplierName: supplier.name,
@@ -90,37 +103,31 @@ const Procurement: React.FC = () => {
         createdAt: new Date().toISOString(),
         createdBy: profile.id
       };
-      
-      const purchaseRef = await addDoc(collection(db, 'purchases'), purchaseData);
+
+      const purchaseResponse = await fetch('/api/db/purchases', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(purchaseData)
+      });
+
+      if (!purchaseResponse.ok) {
+        throw new Error('Failed to create purchase');
+      }
 
       // 2. Update Inventory
-      const materialRef = doc(db, 'rawMaterials', material.id);
       const newStock = (material.currentStock || 0) + Number(purchaseFormData.quantity);
-      await updateDoc(materialRef, {
-        currentStock: newStock,
-        brand: purchaseFormData.brand || material.brand,
-        expiryDate: purchaseFormData.expiryDate || material.expiryDate,
-        updatedAt: new Date().toISOString()
+      await fetch(`/api/db/rawMaterials/${material.id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          currentStock: newStock,
+          stock: newStock,
+          brand: purchaseFormData.brand || material.brand,
+          expiryDate: purchaseFormData.expiryDate || material.expiryDate
+        })
       });
 
-      // 3. Log Activity
-      await addDoc(collection(db, 'stockMovements'), {
-        itemId: material.id,
-        itemName: material.name,
-        itemType: 'material',
-        type: 'in',
-        quantity: Number(purchaseFormData.quantity),
-        previousStock: material.currentStock || 0,
-        newStock: newStock,
-        reason: 'purchase',
-        // Let's use a specific reason if we want
-        purchaseId: purchaseRef.id,
-        userId: profile.id,
-        userName: profile.name,
-        timestamp: Timestamp.now()
-      });
-
-      toast.success(t('batchCreatedSuccessfully')); // Reusing for success
+      toast.success(t('purchaseCreatedSuccessfully') || 'Purchase created successfully');
       setIsPurchaseModalOpen(false);
       setPurchaseFormData({
         materialId: '',
@@ -129,7 +136,7 @@ const Procurement: React.FC = () => {
         price: 0,
         brand: '',
         purchaseDate: new Date().toISOString().split('T')[0],
-        expiryDate: ''
+        expiryDate: getDefaultExpiryDate()
       });
     } catch (error) {
       console.error("Error creating purchase:", error);
@@ -320,7 +327,7 @@ const Procurement: React.FC = () => {
               <form onSubmit={handleCreatePurchase} className="p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('material')}</label>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('material')} <span className="text-red-500">*</span></label>
                     <select
                       required
                       value={purchaseFormData.materialId}
@@ -334,7 +341,7 @@ const Procurement: React.FC = () => {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('suppliers')}</label>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('suppliers')} <span className="text-red-500">*</span></label>
                     <select
                       required
                       value={purchaseFormData.supplierId}
@@ -348,7 +355,7 @@ const Procurement: React.FC = () => {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('quantity')}</label>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('quantity')} <span className="text-red-500">*</span></label>
                     <input
                       required
                       type="number"
@@ -360,7 +367,7 @@ const Procurement: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('purchasePrice')}</label>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('purchasePrice')} <span className="text-red-500">*</span></label>
                     <input
                       required
                       type="number"
@@ -382,7 +389,7 @@ const Procurement: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('purchaseDate')}</label>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('purchaseDate')} <span className="text-red-500">*</span></label>
                     <input
                       required
                       type="date"

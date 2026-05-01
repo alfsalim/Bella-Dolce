@@ -6,6 +6,8 @@ import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import fs from "fs/promises";
+import { createWriteStream } from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +53,7 @@ const getModel = (collectionName: string) => {
     'payrollRuns': prisma.payrollRun,
     'payslips': prisma.payslip,
     'supplierInvoices': prisma.supplierInvoice,
+    'purchases': prisma.supplierInvoice,
     'customerInvoices': prisma.customerInvoice,
     'fixedAssets': prisma.fixedAsset,
     'cashReconciliations': prisma.dailyCashReconciliation,
@@ -231,6 +234,58 @@ async function startServer() {
     }
   });
 
+  // File upload endpoint for invoices - accepts base64 encoded PDF
+  app.post("/api/upload/invoice", requireAuth, async (req: any, res) => {
+    try {
+      const { file } = req.body;
+      if (!file) {
+        return res.status(400).json({ error: 'No file provided' });
+      }
+
+      const uploadsDir = path.join(process.cwd(), 'uploads', 'invoices');
+      await fs.mkdir(uploadsDir, { recursive: true });
+
+      // Decode base64 file
+      const buffer = Buffer.from(file, 'base64');
+
+      // Validate file size (max 2MB)
+      if (buffer.length > 2 * 1024 * 1024) {
+        return res.status(400).json({ error: 'File size exceeds 2MB limit' });
+      }
+
+      // Check if it's a PDF (magic bytes: %PDF)
+      if (!buffer.toString('utf8', 0, 4).includes('%PDF')) {
+        return res.status(400).json({ error: 'File must be a valid PDF' });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const filename = `invoice-${timestamp}.pdf`;
+      const filepath = path.join(uploadsDir, filename);
+
+      // Write file
+      await fs.writeFile(filepath, buffer);
+
+      res.json({
+        success: true,
+        path: `/uploads/invoices/${filename}`,
+        filename
+      });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // Serve uploaded files
+  app.get("/uploads/invoices/:filename", (req, res) => {
+    try {
+      const filepath = path.join(process.cwd(), 'uploads', 'invoices', req.params.filename);
+      res.download(filepath);
+    } catch (error) {
+      res.status(404).json({ error: 'File not found' });
+    }
+  });
+
   // Generalized API routes for CRUD (Prisma bridge)
   app.get("/api/db/:collection", (req, res, next) => {
     if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();
@@ -262,6 +317,12 @@ async function startServer() {
             }
           }
         }
+
+        // For purchases, merge stored purchase details back into response
+        if (collection === 'purchases' && parsedItem.amountHT && typeof parsedItem.amountHT === 'object') {
+          Object.assign(parsedItem, parsedItem.amountHT);
+        }
+
         return parsedItem;
       });
 
@@ -297,6 +358,11 @@ async function startServer() {
         }
       }
 
+      // For purchases, merge stored purchase details back into response
+      if (collection === 'purchases' && data.amountHT && typeof data.amountHT === 'object') {
+        Object.assign(data, data.amountHT);
+      }
+
       const finalData = collection === 'users' ? sanitizeUser(data) : data;
       res.json(finalData);
     } catch (error) {
@@ -320,21 +386,61 @@ async function startServer() {
 
       const preparedBody = wrapDataIfNeeded(collection, req.body);
       const dataToSave = { ...preparedBody };
+      let originalData = { ...req.body }; // Keep original for purchases
 
       if (collection === 'rawMaterials') {
         if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
         else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
       }
 
+      if (collection === 'purchases') {
+        dataToSave.invoiceNumber = `INV-${Date.now()}`;
+        dataToSave.date = new Date(dataToSave.purchaseDate);
+        dataToSave.totalAmount = dataToSave.price; // Use price as total directly (already total paid price)
+
+        // Store full purchase details as JSON for later retrieval
+        const purchaseDetails = {
+          materialId: dataToSave.materialId,
+          materialName: dataToSave.materialName,
+          quantity: dataToSave.quantity,
+          price: dataToSave.price,
+          brand: dataToSave.brand,
+          purchaseDate: dataToSave.purchaseDate,
+          expiryDate: dataToSave.expiryDate,
+          unit: dataToSave.unit,
+          createdBy: dataToSave.createdBy,
+          updatedAt: dataToSave.updatedAt
+        };
+        dataToSave.amountHT = JSON.stringify(purchaseDetails);
+
+        // Only keep valid SupplierInvoice fields
+        const validFields = ['invoiceNumber', 'supplierId', 'supplierName', 'date', 'dueDate', 'amountHT', 'tvaAmount', 'totalAmount', 'amountPaid', 'status'];
+        const filtered: any = {};
+        for (const field of validFields) {
+          if (field in dataToSave) filtered[field] = dataToSave[field];
+        }
+        // Replace dataToSave with only valid fields
+        for (const key in dataToSave) {
+          delete dataToSave[key];
+        }
+        Object.assign(dataToSave, filtered);
+      }
+
       for (const key in dataToSave) {
-        if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
+        if (dataToSave[key] !== null && typeof dataToSave[key] === 'object' && !(dataToSave[key] instanceof Date)) {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
         }
       }
 
       const data = await model.create({ data: dataToSave });
       const result = unwrapDataIfNeeded(collection, data);
-      res.json(collection === 'users' ? sanitizeUser(result) : result);
+
+      // For purchases, return original data merged with saved data
+      if (collection === 'purchases') {
+        res.json({ ...originalData, ...result, id: result.id });
+      } else {
+        res.json(collection === 'users' ? sanitizeUser(result) : result);
+      }
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -356,14 +462,48 @@ async function startServer() {
 
       const preparedBody = wrapDataIfNeeded(collection, req.body);
       const dataToSave = { ...preparedBody };
+      let originalData = { ...req.body }; // Keep original for purchases
 
       if (collection === 'rawMaterials') {
         if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
         else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
       }
 
+      if (collection === 'purchases') {
+        if (dataToSave.purchaseDate) dataToSave.date = new Date(dataToSave.purchaseDate);
+        if (!dataToSave.totalAmount && dataToSave.price) {
+          dataToSave.totalAmount = dataToSave.price; // Use price as total directly (already total paid price)
+        }
+
+        // Store full purchase details as JSON for later retrieval
+        const purchaseDetails = {
+          materialId: dataToSave.materialId,
+          materialName: dataToSave.materialName,
+          quantity: dataToSave.quantity,
+          price: dataToSave.price,
+          brand: dataToSave.brand,
+          purchaseDate: dataToSave.purchaseDate,
+          expiryDate: dataToSave.expiryDate,
+          unit: dataToSave.unit,
+          updatedAt: new Date().toISOString()
+        };
+        dataToSave.amountHT = JSON.stringify(purchaseDetails);
+
+        // Only keep valid SupplierInvoice fields
+        const validFields = ['invoiceNumber', 'supplierId', 'supplierName', 'date', 'dueDate', 'amountHT', 'tvaAmount', 'totalAmount', 'amountPaid', 'status'];
+        const filtered: any = {};
+        for (const field of validFields) {
+          if (field in dataToSave) filtered[field] = dataToSave[field];
+        }
+        // Replace dataToSave with only valid fields
+        for (const key in dataToSave) {
+          delete dataToSave[key];
+        }
+        Object.assign(dataToSave, filtered);
+      }
+
       for (const key in dataToSave) {
-        if (dataToSave[key] !== null && typeof dataToSave[key] === 'object') {
+        if (dataToSave[key] !== null && typeof dataToSave[key] === 'object' && !(dataToSave[key] instanceof Date)) {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
         }
       }
@@ -381,7 +521,13 @@ async function startServer() {
         });
       }
       const result = unwrapDataIfNeeded(collection, data);
-      res.json(collection === 'users' ? sanitizeUser(result) : result);
+
+      // For purchases, return original data merged with saved data
+      if (collection === 'purchases') {
+        res.json({ ...originalData, ...result, id: result.id });
+      } else {
+        res.json(collection === 'users' ? sanitizeUser(result) : result);
+      }
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -501,6 +647,9 @@ async function startServer() {
       users: userList
     });
   });
+
+  // Serve uploaded files
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

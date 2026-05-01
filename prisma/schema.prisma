@@ -246,7 +246,7 @@ model SupplierInvoice {
   supplierName  String?
   date          DateTime
   dueDate       DateTime?
-  amountHT      Float?
+  amountHT      String?
   tvaAmount     Float?
   totalAmount   Float
   amountPaid    Float     @default(0)

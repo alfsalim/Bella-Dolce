@@ -50,7 +50,7 @@ import {
   isWithinInterval,
   subDays 
 } from 'date-fns';
-import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase';
+import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase-compat';
 import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem } from '../types';
 import { clsx } from 'clsx';
 import { CURRENCY } from '../constants';

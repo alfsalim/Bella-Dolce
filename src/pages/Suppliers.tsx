@@ -17,7 +17,7 @@ import {
   History,
   Info
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy } from '../lib/firebase';
+import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy } from '../lib/firebase-compat';
 import { Supplier, RawMaterial, SupplierInvoice } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';

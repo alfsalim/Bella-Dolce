@@ -13,7 +13,7 @@ import {
   onSnapshot,
   db, 
   auth
-} from '../lib/firebase';
+} from '../lib/firebase-compat';
 import { 
   Account, 
   JournalEntry, 
@@ -23,7 +23,7 @@ import {
   FinancialEmployee,
   UserProfile
 } from '../types';
-import { handleFirestoreError } from '../lib/firebase';
+import { handleFirestoreError } from '../lib/firebase-compat';
 import { format } from 'date-fns';
 
 export const financeService = {

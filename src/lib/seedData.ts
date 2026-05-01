@@ -1,4 +1,4 @@
-import { db, collection, getDocs, addDoc, setDoc, doc } from './firebase';
+import { db, collection, getDocs, addDoc, setDoc, doc } from '../lib/firebase-compat';
 import { Product, RawMaterial, Supplier, Customer, ProductionBatch, Sale, RolePermission } from '../types';
 
 export const DEFAULT_PERMISSIONS: RolePermission[] = [

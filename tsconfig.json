@@ -23,5 +23,11 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["vite/client"]
+  },
+  "ts-node": {
+    "transpileOnly": true,
+    "compilerOptions": {
+      "module": "ESNext"
+    }
   }
 }

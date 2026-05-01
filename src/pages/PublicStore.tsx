@@ -11,7 +11,7 @@ import {
   auth, 
   handleFirestoreError, 
   OperationType 
-} from '../lib/firebase';
+} from '../lib/firebase-compat';
 import { 
   ChefHat, 
   ShoppingBag, 

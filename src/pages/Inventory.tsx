@@ -26,7 +26,7 @@ import {
   History
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, limit, handleFirestoreError, OperationType, getCountFromServer, where, getDoc, getDocs, Timestamp } from '../lib/firebase';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, limit, handleFirestoreError, OperationType, getCountFromServer, where, getDoc, getDocs, Timestamp } from '../lib/firebase-compat';
 import { Product, RawMaterial, StockMovement, Recipe } from '../types';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';

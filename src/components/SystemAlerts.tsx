@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { db, collection, onSnapshot, query, where, limit, orderBy } from '../lib/firebase';
+import { db, collection, onSnapshot, query, where, limit, orderBy } from '../lib/firebase-compat';
 import { Bell } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
