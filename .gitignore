@@ -12,3 +12,7 @@ bella-dolce2-snapshot.tar
 bella-dolce-production.zip
 bella-dolce.tar
 prisma/dev.db-journal
+bella-dolce*.zip
+bella-dolce*.tar
+*.zip
+*.tar
