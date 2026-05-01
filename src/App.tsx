@@ -24,7 +24,6 @@ import Orders from './pages/Orders';
 import Finance from './pages/Finance';
 import AIManager from './pages/AIManager';
 import Procurement from './pages/Procurement';
-import PurchaseManagement from './pages/PurchaseManagement';
 import { seedDatabase } from './lib/seedData';
 
 import PublicLayout from './components/PublicLayout';
@@ -68,7 +67,6 @@ const App: React.FC = () => {
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/inventory/activities" element={<Inventory defaultTab="activities" />} />
               <Route path="/procurement" element={<Procurement />} />
-              <Route path="/purchase-management" element={<PurchaseManagement />} />
               <Route path="/product-management" element={<ProductManagement />} />
               <Route path="/pos" element={<POS />} />
               <Route path="/b2b" element={<B2BStore />} />

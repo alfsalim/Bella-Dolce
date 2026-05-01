@@ -1,41 +1,66 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  Truck, 
-  Plus, 
-  Search, 
-  ShoppingCart,
-  History,
-  Calendar,
-  Package,
-  TrendingDown,
-  ChevronRight,
-  Filter,
-  Download,
+import {
+  Truck,
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
   Building2,
-  Tag,
-  Hash,
-  Scale,
-  Activity,
   AlertCircle
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy, Timestamp, getDoc } from '../lib/firebase-compat';
-import { Supplier, RawMaterial, Purchase } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import Suppliers from './Suppliers';
 
+interface Purchase {
+  id: string;
+  invoiceNumber: string;
+  materialId: string;
+  materialName: string;
+  supplierId: string;
+  supplierName: string;
+  quantity: number;
+  price: number;
+  brand: string;
+  purchaseDate: string;
+  expiryDate: string;
+  unit: string;
+  totalAmount: number;
+  invoicePdfPath?: string;
+}
+
+interface RawMaterial {
+  id: string;
+  name: string;
+  currentStock: number;
+  unit: string;
+}
+
 const Procurement: React.FC = () => {
-  const { t, isRTL, formatCurrency } = useLanguage();
+  const { t, formatCurrency } = useLanguage();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'purchases' | 'suppliers'>('purchases');
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+
+  const [formData, setFormData] = useState({
+    materialId: '',
+    supplierId: '',
+    quantity: 0,
+    price: 0,
+    brand: '',
+    purchaseDate: new Date().toISOString().split('T')[0],
+    expiryDate: ''
+  });
 
   const getDefaultExpiryDate = () => {
     const date = new Date();
@@ -43,117 +68,299 @@ const Procurement: React.FC = () => {
     return date.toISOString().split('T')[0];
   };
 
-  const [purchaseFormData, setPurchaseFormData] = useState({
-    materialId: '',
-    supplierId: '',
-    quantity: 0,
-    price: 0,
-    brand: '',
-    purchaseDate: new Date().toISOString().split('T')[0],
-    expiryDate: getDefaultExpiryDate()
-  });
-
-  useEffect(() => {
-    const unsubMaterials = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
-      setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
-    });
-
-    const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
-      setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
-    });
-
-    const purchasesQ = query(collection(db, 'purchases'), orderBy('createdAt', 'desc'));
-    const unsubPurchases = onSnapshot(purchasesQ, (snapshot) => {
-      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
-      setLoading(false);
-    });
-
-    return () => {
-      unsubMaterials();
-      unsubSuppliers();
-      unsubPurchases();
-    };
-  }, []);
-
-  const handleCreatePurchase = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profile) return;
-
-    try {
-      const material = materials.find(m => m.id === purchaseFormData.materialId);
-      const supplier = suppliers.find(s => s.id === purchaseFormData.supplierId);
-
-      if (!material || !supplier) {
-        toast.error("Invalid material or supplier");
-        return;
-      }
-
-      const token = localStorage.getItem('bakery_token');
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` })
-      };
-
-      // 1. Create Purchase Record via API
-      const purchaseData = {
-        ...purchaseFormData,
-        materialName: material.name,
-        supplierName: supplier.name,
-        unit: material.unit,
-        createdAt: new Date().toISOString(),
-        createdBy: profile.id
-      };
-
-      const purchaseResponse = await fetch('/api/db/purchases', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(purchaseData)
-      });
-
-      if (!purchaseResponse.ok) {
-        throw new Error('Failed to create purchase');
-      }
-
-      // 2. Update Inventory
-      const newStock = (material.currentStock || 0) + Number(purchaseFormData.quantity);
-      await fetch(`/api/db/rawMaterials/${material.id}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          currentStock: newStock,
-          stock: newStock,
-          brand: purchaseFormData.brand || material.brand,
-          expiryDate: purchaseFormData.expiryDate || material.expiryDate
-        })
-      });
-
-      toast.success(t('purchaseCreatedSuccessfully') || 'Purchase created successfully');
-      setIsPurchaseModalOpen(false);
-      setPurchaseFormData({
-        materialId: '',
-        supplierId: '',
-        quantity: 0,
-        price: 0,
-        brand: '',
-        purchaseDate: new Date().toISOString().split('T')[0],
-        expiryDate: getDefaultExpiryDate()
-      });
-    } catch (error) {
-      console.error("Error creating purchase:", error);
-      toast.error(t('errorSavingItem'));
-    }
-  };
-
-  if (!profile || !['admin', 'manager'].includes(profile.role)) {
+  if (profile && profile.role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
         <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 mb-6">
           <AlertCircle className="w-10 h-10" />
         </div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h1>
-        <p className="text-slate-500 max-w-md">Only administrators and managers can access procurement management.</p>
+        <p className="text-slate-500 max-w-md">Only administrators can access procurement management.</p>
       </div>
     );
+  }
+
+  useEffect(() => {
+    fetchPurchases();
+    fetchMaterials();
+    fetchSuppliers();
+  }, []);
+
+  const fetchPurchases = async () => {
+    try {
+      const token = localStorage.getItem('bakery_token');
+      const response = await fetch('/api/db/purchases', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to fetch purchases');
+      const data = await response.json();
+      setPurchases(data || []);
+    } catch (error) {
+      console.error('Error fetching purchases:', error);
+      toast.error('Failed to load purchases');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchMaterials = async () => {
+    try {
+      const token = localStorage.getItem('bakery_token');
+      const response = await fetch('/api/db/rawMaterials', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to fetch materials');
+      const data = await response.json();
+      setMaterials(data || []);
+    } catch (error) {
+      console.error('Error fetching materials:', error);
+    }
+  };
+
+  const fetchSuppliers = async () => {
+    try {
+      const token = localStorage.getItem('bakery_token');
+      const response = await fetch('/api/db/suppliers', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to fetch suppliers');
+      const data = await response.json();
+      setSuppliers(data || []);
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
+    }
+  };
+
+  const updateInventory = async (
+    materialId: string,
+    quantityChange: number,
+    operation: 'add' | 'subtract'
+  ) => {
+    try {
+      const material = materials.find(m => m.id === materialId);
+      if (!material) {
+        console.warn(`Material not found: ${materialId}`);
+        return;
+      }
+
+      const newStock = operation === 'add'
+        ? (material.currentStock || 0) + quantityChange
+        : (material.currentStock || 0) - quantityChange;
+
+      const token = localStorage.getItem('bakery_token');
+      const response = await fetch(`/api/db/rawMaterials/${materialId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentStock: newStock,
+          stock: newStock
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Inventory update error:', errorData);
+        return;
+      }
+
+      setMaterials(materials.map(m =>
+        m.id === materialId
+          ? { ...m, currentStock: newStock }
+          : m
+      ));
+    } catch (error) {
+      console.error('Error updating inventory:', error);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const material = materials.find(m => m.id === formData.materialId);
+    if (!material) {
+      toast.error('Please select a material');
+      return;
+    }
+
+    if (!formData.supplierId) {
+      toast.error('Please select a supplier');
+      return;
+    }
+
+    const token = localStorage.getItem('bakery_token');
+
+    try {
+      let pdfPath: string | undefined;
+      if (pdfFile) {
+        const reader = new FileReader();
+        await new Promise((resolve, reject) => {
+          reader.onload = async () => {
+            try {
+              const base64 = (reader.result as string).split(',')[1];
+              const uploadRes = await fetch('/api/upload/invoice', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ file: base64 })
+              });
+              if (!uploadRes.ok) throw new Error('Failed to upload PDF');
+              const uploadData = await uploadRes.json();
+              pdfPath = uploadData.path;
+              resolve(null);
+            } catch (error) {
+              reject(error);
+            }
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(pdfFile);
+        });
+      }
+
+      if (editingPurchase) {
+        const quantityDifference = formData.quantity - editingPurchase.quantity;
+        const supplier = suppliers.find(s => s.id === formData.supplierId);
+
+        const response = await fetch(`/api/db/purchases/${editingPurchase.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            ...formData,
+            materialName: material.name,
+            supplierName: supplier?.name || 'Unknown Supplier',
+            unit: material.unit,
+            totalAmount: formData.price,
+            ...(pdfPath && { invoicePdfPath: pdfPath }),
+            updatedAt: new Date().toISOString()
+          })
+        });
+
+        if (!response.ok) throw new Error('Failed to update purchase');
+
+        if (quantityDifference !== 0) {
+          try {
+            if (quantityDifference > 0) {
+              await updateInventory(formData.materialId, quantityDifference, 'add');
+            } else {
+              await updateInventory(formData.materialId, Math.abs(quantityDifference), 'subtract');
+            }
+          } catch (invError) {
+            console.error('Inventory sync warning:', invError);
+          }
+        }
+
+        toast.success('Purchase updated successfully');
+      } else {
+        const supplier = suppliers.find(s => s.id === formData.supplierId);
+        const purchaseData = {
+          ...formData,
+          materialName: material.name,
+          supplierName: supplier?.name || 'Unknown Supplier',
+          unit: material.unit,
+          totalAmount: formData.price,
+          ...(pdfPath && { invoicePdfPath: pdfPath }),
+          createdAt: new Date().toISOString(),
+          createdBy: profile?.id
+        };
+
+        const response = await fetch('/api/db/purchases', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(purchaseData)
+        });
+
+        if (!response.ok) throw new Error('Failed to create purchase');
+
+        try {
+          await updateInventory(formData.materialId, formData.quantity, 'add');
+        } catch (invError) {
+          console.error('Inventory sync warning:', invError);
+        }
+
+        toast.success('Purchase created successfully');
+      }
+
+      setIsModalOpen(false);
+      setEditingPurchase(null);
+      setPdfFile(null);
+      resetForm();
+      fetchPurchases();
+    } catch (error) {
+      console.error('Error saving purchase:', error);
+      toast.error(editingPurchase ? 'Failed to update purchase' : 'Failed to create purchase');
+    }
+  };
+
+  const handleDelete = async (purchase: Purchase) => {
+    if (!confirm('Are you sure you want to delete this purchase? This will also decrease the material inventory.')) {
+      return;
+    }
+
+    const token = localStorage.getItem('bakery_token');
+
+    try {
+      const response = await fetch(`/api/db/purchases/${purchase.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!response.ok) throw new Error('Failed to delete purchase');
+
+      await updateInventory(purchase.materialId, purchase.quantity, 'subtract');
+
+      toast.success('Purchase deleted successfully');
+      fetchPurchases();
+    } catch (error) {
+      console.error('Error deleting purchase:', error);
+      toast.error('Failed to delete purchase');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      materialId: '',
+      supplierId: '',
+      quantity: 0,
+      price: 0,
+      brand: '',
+      purchaseDate: new Date().toISOString().split('T')[0],
+      expiryDate: getDefaultExpiryDate()
+    });
+  };
+
+  const handleEdit = (purchase: Purchase) => {
+    setEditingPurchase(purchase);
+    setFormData({
+      materialId: purchase.materialId,
+      supplierId: purchase.supplierId,
+      quantity: purchase.quantity,
+      price: purchase.price,
+      brand: purchase.brand,
+      purchaseDate: purchase.purchaseDate,
+      expiryDate: purchase.expiryDate
+    });
+    setIsModalOpen(true);
+  };
+
+  const filteredPurchases = purchases.filter(p =>
+    (p.materialName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (p.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  if (loading && activeTab === 'purchases') {
+    return <div className="flex items-center justify-center h-96">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+    </div>;
   }
 
   return (
@@ -163,11 +370,11 @@ const Procurement: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
             <Truck className="w-8 h-8 text-primary-600" />
-            {t('procurement')}
+            Procurement & Purchases
           </h1>
-          <p className="text-slate-500 mt-1">Manage purchases and supplier relationships</p>
+          <p className="text-slate-500 mt-1">Manage purchases, suppliers, and inventory</p>
         </div>
-        
+
         <div className="flex bg-slate-100 dark:bg-zinc-800 p-1 rounded-2xl">
           <button
             onClick={() => setActiveTab('purchases')}
@@ -176,8 +383,8 @@ const Procurement: React.FC = () => {
               activeTab === 'purchases' ? "bg-white dark:bg-primary-600 text-primary-600 dark:text-white shadow-sm" : "text-slate-500"
             )}
           >
-            <ShoppingCart className="w-4 h-4" />
-            {t('purchases')}
+            <Plus className="w-4 h-4" />
+            Purchases
           </button>
           <button
             onClick={() => setActiveTab('suppliers')}
@@ -187,7 +394,7 @@ const Procurement: React.FC = () => {
             )}
           >
             <Building2 className="w-4 h-4" />
-            {t('suppliers')}
+            Suppliers
           </button>
         </div>
       </div>
@@ -201,85 +408,107 @@ const Procurement: React.FC = () => {
             exit={{ opacity: 0, y: -10 }}
             className="space-y-6"
           >
-            {/* Purchase Actions */}
+            {/* Search and Add Button */}
             <div className="flex flex-col sm:flex-row justify-between gap-4">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder={t('search')} 
-                  className="input pl-12"
+                <input
+                  type="text"
+                  placeholder="Search by material or supplier..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="input pl-12 w-full"
                 />
               </div>
-              <button 
-                onClick={() => setIsPurchaseModalOpen(true)}
-                className="btn-primary gap-2"
+              <button
+                onClick={() => {
+                  setEditingPurchase(null);
+                  resetForm();
+                  setIsModalOpen(true);
+                }}
+                className="btn-primary gap-2 inline-flex"
               >
                 <Plus className="w-5 h-5" />
-                {t('newPurchase')}
+                New Purchase
               </button>
             </div>
 
-            {/* Purchases List */}
-            <div className="grid grid-cols-1 gap-4">
-              {purchases.map((purchase) => (
-                <div 
-                  key={purchase.id}
-                  className="bg-white dark:bg-zinc-900 p-6 rounded-[32px] border border-slate-100 dark:border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-xl hover:shadow-primary-600/5 transition-all group"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center text-primary-600">
-                      <Package className="w-7 h-7" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors uppercase tracking-tight">
-                        {purchase.materialName}
-                      </h3>
-                      <div className="flex items-center gap-3 text-slate-500 text-sm mt-0.5">
-                        <span className="flex items-center gap-1">
-                          <Building2 className="w-3.5 h-3.5" />
-                          {purchase.supplierName}
-                        </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1 font-mono uppercase">
-                          <Tag className="w-3.5 h-3.5" />
-                          {purchase.brand || 'No Brand'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+            {/* Purchases Table */}
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/5 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-white/5">
+                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Material</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Supplier</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Qty</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Price</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Total</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Date</th>
+                      <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Invoice</th>
+                      <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPurchases.map((purchase) => (
+                      <tr key={purchase.id} className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-semibold text-slate-900 dark:text-white">{purchase.materialName}</td>
+                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{purchase.supplierName}</td>
+                        <td className="px-6 py-4 text-sm text-right font-medium text-slate-900 dark:text-white">
+                          {purchase.quantity} {purchase.unit}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-right font-medium text-slate-900 dark:text-white">
+                          {formatCurrency(purchase.price)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-right font-bold text-primary-600">
+                          {formatCurrency(purchase.totalAmount)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          {purchase.purchaseDate ? new Date(purchase.purchaseDate).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {purchase.invoicePdfPath ? (
+                            <a
+                              href={purchase.invoicePdfPath}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary-600 hover:underline text-sm font-medium"
+                            >
+                              📄 View
+                            </a>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleEdit(purchase)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(purchase)}
+                              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                  <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-                    <div className="text-center md:text-left">
-                      <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">{t('quantity')}</p>
-                      <p className="text-lg font-bold text-slate-900 dark:text-white">
-                        {purchase.quantity} <span className="text-xs font-medium text-slate-500">{purchase.unit}</span>
-                      </p>
-                    </div>
-                    <div className="text-center md:text-left">
-                      <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">{t('purchasePrice')}</p>
-                      <p className="text-lg font-bold text-primary-600">
-                        {formatCurrency(purchase.price)}
-                      </p>
-                    </div>
-                    <div className="text-center md:text-left">
-                      <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">{t('purchaseDate')}</p>
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                        {new Date(purchase.purchaseDate).toLocaleDateString()}
-                      </p>
-                    </div>
-                    {purchase.expiryDate && (
-                      <div className="text-center md:text-left">
-                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">{t('expiryDate')}</p>
-                        <p className="text-sm font-bold text-amber-600 flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {new Date(purchase.expiryDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    )}
-                  </div>
+              {filteredPurchases.length === 0 && (
+                <div className="text-center py-12">
+                  <p className="text-slate-500">No purchases found</p>
                 </div>
-              ))}
+              )}
             </div>
           </motion.div>
         ) : (
@@ -294,59 +523,57 @@ const Procurement: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* New Purchase Modal */}
+      {/* Purchase Modal */}
       <AnimatePresence>
-        {isPurchaseModalOpen && (
+        {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsPurchaseModalOpen(false)}
+              onClick={() => setIsModalOpen(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-md"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-[40px] shadow-2xl overflow-hidden"
+              className="relative w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl overflow-hidden"
             >
-              <div className="p-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-slate-50/50 dark:bg-zinc-800/50">
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-                  <ShoppingCart className="w-6 h-6 text-primary-600" />
-                  {t('newPurchase')}
+              <div className="p-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-zinc-800/50">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {editingPurchase ? 'Edit Purchase' : 'New Purchase'}
                 </h2>
-                <button 
-                  onClick={() => setIsPurchaseModalOpen(false)}
-                  className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all"
-                >
-                  <Plus className="w-6 h-6 text-slate-400 rotate-45" />
-                </button>
               </div>
 
-              <form onSubmit={handleCreatePurchase} className="p-8 space-y-6">
+              <form onSubmit={handleSubmit} className="p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('material')} <span className="text-red-500">*</span></label>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Material <span className="text-red-600">*</span>
+                    </label>
                     <select
                       required
-                      value={purchaseFormData.materialId}
-                      onChange={(e) => setPurchaseFormData({...purchaseFormData, materialId: e.target.value})}
-                      className="input"
+                      value={formData.materialId}
+                      onChange={(e) => setFormData({ ...formData, materialId: e.target.value })}
+                      className="input w-full"
                     >
-                      <option value="">{t('selectMaterial')}</option>
+                      <option value="">Select Material</option>
                       {materials.map(m => (
                         <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('suppliers')} <span className="text-red-500">*</span></label>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Supplier <span className="text-red-600">*</span>
+                    </label>
                     <select
                       required
-                      value={purchaseFormData.supplierId}
-                      onChange={(e) => setPurchaseFormData({...purchaseFormData, supplierId: e.target.value})}
-                      className="input"
+                      value={formData.supplierId}
+                      onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
+                      className="input w-full"
                     >
                       <option value="">Select Supplier</option>
                       {suppliers.map(s => (
@@ -354,74 +581,113 @@ const Procurement: React.FC = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('quantity')} <span className="text-red-500">*</span></label>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Quantity <span className="text-red-600">*</span>
+                    </label>
                     <input
-                      required
                       type="number"
                       step="0.01"
-                      value={purchaseFormData.quantity}
-                      onChange={(e) => setPurchaseFormData({...purchaseFormData, quantity: Number(e.target.value)})}
-                      className="input font-bold"
-                      placeholder="0.00"
+                      required
+                      value={formData.quantity}
+                      onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                      className="input w-full"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('purchasePrice')} <span className="text-red-500">*</span></label>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Price (Total) <span className="text-red-600">*</span>
+                    </label>
                     <input
-                      required
                       type="number"
                       step="0.01"
-                      value={purchaseFormData.price}
-                      onChange={(e) => setPurchaseFormData({...purchaseFormData, price: Number(e.target.value)})}
-                      className="input font-bold text-primary-600"
-                      placeholder="0.00"
+                      required
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
+                      className="input w-full"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('brandName')}</label>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Brand
+                    </label>
                     <input
                       type="text"
-                      value={purchaseFormData.brand}
-                      onChange={(e) => setPurchaseFormData({...purchaseFormData, brand: e.target.value})}
-                      className="input"
-                      placeholder="Brand name..."
+                      value={formData.brand}
+                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                      className="input w-full"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('purchaseDate')} <span className="text-red-500">*</span></label>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Purchase Date <span className="text-red-600">*</span>
+                    </label>
                     <input
+                      type="date"
                       required
-                      type="date"
-                      value={purchaseFormData.purchaseDate}
-                      onChange={(e) => setPurchaseFormData({...purchaseFormData, purchaseDate: e.target.value})}
-                      className="input"
+                      value={formData.purchaseDate}
+                      onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
+                      className="input w-full"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">{t('expiryDate')}</label>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Expiry Date
+                    </label>
                     <input
                       type="date"
-                      value={purchaseFormData.expiryDate}
-                      onChange={(e) => setPurchaseFormData({...purchaseFormData, expiryDate: e.target.value})}
-                      className="input"
+                      value={formData.expiryDate}
+                      onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                      className="input w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                      Invoice PDF (Optional, Max 2MB)
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 2 * 1024 * 1024) {
+                            toast.error('File size exceeds 2MB limit');
+                            e.target.value = '';
+                            return;
+                          }
+                          setPdfFile(file);
+                        }
+                      }}
+                      className="input w-full"
                     />
                   </div>
                 </div>
 
                 <div className="flex justify-end gap-4 pt-6">
-                  <button 
+                  <button
                     type="button"
-                    onClick={() => setIsPurchaseModalOpen(false)}
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setEditingPurchase(null);
+                      setPdfFile(null);
+                      resetForm();
+                    }}
                     className="btn-secondary"
                   >
-                    {t('cancel')}
+                    Cancel
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     className="btn-primary px-10 shadow-lg shadow-primary-600/20"
                   >
-                    {t('confirm')}
+                    {editingPurchase ? 'Update Purchase' : 'Create Purchase'}
                   </button>
                 </div>
               </form>
