@@ -1247,13 +1247,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => deleteProduct(product.id)}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 rounded-lg transition-all duration-200 border border-transparent hover:border-red-600 dark:hover:border-red-500"
-                        title={t('delete')}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -1354,17 +1347,10 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                                   });
                                   setIsInventoryModalOpen(true);
                                 }}
-                                className="p-2 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
+                                className="px-3 py-1 text-xs font-bold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 rounded-lg transition-colors"
                                 title={t('edit')}
                               >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => deleteProduct(product.id)}
-                                className="p-2 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 rounded-lg transition-all duration-200 border border-transparent hover:border-red-600 dark:hover:border-red-500"
-                                title={t('delete')}
-                              >
-                                <Trash2 className="w-4 h-4" />
+                                {t('details')}
                               </button>
                             </>
                           )}
@@ -1608,13 +1594,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => deleteMaterial(material.id)}
-                            className="p-2 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 rounded-lg transition-all duration-200 border border-transparent hover:border-red-600 dark:hover:border-red-500"
-                            title={t('delete')}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       )}
                     </div>
@@ -1733,12 +1712,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-white hover:bg-emerald-600 dark:hover:bg-emerald-500 hover:border-emerald-600 dark:hover:border-emerald-500 transition-all duration-200 text-lg"
                           >
                             🛒
-                          </button>
-                          <button
-                            onClick={() => deleteMaterial(material.id)}
-                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 hover:border-red-600 dark:hover:border-red-500 transition-all duration-200"
-                          >
-                            <Trash2 className="w-4 h-4" />
                           </button>
                         </>
                       )}
@@ -2802,10 +2775,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 </label>
                 <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
                   <p className="text-lg font-bold text-slate-900 dark:text-white">
-                    {((inventoryFormData.costPrice || (selectedItemForInventory as any).costPrice || 0) *
-                    ('currentStock' in selectedItemForInventory
-                      ? (selectedItemForInventory as any).currentStock
-                      : (inventoryFormData.shopStock + inventoryFormData.freezerStock))).toFixed(2)} {CURRENCY}
+                    {(
+                      ((selectedItemForInventory as any).costPrice || 0) *
+                      ('currentStock' in selectedItemForInventory
+                        ? (selectedItemForInventory as any).currentStock
+                        : (inventoryFormData.shopStock + inventoryFormData.freezerStock))
+                    ).toFixed(2)} {CURRENCY}
                   </p>
                 </div>
               </div>
