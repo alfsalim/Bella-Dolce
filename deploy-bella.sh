@@ -137,38 +137,53 @@ fi
 #   PROD MODE — Windows Server
 # ════════════════════════════════════════════════
 
-# Step 1: Build for linux/amd64
-log_step "1/4  Building image for linux/amd64 (Windows target)"
-log_info "Platform : linux/amd64"
-log_info "Image    : $IMAGE_NAME"
-docker buildx build --platform linux/amd64 -t "$IMAGE_NAME" --load .
-[ $? -ne 0 ] && log_err "Docker build failed."
-log_ok "Image built successfully"
-
-# Step 2: Save image
-log_step "2/4  Saving image to tar"
-docker save "$IMAGE_NAME" > "$TAR_FILE"
-[ $? -ne 0 ] && log_err "Failed to save image."
-SIZE=$(du -sh "$TAR_FILE" | cut -f1)
-log_ok "Saved: $TAR_FILE ($SIZE)"
-
 if [ "$DEPLOY_MODE" = "tailscale" ] && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
 
     REMOTE="tcp://$WINDOWS_TAILSCALE_IP:2375"
 
-    # Step 3: Stop old container on Windows
-    log_step "3/4  Deploying directly to Windows via Tailscale"
+    # Step 1: Stop old container on Windows
+    log_step "1/3  Connecting to Windows via Tailscale"
     log_info "Target : $WINDOWS_TAILSCALE_IP:2375"
-    log_info "Stopping old container on Windows..."
+    log_info "Stopping old container..."
     DOCKER_HOST="$REMOTE" docker stop "$CONTAINER_NAME" 2>/dev/null
-    DOCKER_HOST="$REMOTE" docker rm "$CONTAINER_NAME" 2>/dev/null
+    DOCKER_HOST="$REMOTE" docker rm   "$CONTAINER_NAME" 2>/dev/null
 
-    # Step 4: Push image and start container
-    log_step "4/4  Pushing image and starting container"
-    log_info "Streaming image to Windows Docker..."
-    docker save "$IMAGE_NAME" | DOCKER_HOST="$REMOTE" docker load
-    [ $? -ne 0 ] && log_err "Failed to push image to Windows."
+    # Step 2: Build and push image
+    log_step "2/3  Building and pushing image"
 
+    if DOCKER_HOST="$REMOTE" docker image inspect node:24-slim >/dev/null 2>&1; then
+        # Fast path — base image already on Windows, build remotely (context-only transfer)
+        log_info "Base image cached on Windows — remote build (few MB transfer)"
+        DOCKER_HOST="$REMOTE" docker build --platform linux/amd64 -t "$IMAGE_NAME" .
+        [ $? -ne 0 ] && log_err "Remote build failed on Windows."
+    else
+        # Cold path — base image missing on Windows (first deploy or clean machine)
+        # Build on Mac and push compressed image (~120MB vs 400MB raw)
+        log_info "Base image not on Windows — building on Mac and pushing compressed (one-time ~120MB)"
+        log_info "Subsequent deploys will use fast remote build with layer cache"
+        if ! docker info >/dev/null 2>&1; then
+            log_err "Mac Docker engine is not running. Open Docker Desktop and wait for the engine to start (green indicator), then retry."
+        fi
+        docker buildx build --platform linux/amd64 --load -t "$IMAGE_NAME" .
+        [ $? -ne 0 ] && log_err "Local build on Mac failed."
+        docker save "$IMAGE_NAME" | gzip | DOCKER_HOST="$REMOTE" docker load
+        [ $? -ne 0 ] && log_err "Failed to push image to Windows."
+        # Also seed node:24-slim so warm-path builds work on next deploy (Windows has no Docker Hub access)
+        log_info "Seeding node:24-slim to Windows for future builds..."
+        docker buildx build --platform linux/amd64 --load -t node-base-seed - <<'SEED_EOF'
+FROM node:24-slim
+SEED_EOF
+        docker save node-base-seed | gzip | DOCKER_HOST="$REMOTE" docker load && \
+            DOCKER_HOST="$REMOTE" docker tag node-base-seed node:24-slim && \
+            docker rmi node-base-seed 2>/dev/null || true
+        log_ok "Base image seeded on Windows"
+    fi
+    log_ok "Image ready on Windows"
+    [ $? -ne 0 ] && log_err "Docker build failed on Windows."
+    log_ok "Image built on Windows"
+
+    # Step 3: Start container
+    log_step "3/3  Starting container"
     DOCKER_HOST="$REMOTE" docker run -d \
         --name "$CONTAINER_NAME" \
         -p "$EXT_PORT:$INT_PORT" \
@@ -179,8 +194,8 @@ if [ "$DEPLOY_MODE" = "tailscale" ] && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
         "$IMAGE_NAME"
     [ $? -ne 0 ] && log_err "Failed to start container on Windows."
 
-    # Step 4b: Schema sync on Windows
-    log_step "4b/4  Schema sync on Windows"
+    # Step 3b: Schema sync
+    log_step "3b/3  Schema sync"
     schema_sync "$CONTAINER_NAME" "$REMOTE"
 
     STATUS=$(DOCKER_HOST="$REMOTE" docker ps --filter "name=$CONTAINER_NAME" --format "{{.Status}}")
@@ -193,14 +208,21 @@ if [ "$DEPLOY_MODE" = "tailscale" ] && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
 
 else
 
-    # ── Manual Deploy ─────────────────────────────────────
-    log_step "3/4  Packaging for manual transfer"
+    # ── Manual Deploy — build locally, package for USB/SCP transfer ───────────
+    log_step "1/3  Building image locally for manual transfer"
+    docker buildx build --platform linux/amd64 -t "$IMAGE_NAME" --load .
+    [ $? -ne 0 ] && log_err "Docker build failed."
+    log_ok "Image built"
+
+    log_step "2/3  Saving and packaging"
+    docker save "$IMAGE_NAME" > "$TAR_FILE"
+    [ $? -ne 0 ] && log_err "Failed to save image."
     zip "$ZIP_FILE" "$TAR_FILE"
     [ $? -ne 0 ] && log_err "Failed to create zip."
     ZIP_SIZE=$(du -sh "$ZIP_FILE" | cut -f1)
     log_ok "Package ready: $ZIP_FILE ($ZIP_SIZE)"
 
-    log_step "4/4  Transfer instructions"
+    log_step "3/3  Transfer instructions"
     echo ""
     echo "============================================"
     echo "   PROD PACKAGE READY — MANUAL DEPLOY"

@@ -27,9 +27,10 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server.ts ./
 COPY --from=build /app/prisma ./prisma
+COPY entrypoint.sh ./entrypoint.sh
 
 EXPOSE 3500
 
 ENV NODE_ENV=production
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node -r tsx ./server.ts"]
+ENTRYPOINT ["sh", "entrypoint.sh"]

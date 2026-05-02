@@ -80,6 +80,20 @@ The objective of this application is to replace manual processes with a digital 
     - Timestamp of the transaction
 *   **Real-Time Logging:** All movements logged immediately to Activities tab for staff awareness; waste-specific movements also appear in Waste Management tab for compliance/analysis.
 
+### 5.4.4 Inventory Data Consistency & Cleanup
+*   **Data Integrity:** All product inventory must maintain consistency where `stock = shopStock + freezerStock`. No orphaned inventory records allowed.
+*   **Historical Cleanup (May 2, 2026):** Removed 6 products with inconsistent inventory data (stock totals that didn't match shop + frozen distribution). Retained only production and purchase-related inventory records.
+*   **Product Restoration:** Restored 7 product definitions from seed data with clean, consistent inventory allocation:
+    - Croissant au Beurre (45 units: 22 shop + 23 freezer)
+    - Pain au Chocolat (38 units: 19 shop + 19 freezer)
+    - Éclair au Chocolat (12 units: 6 shop + 6 freezer)
+    - Tarte aux Fraises (8 units: 4 shop + 4 freezer)
+    - Pain aux Raisins (25 units: 12 shop + 13 freezer)
+    - Croissant aux Amandes (20 units: 10 shop + 10 freezer)
+    - Paris-Brest (10 units: 5 shop + 5 freezer)
+    - Mille-Feuille (12 units: 6 shop + 6 freezer)
+*   **Current Product Inventory:** System now maintains 11 products, all with verified stock consistency.
+
 ### 5.5 Order Management
 *   **Customer Orders:** Manage custom or bulk orders from creation to delivery.
 *   **Status Workflow:** Track orders through Pending, Confirmed, Ready, and Delivered statuses.
@@ -103,5 +117,13 @@ The objective of this application is to replace manual processes with a digital 
 *   **Accessibility:** High-contrast design and clear typography for readability in various lighting conditions.
 *   **Reliability:** Real-time data synchronization to ensure all staff are working with the latest information.
 
-## 7. Conclusion
+## 7. Implementation Notes & Recent Updates
+
+### 7.1 Inventory System Validation (May 2, 2026)
+*   **Issue:** Manual inventory entries created prior to system enhancements resulted in inconsistent data (total stock without proper shop/freezer distribution).
+*   **Resolution:** Cleaned inconsistent inventory records while preserving production and purchase-related data; restored product definitions with clean stock allocation.
+*   **Verification:** All 11 products verified to maintain `stock = shopStock + freezerStock` invariant.
+*   **Testing:** Manual verification in Inventory and Production pages confirms all products display with correct stock levels.
+
+## 8. Conclusion
 The Bella Dolce Bakery Management System is positioned as a transformative tool for bakery owners. By combining traditional operational modules with cutting-edge AI capabilities, it provides a unique competitive advantage in the premium bakery market.
