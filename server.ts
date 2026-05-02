@@ -408,6 +408,36 @@ async function startServer() {
     }
   });
 
+  app.post("/api/backup/restore/:filename", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const { filename } = req.params;
+    if (!/^[\w\-]+\.db\.bak$/.test(filename)) {
+      return res.status(400).json({ error: "Invalid filename" });
+    }
+    const backupPath = path.join(BACKUP_DIR, filename);
+    if (!existsSync(backupPath)) {
+      return res.status(404).json({ error: "Backup file not found" });
+    }
+    const dbUrl = process.env.DATABASE_URL || "";
+    const dbPath = dbUrl.replace(/^file:/, "");
+    if (!dbPath) {
+      return res.status(500).json({ error: "DATABASE_URL not configured" });
+    }
+    try {
+      if (prismaInstance) {
+        await prismaInstance.$disconnect();
+        prismaInstance = null;
+      }
+      await fs.copyFile(backupPath, dbPath);
+      res.json({ ok: true, restored: filename });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Generalized API routes for CRUD (Prisma bridge)
   app.get("/api/db/:collection", (req, res, next) => {
     if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();

@@ -33,6 +33,7 @@ RUN npm install --legacy-peer-deps
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server.ts ./
+COPY --from=build /app/app.config.ts ./
 COPY --from=build /app/prisma ./prisma
 COPY entrypoint.sh ./entrypoint.sh
 

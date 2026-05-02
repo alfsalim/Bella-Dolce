@@ -11,6 +11,7 @@ DB_URL="file:/app/data/dev.db"
 
 # ── Production (Windows) ─────────────────────────────────
 PROD_DATA_DIR="C:/Users/CD COMPANY/Bella-Dolce/data"
+PROD_BACKUP_DIR="C:/Users/CD COMPANY/Bella-Dolce/backups"
 WINDOWS_TAILSCALE_IP="100.114.12.38"
 DEPLOY_MODE="tailscale"          # "tailscale" or "manual"
 
@@ -113,6 +114,7 @@ if [ "$MODE" = "--dev" ]; then
         -e NODE_ENV=production \
         -e BELLA_HTTP_ONLY=1 \
         -v "$DEV_DATA_DIR:/app/data" \
+        -v "$HOME/bella-dolce-backups:/app/backups" \
         --restart unless-stopped \
         "$IMAGE_NAME"
     [ $? -ne 0 ] && log_err "Failed to start dev container."
@@ -191,6 +193,7 @@ SEED_EOF
         -e DATABASE_URL="$DB_URL" \
         -e NODE_ENV=production \
         -v "$PROD_DATA_DIR:/app/data" \
+        -v "$PROD_BACKUP_DIR:/app/backups" \
         --restart unless-stopped \
         "$IMAGE_NAME"
     [ $? -ne 0 ] && log_err "Failed to start container on Windows."
@@ -204,7 +207,7 @@ SEED_EOF
     echo "============================================"
     echo "   PROD DEPLOYMENT COMPLETE (Tailscale)"
     echo "   Status  : $STATUS"
-    echo "   App URL : http://$WINDOWS_TAILSCALE_IP:$EXT_PORT"
+    echo "   App URL : https://$WINDOWS_TAILSCALE_IP:$EXT_PORT"
     echo "============================================"
 
 else

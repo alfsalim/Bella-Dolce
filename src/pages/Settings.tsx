@@ -34,6 +34,7 @@ const Settings: React.FC = () => {
   const [backupConfig, setBackupConfig] = useState<{ enabled: boolean; time: string }>({ enabled: true, time: '23:59' });
   const [backups, setBackups] = useState<{ filename: string; size: number; createdAt: string }[]>([]);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState<string | null>(null);
   const [backupListError, setBackupListError] = useState<string | null>(null);
   const [logsPage, setLogsPage] = useState(1);
   const [promoFormData, setPromoFormData] = useState<Partial<Promotion>>({
@@ -105,6 +106,27 @@ const Settings: React.FC = () => {
       toast.error(t('backupFailed'));
     } finally {
       setIsBackingUp(false);
+    }
+  };
+
+  const restoreBackup = async (filename: string) => {
+    if (!window.confirm(t('restoreConfirm'))) return;
+    setIsRestoring(filename);
+    const token = localStorage.getItem('bakery_token');
+    try {
+      const r = await fetch(`/api/backup/restore/${encodeURIComponent(filename)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || 'restore failed');
+      }
+      toast.success(t('restoreSuccess'));
+    } catch {
+      toast.error(t('restoreFailed'));
+    } finally {
+      setIsRestoring(null);
     }
   };
 
@@ -1187,6 +1209,7 @@ const Settings: React.FC = () => {
                       <th className="pb-3 font-bold">{t('name')}</th>
                       <th className="pb-3 font-bold">{t('backupFileSize')}</th>
                       <th className="pb-3 font-bold">{t('backupCreated')}</th>
+                      <th className="pb-3 font-bold"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1196,6 +1219,16 @@ const Settings: React.FC = () => {
                         <td className="py-3 text-zinc-600 dark:text-zinc-400">{formatBackupSize(b.size)}</td>
                         <td className="py-3 text-zinc-500">
                           {format(new Date(b.createdAt), 'PPp')}
+                        </td>
+                        <td className="py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => restoreBackup(b.filename)}
+                            disabled={isRestoring === b.filename}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50 transition-colors font-medium"
+                          >
+                            {isRestoring === b.filename ? '...' : t('restoreBackup')}
+                          </button>
                         </td>
                       </tr>
                     ))}

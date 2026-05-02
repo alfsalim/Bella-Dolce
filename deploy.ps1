@@ -5,6 +5,7 @@ $TAR_FILE       = "bella-dolce.tar"
 $IMAGE_NAME     = "bella-dolce2-bella-dolce2:latest"
 $CONTAINER_NAME = "bella-dolce2"
 $DATA_DIR       = "C:\Users\CD COMPANY\Bella-Dolce\data"
+$BACKUP_DIR     = "C:\Users\CD COMPANY\Bella-Dolce\backups"
 $EXT_PORT       = 3500
 $INT_PORT       = 3000
 $DB_URL         = "file:/app/data/dev.db"
@@ -42,6 +43,13 @@ if (!(Test-Path $DATA_DIR)) {
     Log-OK "Data directory created"
 } else {
     Log-OK "Data directory exists: $DATA_DIR"
+}
+if (!(Test-Path $BACKUP_DIR)) {
+    Log-Info "Backup directory not found - creating $BACKUP_DIR"
+    New-Item -ItemType Directory -Path $BACKUP_DIR | Out-Null
+    Log-OK "Backup directory created"
+} else {
+    Log-OK "Backup directory exists: $BACKUP_DIR"
 }
 
 # Step 3: Load image
@@ -83,6 +91,7 @@ docker run -d `
     -e DATABASE_URL=$DB_URL `
     -e NODE_ENV=production `
     -v "${DATA_DIR}:/app/data" `
+    -v "${BACKUP_DIR}:/app/backups" `
     --restart unless-stopped `
     $IMAGE_NAME
 
@@ -126,8 +135,9 @@ if ($status) {
     Write-Host "  Status    : $status"                       -ForegroundColor White
     Write-Host "  Uptime    : $uptime"                       -ForegroundColor White
     Write-Host "  Image     : $imageId"                      -ForegroundColor White
-    Write-Host "  App URL   : http://localhost:$EXT_PORT"    -ForegroundColor White
+    Write-Host "  App URL   : https://localhost:$EXT_PORT"    -ForegroundColor White
     Write-Host "  Data Dir  : $DATA_DIR"                     -ForegroundColor White
+    Write-Host "  Backups   : $BACKUP_DIR"                   -ForegroundColor White
     Write-Host "============================================" -ForegroundColor Green
     Write-Host ""
 } else {
