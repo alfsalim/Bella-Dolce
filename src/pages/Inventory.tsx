@@ -93,6 +93,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const [inventoryFormData, setInventoryFormData] = useState({
     shopStock: 0,
     freezerStock: 0,
+    currentStock: 0,
     wasteQuantity: 0,
     minStock: 0,
     costPrice: 0
@@ -295,13 +296,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           userName: currentUserProfile.name,
           timestamp: Timestamp.now()
         });
-
-        await logActivity(
-          currentUserProfile.id,
-          currentUserProfile.name,
-          'stock_adjusted',
-          `Adjusted ${adjustmentData.itemType} ${adjustmentData.itemName}: ${adjustmentData.type === 'in' ? '+' : '-'}${adjustmentData.quantity}`
-        );
       }
 
       toast.success(t('stockAdjustedSuccessfully') || 'Stock adjusted successfully');
@@ -796,13 +790,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           }
 
           if (currentUserProfile) {
-            await logActivity(
-              currentUserProfile.id,
-              currentUserProfile.name,
-              'product_added',
-              `Added product ${formData.name} to inventory`
-            );
-
             // Log stock movements
             if (Number(formData.shopStock) > 0) {
               await addDoc(collection(db, 'stockMovements'), {
@@ -846,13 +833,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
             createdAt: new Date().toISOString()
           });
           if (currentUserProfile) {
-            await logActivity(
-              currentUserProfile.id,
-              currentUserProfile.name,
-              'material_added',
-              `Added raw material ${formData.name} to inventory`
-            );
-
             // Log stock movement
             if (Number(formData.stock) > 0) {
               await addDoc(collection(db, 'stockMovements'), {
@@ -923,27 +903,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
             <LayoutGrid className="w-5 h-5" />
           </button>
         </div>
-        <button onClick={() => {
-          setSelectedProduct(null);
-          setFormData({
-            name: '',
-            brand: '',
-            category: activeTab === 'products' ? CATEGORIES[0] : 'Flour',
-            price: 0,
-            unit: 'kg',
-            stock: 0,
-            shopStock: 0,
-            freezerStock: 0,
-            minStock: 0,
-            shelfLife: 24,
-            imageUrl: '',
-            expiryDate: ''
-          });
-          setIsModalOpen(true);
-        }} className="btn-primary gap-2 w-full sm:w-auto">
-          <Plus className="w-5 h-5" />
-          {activeTab === 'products' ? t('addProduct') : t('addMaterial')}
-        </button>
       </div>
 
       {getPredictiveSuggestions().length > 0 && (
@@ -1236,6 +1195,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           setInventoryFormData({
                             shopStock: product.shopStock || 0,
                             freezerStock: product.freezerStock || 0,
+                            currentStock: 0,
                             wasteQuantity: product.wasteQuantity || 0,
                             minStock: product.minStock || 0,
                             costPrice: product.costPrice || 0
@@ -1278,8 +1238,15 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   {filteredProducts.map((product) => (
                     <tr key={product.id}
                       onClick={() => {
-                        setSelectedProduct(product);
-                        setIsDetailsModalOpen(true);
+                        setSelectedItemForInventory(product);
+                        setInventoryFormData({
+                          shopStock: product.shopStock || 0,
+                          freezerStock: product.freezerStock || 0,
+                          wasteQuantity: product.wasteQuantity || 0,
+                          minStock: product.minStock || 0,
+                          costPrice: product.costPrice || 0
+                        });
+                        setIsInventoryModalOpen(true);
                       }}
                       className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer"
                     >
@@ -1318,6 +1285,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           <div className="flex items-center gap-2 mt-0.5 text-[10px] font-medium text-slate-400 dark:text-slate-600">
                             <span className="flex items-center gap-0.5"><Store className="w-2.5 h-2.5" /> {product.shopStock || 0}</span>
                             <span className="flex items-center gap-0.5"><Snowflake className="w-2.5 h-2.5" /> {product.freezerStock || 0}</span>
+                            <span className="flex items-center gap-0.5"><AlertTriangle className="w-2.5 h-2.5" /> {product.wasteQuantity || 0}</span>
                           </div>
                         </div>
                       </td>
@@ -1347,7 +1315,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                                   });
                                   setIsInventoryModalOpen(true);
                                 }}
-                                className="px-3 py-1 text-xs font-bold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 rounded-lg transition-colors"
+                                className="px-3 py-1 text-xs font-bold text-primary-600 dark:text-primary-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
                                 title={t('edit')}
                               >
                                 {t('details')}
@@ -1371,24 +1339,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('activities')}</h2>
-            <button 
-              onClick={() => {
-                setAdjustmentData({
-                  itemId: '',
-                  itemName: '',
-                  itemType: 'material',
-                  type: 'out',
-                  quantity: 0,
-                  reason: 'waste',
-                  location: 'none'
-                });
-                setIsAdjustmentModalOpen(true);
-              }}
-              className="btn-secondary gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              {t('addActivity')}
-            </button>
           </div>
           <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
           <div className="overflow-x-auto">
@@ -1583,6 +1533,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                               setInventoryFormData({
                                 shopStock: 0,
                                 freezerStock: 0,
+                                currentStock: material.currentStock || 0,
                                 wasteQuantity: material.wasteQuantity || 0,
                                 minStock: material.minStock || 0,
                                 costPrice: 0
@@ -1692,6 +1643,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                               setInventoryFormData({
                                 shopStock: 0,
                                 freezerStock: 0,
+                                currentStock: material.currentStock || 0,
                                 wasteQuantity: material.wasteQuantity || 0,
                                 minStock: material.minStock || 0,
                                 costPrice: 0
@@ -1730,157 +1682,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         </div>
       ))
     }
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-          <div className="card w-full max-w-lg shadow-2xl border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-              {activeTab === 'products' ? t('addProduct') : t('addMaterial')}
-            </h2>
-            <form onSubmit={handleSave} className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('name')}</label>
-                  <input 
-                    type="text" 
-                    className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                    placeholder="e.g. Croissant" 
-                    required
-                    value={formData.name || ''}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  />
-                </div>
-                {activeTab === 'materials' && (
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('brand') || 'Brand'}</label>
-                    <input 
-                      type="text" 
-                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                      placeholder="e.g. Moulins de Paris" 
-                      value={formData.brand || ''}
-                      onChange={(e) => setFormData({...formData, brand: e.target.value})}
-                    />
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('category')}</label>
-                  <select 
-                    className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                    value={formData.category || ''}
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
-                  >
-                    {activeTab === 'products' ? CATEGORIES.filter(c => !['flour', 'dairy', 'sugar', 'liquid', 'other_material'].includes(c)).map(c => <option key={c} value={c}>{tCategory(c)}</option>) : ['flour', 'dairy', 'sugar', 'liquid', 'other_material', 'cooking', 'maintenance', 'cleaning', 'others'].map(c => <option key={c} value={c}>{tCategory(c)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{activeTab === 'products' ? `${t('price')} (${CURRENCY})` : t('unit')}</label>
-                  {activeTab === 'products' ? (
-                    <input 
-                      type="number" 
-                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                      placeholder="0.00" 
-                      required
-                      value={formData.price || 0}
-                      onChange={(e) => setFormData({...formData, price: Number(e.target.value)})}
-                    />
-                  ) : (
-                    <div className="flex bg-slate-50 dark:bg-zinc-800 p-1 rounded-xl border border-slate-200 dark:border-white/10 gap-1 overflow-x-auto">
-                      {UNITS.map(u => (
-                        <button
-                          key={u}
-                          type="button"
-                          onClick={() => setFormData({...formData, unit: u})}
-                          className={clsx(
-                            "px-3 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap min-w-[50px]",
-                            (formData.unit || 'kg') === u
-                              ? "bg-primary-600 text-white shadow-sm"
-                              : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
-                          )}
-                        >
-                          {t(u)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {activeTab === 'products' ? (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('shopStock')}</label>
-                      <div className="relative">
-                        <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input 
-                          type="number" 
-                          className="input pl-10 bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                          placeholder="0" 
-                          required
-                          value={formData.shopStock || 0}
-                          onChange={(e) => setFormData({...formData, shopStock: Number(e.target.value)})}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('freezerStock')}</label>
-                      <div className="relative">
-                        <Snowflake className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input 
-                          type="number" 
-                          className="input pl-10 bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                          placeholder="0" 
-                          required
-                          value={formData.freezerStock || 0}
-                          onChange={(e) => setFormData({...formData, freezerStock: Number(e.target.value)})}
-                        />
-                      </div>
-                    </div>
-                  </>
-                ) : null}
-                {activeTab === 'materials' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('expiryDate') || 'Expiry Date'}</label>
-                    <input 
-                      type="date" 
-                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                      value={formData.expiryDate || ''}
-                      onChange={(e) => setFormData({...formData, expiryDate: e.target.value})}
-                    />
-                  </div>
-                )}
-                {activeTab === 'products' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('minStock')}</label>
-                    <input
-                      type="number"
-                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                      placeholder="0"
-                      required
-                      value={formData.minStock || 0}
-                      onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
-                    />
-                  </div>
-                )}
-                {activeTab === 'products' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('shelfLife')}</label>
-                    <input 
-                      type="number" 
-                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                      placeholder="24" 
-                      required
-                      value={formData.shelfLife || 24}
-                      onChange={(e) => setFormData({...formData, shelfLife: Number(e.target.value)})}
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 btn-secondary justify-center dark:bg-zinc-800 dark:border-white/10 dark:text-slate-300">{t('cancel')}</button>
-                <button type="submit" className="flex-1 btn-primary justify-center dark:bg-primary-600 dark:hover:bg-primary-700">{t('save')}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       {isDetailsModalOpen && selectedProduct && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
           <div className="card w-full max-w-2xl shadow-2xl p-0 overflow-hidden border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
@@ -2302,14 +2103,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                                 userName: currentUserProfile.name,
                                 timestamp: Timestamp.now()
                               });
-
-                              // Log activity
-                              await logActivity(
-                                currentUserProfile.id,
-                                currentUserProfile.name,
-                                'inventory_waste_adjusted',
-                                `${selectedProduct.name}: waste ${wasteDiff > 0 ? 'increased' : 'decreased'} by ${Math.abs(wasteDiff)} ${selectedProduct.unit || 'units'}`
-                              );
                             }
 
                             // For products, handle stock distribution changes
@@ -2750,11 +2543,24 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
                   <p className="text-lg font-bold text-slate-900 dark:text-white">
                     {'currentStock' in selectedItemForInventory
-                      ? (selectedItemForInventory as any).currentStock
+                      ? (inventoryFormData.currentStock + inventoryFormData.wasteQuantity)
                       : (inventoryFormData.shopStock + inventoryFormData.freezerStock)} {selectedItemForInventory.unit}
                   </p>
                 </div>
               </div>
+
+              {'currentStock' in selectedItemForInventory && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">
+                    {t('currentStock') || 'Current Stock'}
+                  </label>
+                  <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
+                    <p className="text-lg font-bold text-slate-900 dark:text-white">
+                      {inventoryFormData.currentStock} {selectedItemForInventory.unit}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2 flex items-center gap-1">
@@ -2765,7 +2571,45 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   min="0"
                   className="input w-full"
                   value={inventoryFormData.wasteQuantity}
-                  onChange={(e) => setInventoryFormData({...inventoryFormData, wasteQuantity: Math.max(0, Number(e.target.value))})}
+                  onChange={(e) => {
+                    const newWaste = Math.max(0, Number(e.target.value));
+                    const wasteDifference = newWaste - inventoryFormData.wasteQuantity;
+                    const isMaterial = 'currentStock' in selectedItemForInventory;
+
+                    if (isMaterial) {
+                      let newCurrentStock = inventoryFormData.currentStock;
+                      if (wasteDifference > 0) {
+                        newCurrentStock = Math.max(0, newCurrentStock - wasteDifference);
+                      } else if (wasteDifference < 0) {
+                        newCurrentStock += Math.abs(wasteDifference);
+                      }
+                      setInventoryFormData({
+                        ...inventoryFormData,
+                        wasteQuantity: newWaste,
+                        currentStock: newCurrentStock
+                      });
+                    } else {
+                      let newShopStock = inventoryFormData.shopStock;
+                      let newFrozenStock = inventoryFormData.freezerStock;
+                      if (wasteDifference > 0) {
+                        if (newShopStock >= wasteDifference) {
+                          newShopStock -= wasteDifference;
+                        } else {
+                          const remaining = wasteDifference - newShopStock;
+                          newShopStock = 0;
+                          newFrozenStock = Math.max(0, newFrozenStock - remaining);
+                        }
+                      } else if (wasteDifference < 0) {
+                        newShopStock += Math.abs(wasteDifference);
+                      }
+                      setInventoryFormData({
+                        ...inventoryFormData,
+                        wasteQuantity: newWaste,
+                        shopStock: newShopStock,
+                        freezerStock: newFrozenStock
+                      });
+                    }
+                  }}
                 />
               </div>
 
@@ -2778,7 +2622,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     {(
                       ((selectedItemForInventory as any).costPrice || 0) *
                       ('currentStock' in selectedItemForInventory
-                        ? (selectedItemForInventory as any).currentStock
+                        ? (inventoryFormData.currentStock + inventoryFormData.wasteQuantity)
                         : (inventoryFormData.shopStock + inventoryFormData.freezerStock))
                     ).toFixed(2)} {CURRENCY}
                   </p>
@@ -2798,10 +2642,14 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       const itemId = selectedItemForInventory.id;
                       const isMaterial = 'currentStock' in selectedItemForInventory;
                       const token = localStorage.getItem('bakery_token');
+                      const wasteChange = inventoryFormData.wasteQuantity - ((selectedItemForInventory as any).wasteQuantity || 0);
 
                       const endpoint = isMaterial ? `/api/db/rawMaterials/${itemId}` : `/api/db/products/${itemId}`;
                       const updateData = isMaterial
-                        ? { wasteQuantity: inventoryFormData.wasteQuantity }
+                        ? {
+                            currentStock: inventoryFormData.currentStock,
+                            wasteQuantity: inventoryFormData.wasteQuantity
+                          }
                         : {
                             shopStock: inventoryFormData.shopStock,
                             freezerStock: inventoryFormData.freezerStock,
@@ -2819,6 +2667,24 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
 
                       if (!response.ok) {
                         throw new Error('Failed to update inventory');
+                      }
+
+                      if (wasteChange !== 0) {
+                        await addDoc(collection(db, 'stockMovements'), {
+                          itemId: itemId,
+                          itemName: selectedItemForInventory.name,
+                          itemType: isMaterial ? 'rawMaterial' : 'product',
+                          type: 'out',
+                          quantity: Math.abs(wasteChange),
+                          previousStock: isMaterial ? (selectedItemForInventory as any).currentStock : ((selectedItemForInventory as any).shopStock + (selectedItemForInventory as any).freezerStock),
+                          newStock: isMaterial ? inventoryFormData.currentStock : (inventoryFormData.shopStock + inventoryFormData.freezerStock),
+                          location: 'shop',
+                          reason: 'waste',
+                          referenceId: null,
+                          userId: currentUserProfile?.id || '',
+                          userName: currentUserProfile?.name || '',
+                          timestamp: new Date()
+                        });
                       }
 
                       toast.success(t('updatedSuccessfully') || 'Updated successfully');
