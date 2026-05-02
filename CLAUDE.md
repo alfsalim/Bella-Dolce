@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+Behavioral guidelines to reduce common LLM coding mistakes.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
@@ -52,51 +52,130 @@ Transform tasks into verifiable goals:
 - "Refactor X" → "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
+
+[Step] → verify: [check]
+[Step] → verify: [check]
+[Step] → verify: [check]
+
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 ---
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
-
-
-## Bella-Dolce Project Context
+## Bella Dolce — Project Context
 
 ### Stack
-- Backend: Fastify + TypeScript → runs on port 3000 (dev: npm run dev:backend)
-- Frontend: React + Vite + Tailwind → runs on port 5173 (dev: npm run dev)
+- Backend:  Fastify + TypeScript → port 3000  (npm run dev:backend)
+- Frontend: React + Vite + Tailwind → port 5173 (cd frontend && npm run dev)
 - Database: SQLite via Prisma at prisma/dev.db
-- Docker: only for final staging/prod — NOT used during active dev
+- Docker:   staging/prod ONLY — never during active dev
 
-### Dev Workflow (No Docker)
-Start dev servers:
-- Backend:  npm run dev:backend   (port 3000)
-- Frontend: cd frontend && npm run dev  (port 5173, hot reload)
-- DB:       file:./prisma/dev.db (local SQLite, no container)
+### Project Structure
+src/
+  pages/        ← Business logic (Inventory, POS, Finance, Production)
+                   One file = one domain. No cross-domain imports.
+  components/   ← UI only. Zero business logic here.
+  constants.ts  ← ALL user-facing strings (AR + FR + EN). 
+                   Never hardcode text anywhere else.
 
-### Testing Session Behavior
-When user says "I am testing" or "start watching":
-1. Monitor terminal output from both backend and frontend processes
-2. When error appears:
-   a. Explain what failed in plain English (root cause first)
-   b. Identify exact file + line number
-   c. Show minimal before/after diff (per Rule 3 — surgical changes)
-   d. Apply fix
-   e. Confirm hot reload picked it up (Vite auto-refreshes, backend needs restart)
-   f. Report: "Fixed — here is what happened and why"
-3. Fix one error at a time — do not batch fixes
+server.ts       ← API routing only.
+prisma/
+  schema.prisma ← READ ONLY. Never modify unless told to.
+  dev.db        ← Never touch directly.
 
-### Deploy Only When Done
+### i18n Rules
+- Every user-facing string MUST use a key from src/constants.ts
+- When adding a string: add AR + FR + EN variants before using it
+- Never add a string in one language only
+
+### Testing
+- Backend: Vitest → run: `npm run test`
+  Location: [CONFIRM PATH]
+- Frontend E2E: Playwright → run: `npx playwright test`
+  Location: [CONFIRM PATH]
+
+### Definition of Done
+A task is ONLY complete when ALL pass:
+- [ ] Vitest tests pass (npm run test)
+- [ ] Playwright E2E passes (npx playwright test)
+- [ ] BRD.md updated with feature spec + test coverage
+- [ ] Zero hardcoded strings or values in the diff
+
+### Deploy (only when dev is clean)
 - Dev test:  ./deploy-bella.sh --dev   (Docker, port 3501)
-- Prod:      ./deploy-bella.sh --prod  (streams to Windows via Tailscale)
-- Never deploy mid-session to fix a bug — fix in hot reload first
+- Prod:      ./deploy-bella.sh --prod  (Tailscale)
 
-### Never
+---
+
+## Live Debug Mode
+
+### Activation
+User pastes an error OR says "watch logs" / "I am testing"
+
+### On Session Start
+1. Run: `npm run dev:backend`
+2. Watch stdout/stderr continuously
+3. Fix any backend error before doing anything else
+
+### Backend Error (auto-detected from terminal)
+1. IDENTIFY  → Root cause, one sentence
+2. LOCATE    → Exact file + line from stack trace
+3. FIX       → Minimal diff. Nothing else touched.
+4. RESTART   → kill → `npm run dev:backend`
+5. CONFIRM   → "Backend clean. No errors in output."
+
+### Frontend Error (user pastes from DevTools)
+Drop everything. Fix this first.
+Need from user: red console line + file:line + what triggered it.
+1. IDENTIFY  → Root cause, one sentence
+2. LOCATE    → Exact file + line
+3. FIX       → Minimal diff
+4. CONFIRM   → "Hard reload to confirm: Ctrl+Shift+R"
+
+### Rules (both error types)
+- One error at a time. Never batch.
+- If two errors appear: fix the one causing the other first.
+- Same error 3 times after fixing → STOP. Say:
+  "This fix isn't holding. Root cause is deeper — here's what I think it is."
+- When you don't know: say "I need to see [file] lines [X-Y]." Wait. Don't guess.
+
+### Hot Reload
+- Frontend (Vite): auto-reloads on save. No action needed.
+- Backend (Fastify): manual restart required after every fix.
+
+---
+
+## Never (absolute)
 - Touch prisma/dev.db directly
 - Modify deploy scripts unless asked
-- Refactor working code while fixing a bug (Rule 3)
+- Refactor working code while fixing a bug
+- Hardcode strings, ports, paths, or magic numbers
+- Create files not named in the task spec
+- Add dependencies without asking
+
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+**When anything is unclear — stop and interview the user:**
+- Ask one question at a time. Never stack multiple questions.
+- Always offer 2-4 concrete answer options. Never ask open-ended.
+- Do not proceed until every ambiguity is resolved.
+- Never invent, assume, or create to avoid asking. Inventing = wrong code.
+
+**While asking — always suggest if relevant:**
+- A better approach if one exists
+- An alternative solution worth considering  
+- An enhancement that adds value without scope creep
+- Label these clearly: "Suggestion:" — do not implement unless user confirms.
+
+**Only start coding when you can answer YES to all:**
+- [ ] I know exactly what file(s) to touch
+- [ ] I know exactly what the output looks like
+- [ ] I have zero unresolved assumptions
+
+### UI Rules
+- All mandatory form fields MUST display a red asterisk (*)
+  next to the label. No exceptions.
+- Never render a form without marking required fields visually.

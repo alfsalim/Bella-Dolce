@@ -83,11 +83,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           onClick={onClose}
           className="p-6 flex items-center gap-3 border-b border-slate-50 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all"
         >
-          <img 
-            src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200" 
-            alt="Bella Dolce" 
-            className="w-12 h-12 rounded-xl object-contain bg-white" 
-            referrerPolicy="no-referrer" 
+          <img
+            src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200"
+            alt="Bella Dolce"
+            className="w-12 h-12 rounded-xl object-contain bg-white dark:invert"
+            referrerPolicy="no-referrer"
           />
           <span className="font-display font-bold text-xl text-slate-900 dark:text-white tracking-tight">
             Bella Dolce

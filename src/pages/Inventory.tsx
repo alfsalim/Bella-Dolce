@@ -50,7 +50,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const [totalProductsPages, setTotalProductsPages] = useState(1);
   const [totalMaterialsPages, setTotalMaterialsPages] = useState(1);
   const [pageSize] = useState(25);
-  const [activeTab, setActiveTab] = useState<'products' | 'materials' | 'activities'>(defaultTab || 'products');
+  const [activeTab, setActiveTab] = useState<'products' | 'materials' | 'activities' | 'waste'>(defaultTab || 'products');
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [movementsPage, setMovementsPage] = useState(1);
   const [totalMovementsPages, setTotalMovementsPages] = useState(1);
@@ -76,7 +76,27 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [editFormData, setEditFormData] = useState<Partial<Product>>({});
+  const [editFormData, setEditFormData] = useState<Partial<Product & { lastPurchaseStatus?: string }>>({});
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [selectedMaterialForPurchase, setSelectedMaterialForPurchase] = useState<RawMaterial | null>(null);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [purchaseFormData, setPurchaseFormData] = useState({
+    supplierId: '',
+    quantity: 0,
+    price: 0,
+    brand: '',
+    purchaseDate: new Date().toISOString().split('T')[0],
+    expiryDate: ''
+  });
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [selectedItemForInventory, setSelectedItemForInventory] = useState<(Product | RawMaterial) | null>(null);
+  const [inventoryFormData, setInventoryFormData] = useState({
+    shopStock: 0,
+    freezerStock: 0,
+    wasteQuantity: 0,
+    minStock: 0,
+    costPrice: 0
+  });
 
 
   const updateMaterialStatus = async (id: string, status: RawMaterial['status']) => {
@@ -93,6 +113,24 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     } catch (error) {
       console.error('Error updating material status:', error);
     }
+  };
+
+  const getStockStatusKey = (product: Product): string => {
+    const shop = product.shopStock || 0;
+    const frozen = product.freezerStock || 0;
+    if (shop > 0 && frozen > 0) return 'stockLocationMixed';
+    if (frozen > 0) return 'stockLocationFrozen';
+    return 'stockLocationShop';
+  };
+
+  const getStockStatusColor = (statusKey: string): string => {
+    if (statusKey === 'stockLocationShop') return "bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30";
+    if (statusKey === 'stockLocationFrozen') return "bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/30";
+    return "bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30";
+  };
+
+  const getStockStatus = (product: Product): string => {
+    return t(getStockStatusKey(product));
   };
 
   const isProductDeletable = async (productId: string) => {
@@ -385,6 +423,136 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     localStorage.setItem('inventoryViewMode', viewMode);
   }, [viewMode]);
 
+  const fetchSuppliers = async () => {
+    try {
+      const token = localStorage.getItem('bakery_token');
+      const response = await fetch('/api/db/suppliers', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSuppliers(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
+    }
+  };
+
+  const getLastPurchaseForMaterial = async (materialId: string) => {
+    try {
+      const token = localStorage.getItem('bakery_token');
+      const response = await fetch(`/api/db/purchases?materialId=${materialId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length > 0) {
+          const lastPurchase = data[0];
+          return {
+            supplierId: lastPurchase.supplierId,
+            price: lastPurchase.price,
+            brand: lastPurchase.brand,
+            status: lastPurchase.status || 'pending'
+          };
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching last purchase:', error);
+    }
+    return { supplierId: '', price: 0, brand: '', status: 'none' };
+  };
+
+  const handleOpenPurchaseModal = async (material: RawMaterial) => {
+    setSelectedMaterialForPurchase(material);
+    await fetchSuppliers();
+    const lastPurchase = await getLastPurchaseForMaterial(material.id);
+    setPurchaseFormData({
+      supplierId: lastPurchase.supplierId,
+      quantity: 0,
+      price: lastPurchase.price,
+      brand: lastPurchase.brand,
+      purchaseDate: new Date().toISOString().split('T')[0],
+      expiryDate: ''
+    });
+    setIsPurchaseModalOpen(true);
+  };
+
+  const handlePurchaseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMaterialForPurchase || !purchaseFormData.supplierId) {
+      toast.error(t('requiredFieldsMissing') || 'Please fill all required fields');
+      return;
+    }
+
+    const token = localStorage.getItem('bakery_token');
+    try {
+      const supplier = suppliers.find(s => s.id === purchaseFormData.supplierId);
+      const response = await fetch('/api/db/purchases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          materialId: selectedMaterialForPurchase.id,
+          materialName: selectedMaterialForPurchase.name,
+          supplierId: purchaseFormData.supplierId,
+          supplierName: supplier?.name || '',
+          quantity: purchaseFormData.quantity,
+          price: purchaseFormData.price,
+          brand: purchaseFormData.brand,
+          purchaseDate: purchaseFormData.purchaseDate,
+          expiryDate: purchaseFormData.expiryDate,
+          unit: selectedMaterialForPurchase.unit,
+          totalAmount: purchaseFormData.price,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUserProfile?.id
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to create purchase');
+
+      // Add to inventory
+      const newStock = (selectedMaterialForPurchase.currentStock || 0) + purchaseFormData.quantity;
+      const updateResponse = await fetch(`/api/db/rawMaterials/${selectedMaterialForPurchase.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentStock: newStock,
+          stock: newStock
+        })
+      });
+
+      if (updateResponse.ok && currentUserProfile) {
+        // Log stock movement
+        await addDoc(collection(db, 'stockMovements'), {
+          itemId: selectedMaterialForPurchase.id,
+          itemName: selectedMaterialForPurchase.name,
+          itemType: 'material',
+          type: 'in',
+          quantity: purchaseFormData.quantity,
+          previousStock: selectedMaterialForPurchase.currentStock || 0,
+          newStock: newStock,
+          location: 'none',
+          reason: 'purchase',
+          userId: currentUserProfile.id,
+          userName: currentUserProfile.name,
+          timestamp: Timestamp.now()
+        });
+      }
+
+      toast.success(t('purchaseCreatedSuccessfully') || 'Purchase created and inventory updated');
+      setIsPurchaseModalOpen(false);
+      setSelectedMaterialForPurchase(null);
+    } catch (error) {
+      console.error('Error creating purchase:', error);
+      toast.error(t('errorCreatingPurchase') || 'Error creating purchase');
+    }
+  };
+
   const getStockLevel = (current: number, min: number) => {
     if (current <= 0) return { label: 'empty', color: 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20' };
     if (current <= min) return { label: 'critical', color: 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 animate-pulse' };
@@ -503,13 +671,17 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           if (activeTab === 'products') {
             const oldProduct = selectedProduct as Product;
             if (Number(formData.shopStock) !== oldProduct.shopStock) {
-              const diff = Number(formData.shopStock) - (oldProduct.shopStock || 0);
+              const prevStock = oldProduct.shopStock || 0;
+              const newStock = Number(formData.shopStock);
+              const diff = newStock - prevStock;
               await addDoc(collection(db, 'stockMovements'), {
                 itemId: selectedProduct.id,
                 itemName: formData.name,
                 itemType: 'product',
                 type: diff > 0 ? 'in' : 'out',
                 quantity: Math.abs(diff),
+                previousStock: prevStock,
+                newStock: newStock,
                 location: 'shop',
                 reason: 'manual_adjustment',
                 userId: currentUserProfile.id,
@@ -518,13 +690,17 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
               });
             }
             if (Number(formData.freezerStock) !== oldProduct.freezerStock) {
-              const diff = Number(formData.freezerStock) - (oldProduct.freezerStock || 0);
+              const prevStock = oldProduct.freezerStock || 0;
+              const newStock = Number(formData.freezerStock);
+              const diff = newStock - prevStock;
               await addDoc(collection(db, 'stockMovements'), {
                 itemId: selectedProduct.id,
                 itemName: formData.name,
                 itemType: 'product',
                 type: diff > 0 ? 'in' : 'out',
                 quantity: Math.abs(diff),
+                previousStock: prevStock,
+                newStock: newStock,
                 location: 'freezer',
                 reason: 'manual_adjustment',
                 userId: currentUserProfile.id,
@@ -535,13 +711,17 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           } else {
             const oldMaterial = (selectedProduct as unknown) as RawMaterial;
             if (Number(formData.stock) !== oldMaterial.currentStock) {
-              const diff = Number(formData.stock) - (oldMaterial.currentStock || 0);
+              const prevStock = oldMaterial.currentStock || 0;
+              const newStock = Number(formData.stock);
+              const diff = newStock - prevStock;
               await addDoc(collection(db, 'stockMovements'), {
                 itemId: selectedProduct.id,
                 itemName: formData.name,
                 itemType: 'material',
                 type: diff > 0 ? 'in' : 'out',
                 quantity: Math.abs(diff),
+                previousStock: prevStock,
+                newStock: newStock,
                 location: 'none',
                 reason: 'manual_adjustment',
                 userId: currentUserProfile.id,
@@ -567,14 +747,19 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           }, { merge: true });
         } else if (activeTab === 'materials') {
           // If we edit a material, check if it exists as a product and sync back
-          const prodDoc = await getDoc(doc(db, 'products', selectedProduct.id));
-          if (prodDoc.exists()) {
-            await updateDoc(doc(db, 'products', selectedProduct.id), {
-              name: formData.name,
-              stock: Number(formData.stock),
-              minStock: Number(formData.minStock),
-              imageUrl: formData.imageUrl
-            });
+          try {
+            const prodDoc = await getDoc(doc(db, 'products', selectedProduct.id));
+            if (prodDoc.exists()) {
+              await updateDoc(doc(db, 'products', selectedProduct.id), {
+                name: formData.name,
+                stock: Number(formData.stock),
+                minStock: Number(formData.minStock),
+                imageUrl: formData.imageUrl
+              });
+            }
+          } catch (error) {
+            // Product doesn't exist in products collection, that's fine
+            // Raw material can exist independently
           }
         }
 
@@ -739,6 +924,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           </button>
         </div>
         <button onClick={() => {
+          setSelectedProduct(null);
           setFormData({
             name: '',
             brand: '',
@@ -796,7 +982,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         >
           {t('rawMaterials')}
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('activities')}
           className={clsx(
             "px-6 py-2.5 rounded-xl text-sm font-bold transition-all",
@@ -806,6 +992,18 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           <div className="flex items-center gap-2">
             <History className="w-4 h-4" />
             {t('activities')}
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('waste')}
+          className={clsx(
+            "px-6 py-2.5 rounded-xl text-sm font-bold transition-all",
+            activeTab === 'waste' ? "bg-white dark:bg-primary-600 text-primary-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Waste Management
           </div>
         </button>
       </div>
@@ -888,24 +1086,10 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product) => (
-                <div key={product.id} 
+                <div key={product.id}
                   onClick={() => {
                     setSelectedProduct(product);
-                    setFormData({
-                      name: product.name,
-                      brand: '',
-                      category: product.category,
-                      price: product.sellingPrice,
-                      unit: 'units',
-                      stock: product.stock,
-                      shopStock: product.shopStock || 0,
-                      freezerStock: product.freezerStock || 0,
-                      minStock: product.minStock,
-                      shelfLife: product.shelfLife || 24,
-                      imageUrl: product.imageUrl || '',
-                      expiryDate: ''
-                    });
-                    setIsModalOpen(true);
+                    setIsDetailsModalOpen(true);
                   }}
                   className="card group hover:shadow-xl transition-all duration-300 overflow-hidden p-0 border-slate-100 dark:border-white/10 cursor-pointer"
                 >
@@ -971,14 +1155,22 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             <Plus className="w-3 h-3" />
                           </button>
                         </div>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center justify-between mt-2">
+                          <span className={clsx(
+                            "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border",
+                            getStockStatusColor(getStockStatusKey(product))
+                          )}>
+                            {t(getStockStatusKey(product))}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-2">
                           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 dark:text-slate-600">
                             <Store className="w-3 h-3" />
-                            {product.shopStock || 0}
+                            Shop: {product.shopStock || 0}
                           </div>
                           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 dark:text-slate-600">
                             <Snowflake className="w-3 h-3" />
-                            {product.freezerStock || 0}
+                            Frozen: {product.freezerStock || 0}
                           </div>
                         </div>
                       </div>
@@ -1036,48 +1228,33 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
 
                   <div className="mt-6 pt-6 border-t border-slate-50 dark:border-white/10 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setFormData({
-                            name: product.name,
-                            brand: '',
-                            category: product.category,
-                            price: product.sellingPrice,
-                            unit: 'units',
-                            stock: product.stock,
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsDetailsModalOpen(false);
+                          setSelectedItemForInventory(product);
+                          setInventoryFormData({
                             shopStock: product.shopStock || 0,
                             freezerStock: product.freezerStock || 0,
-                            minStock: product.minStock,
-                            shelfLife: product.shelfLife || 24,
-                            imageUrl: product.imageUrl || '',
-                            expiryDate: ''
+                            wasteQuantity: product.wasteQuantity || 0,
+                            minStock: product.minStock || 0,
+                            costPrice: product.costPrice || 0
                           });
-                          setIsModalOpen(true);
+                          setIsInventoryModalOpen(true);
                         }}
-                        className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                        className="p-2 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
                         title={t('edit')}
                       >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button 
+                      <button
                         onClick={() => deleteProduct(product.id)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        className="p-2 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 rounded-lg transition-all duration-200 border border-transparent hover:border-red-600 dark:hover:border-red-500"
                         title={t('delete')}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                    <button 
-                      onClick={() => {
-                        setSelectedProduct(product);
-                        setIsDetailsModalOpen(true);
-                      }}
-                      className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-bold text-sm flex items-center gap-1 group/btn"
-                    >
-                      {t('details')}
-                      <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1106,24 +1283,10 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-white/10">
                   {filteredProducts.map((product) => (
-                    <tr key={product.id} 
+                    <tr key={product.id}
                       onClick={() => {
                         setSelectedProduct(product);
-                        setFormData({
-                          name: product.name,
-                          brand: '',
-                          category: product.category,
-                          price: product.sellingPrice,
-                          unit: 'units',
-                          stock: product.stock,
-                          shopStock: product.shopStock || 0,
-                          freezerStock: product.freezerStock || 0,
-                          minStock: product.minStock,
-                          shelfLife: product.shelfLife || 24,
-                          imageUrl: product.imageUrl || '',
-                          expiryDate: ''
-                        });
-                        setIsModalOpen(true);
+                        setIsDetailsModalOpen(true);
                       }}
                       className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer"
                     >
@@ -1148,9 +1311,9 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       <td className="px-8 py-5">
                         <span className={clsx(
                           "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap border",
-                          product.status === 'frozen' ? 'bg-indigo-100 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/30' : 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30'
+                          getStockStatusColor(getStockStatusKey(product))
                         )}>
-                          {t(product.status || 'none')}
+                          {t(getStockStatusKey(product))}
                         </span>
                       </td>
                       <td className="px-8 py-5">
@@ -1168,57 +1331,43 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       <td className="px-8 py-5 text-right">
                         <div className="flex justify-end items-center gap-2">
                           {product.disabled ? (
-                            <button 
+                            <button
                               onClick={() => restoreProduct(product.id)}
-                              className="p-2 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
+                              className="p-2 text-slate-400 hover:text-white hover:bg-emerald-600 dark:hover:bg-emerald-500 rounded-lg transition-all duration-200 border border-transparent hover:border-emerald-600 dark:hover:border-emerald-500"
                               title={t('restore')}
                             >
                               <RefreshCcw className="w-4 h-4" />
                             </button>
                           ) : (
                             <>
-                              <button 
-                                onClick={() => {
-                                  setSelectedProduct(product);
-                                  setFormData({
-                                    name: product.name,
-                                    brand: '',
-                                    category: product.category,
-                                    price: product.sellingPrice,
-                                    unit: 'units',
-                                    stock: product.stock,
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsDetailsModalOpen(false);
+                                  setSelectedItemForInventory(product);
+                                  setInventoryFormData({
                                     shopStock: product.shopStock || 0,
                                     freezerStock: product.freezerStock || 0,
-                                    minStock: product.minStock,
-                                    shelfLife: product.shelfLife || 24,
-                                    imageUrl: product.imageUrl || '',
-                                    expiryDate: ''
+                                    wasteQuantity: product.wasteQuantity || 0,
+                                    minStock: product.minStock || 0,
+                                    costPrice: product.costPrice || 0
                                   });
-                                  setIsModalOpen(true);
+                                  setIsInventoryModalOpen(true);
                                 }}
-                                className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                                className="p-2 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
                                 title={t('edit')}
                               >
                                 <Edit className="w-4 h-4" />
                               </button>
-                              <button 
+                              <button
                                 onClick={() => deleteProduct(product.id)}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                className="p-2 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 rounded-lg transition-all duration-200 border border-transparent hover:border-red-600 dark:hover:border-red-500"
                                 title={t('delete')}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </>
                           )}
-                          <button 
-                            onClick={() => {
-                              setSelectedProduct(product);
-                              setIsDetailsModalOpen(true);
-                            }}
-                            className="btn-secondary py-1 px-3 text-xs"
-                          >
-                            {t('details')}
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1244,7 +1393,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   itemType: 'material',
                   type: 'out',
                   quantity: 0,
-                  reason: 'waste_adjustment',
+                  reason: 'waste',
                   location: 'none'
                 });
                 setIsAdjustmentModalOpen(true);
@@ -1325,6 +1474,65 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           />
         </div>
       </div>
+      ) : activeTab === 'waste' ? (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Waste Management</h2>
+            <div className="text-sm text-slate-500 dark:text-slate-400">
+              Total Waste: <span className="font-bold text-red-600">{movements.filter(m => m.reason === 'waste').reduce((sum, m) => sum + (m.quantity || 0), 0)} units</span>
+            </div>
+          </div>
+          <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-slate-400 dark:text-slate-600 text-xs font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/10">
+                    <th className="px-8 py-5 whitespace-nowrap">{t('date')}</th>
+                    <th className="px-8 py-5 whitespace-nowrap">{t('item')}</th>
+                    <th className="px-8 py-5 whitespace-nowrap">Waste Quantity</th>
+                    <th className="px-8 py-5 whitespace-nowrap">{t('reason')}</th>
+                    <th className="px-8 py-5 whitespace-nowrap">{t('user')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-white/10">
+                  {movements.filter(m => m.reason === 'waste').map((movement) => (
+                    <tr key={movement.id} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all">
+                      <td className="px-8 py-5 font-semibold text-slate-400 dark:text-slate-600 text-sm whitespace-nowrap">
+                        {movement.timestamp ? (typeof movement.timestamp === 'string' ? format(new Date(movement.timestamp), 'MMM dd, HH:mm') : format(movement.timestamp.toDate(), 'MMM dd, HH:mm')) : '-'}
+                      </td>
+                      <td className="px-8 py-5">
+                        <span className="font-bold text-slate-900 dark:text-white">{tProduct(movement.itemName)}</span>
+                      </td>
+                      <td className="px-8 py-5">
+                        <span className="px-3 py-1 rounded-full text-sm font-bold bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+                          -{movement.quantity}
+                        </span>
+                      </td>
+                      <td className="px-8 py-5 font-medium text-slate-500 dark:text-slate-400 text-sm">
+                        {t(movement.reason)}
+                      </td>
+                      <td className="px-8 py-5 font-semibold text-slate-400 dark:text-slate-600 text-sm whitespace-nowrap">
+                        {movement.userName}
+                      </td>
+                    </tr>
+                  ))}
+                  {movements.filter(m => m.reason === 'waste').length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-8 py-12 text-center text-slate-400 dark:text-slate-600 italic">
+                        No waste recorded
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              currentPage={movementsPage}
+              totalPages={totalMovementsPages}
+              onPageChange={setMovementsPage}
+            />
+          </div>
+        </div>
       ) : (
         viewMode === 'card' ? (
           <div className="space-y-6">
@@ -1356,24 +1564,15 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       <div className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <p className="text-sm font-bold text-slate-900 dark:text-white">{material.currentStock} {material.unit}</p>
-                          <button 
+                          <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setAdjustmentData({
-                                itemId: material.id,
-                                itemName: material.name,
-                                itemType: 'material',
-                                type: 'in',
-                                quantity: 0,
-                                reason: 'manual_adjustment',
-                                location: 'none'
-                              });
-                              setIsAdjustmentModalOpen(true);
+                              handleOpenPurchaseModal(material);
                             }}
-                            className="p-1 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
-                            title={t('adjustStock') || 'Adjust Stock'}
+                            className="p-2 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                            title={t('purchase') || 'Purchase'}
                           >
-                            <Plus className="w-3 h-3" />
+                            🛒
                           </button>
                         </div>
                         <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('stock')}</p>
@@ -1381,49 +1580,43 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     </div>
                     <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/5">
                       <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{t('minStock')}: {material.minStock} {material.unit}</span>
-                      <div className="flex gap-2">
-                        {material.disabled ? (
-                          <button 
-                            onClick={() => restoreMaterial(material.id)}
-                            className="p-2 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
-                            title={t('restore')}
+                      {material.disabled ? (
+                        <button
+                          onClick={() => restoreMaterial(material.id)}
+                          className="p-2 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
+                          title={t('restore')}
+                        >
+                          <RefreshCcw className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setIsDetailsModalOpen(false);
+                              setSelectedItemForInventory(material);
+                              setInventoryFormData({
+                                shopStock: 0,
+                                freezerStock: 0,
+                                wasteQuantity: material.wasteQuantity || 0,
+                                minStock: material.minStock || 0,
+                                costPrice: 0
+                              });
+                              setIsInventoryModalOpen(true);
+                            }}
+                            className="p-2 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
+                            title={t('edit')}
                           >
-                            <RefreshCcw className="w-4 h-4" />
+                            <Edit className="w-4 h-4" />
                           </button>
-                        ) : (
-                          <>
-                            <button 
-                              onClick={() => {
-                                setFormData({
-                                  name: material.name,
-                                  brand: material.brand || '',
-                                  category: material.category,
-                                  price: 0,
-                                  unit: material.unit,
-                                  stock: material.currentStock,
-                                  shopStock: 0,
-                                  freezerStock: 0,
-                                  minStock: material.minStock,
-                                  shelfLife: 24,
-                                  imageUrl: material.imageUrl || '',
-                                  expiryDate: material.expiryDate || ''
-                                });
-                                setSelectedProduct(material as any);
-                                setIsModalOpen(true);
-                              }}
-                              className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => deleteMaterial(material.id)}
-                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                          <button
+                            onClick={() => deleteMaterial(material.id)}
+                            className="p-2 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 rounded-lg transition-all duration-200 border border-transparent hover:border-red-600 dark:hover:border-red-500"
+                            title={t('delete')}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1446,7 +1639,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 <th className="px-8 py-5 whitespace-nowrap">{t('currentStock')}</th>
                 <th className="px-8 py-5 whitespace-nowrap">{t('minStock')}</th>
                 <th className="px-8 py-5 whitespace-nowrap">{t('level')}</th>
-                <th className="px-8 py-5 whitespace-nowrap">{t('status')}</th>
                 <th className="px-8 py-5 text-right whitespace-nowrap">{t('actions')}</th>
               </tr>
             </thead>
@@ -1477,29 +1669,10 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   </td>
                   <td className="px-8 py-5">
                     <div className={clsx(
-                      "font-bold text-sm whitespace-nowrap flex items-center gap-2",
+                      "font-bold text-sm whitespace-nowrap",
                       material.currentStock < material.minStock ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"
                     )}>
                       {material.currentStock} {t(material.unit)}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAdjustmentData({
-                            itemId: material.id,
-                            itemName: material.name,
-                            itemType: 'material',
-                            type: 'in',
-                            quantity: 0,
-                            reason: 'manual_adjustment',
-                            location: 'none'
-                          });
-                          setIsAdjustmentModalOpen(true);
-                        }}
-                        className="p-1 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
-                        title={t('adjustStock') || 'Adjust Stock'}
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
                     </div>
                   </td>
                   <td className="px-8 py-5 font-semibold text-slate-400 dark:text-slate-500 text-sm whitespace-nowrap">
@@ -1520,15 +1693,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       );
                     })()}
                   </td>
-                  <td className="px-8 py-5 whitespace-nowrap">
-                    {material.status && material.status !== 'none' ? (
-                      <span className="px-3 py-1 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full text-[10px] font-bold uppercase tracking-wider border border-primary-100 dark:border-primary-900/30">
-                        {t(material.status)}
-                      </span>
-                    ) : (
-                      <span className="text-slate-300 dark:text-slate-700 text-[10px] font-bold uppercase tracking-widest">-</span>
-                    )}
-                  </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2 transition-all">
                       {material.disabled ? (
@@ -1541,47 +1705,38 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         </button>
                       ) : (
                         <>
-                          <button 
-                            onClick={() => {
-                              setFormData({
-                                name: material.name,
-                                brand: material.brand || '',
-                                category: material.category,
-                                price: 0,
-                                unit: material.unit,
-                                stock: material.currentStock,
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsDetailsModalOpen(false);
+                              setSelectedItemForInventory(material);
+                              setInventoryFormData({
                                 shopStock: 0,
                                 freezerStock: 0,
-                                minStock: material.minStock,
-                                shelfLife: 24,
-                                imageUrl: material.imageUrl || '',
-                                expiryDate: material.expiryDate || ''
+                                wasteQuantity: material.wasteQuantity || 0,
+                                minStock: material.minStock || 0,
+                                costPrice: 0
                               });
-                              setSelectedProduct(material as any);
-                              setIsModalOpen(true);
+                              setIsInventoryModalOpen(true);
                             }}
                             title={t('edit')}
-                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:border-primary-200 dark:hover:border-primary-900/30 transition-all"
+                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 hover:border-primary-600 dark:hover:border-primary-500 transition-all duration-200"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button 
-                            onClick={() => updateMaterialStatus(material.id, 'ordered')}
-                            title={t('ordered')}
-                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:border-primary-200 dark:hover:border-primary-900/30 transition-all"
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenPurchaseModal(material);
+                            }}
+                            title={t('purchase') || 'Purchase'}
+                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-white hover:bg-emerald-600 dark:hover:bg-emerald-500 hover:border-emerald-600 dark:hover:border-emerald-500 transition-all duration-200 text-lg"
                           >
-                            <ShoppingCart className="w-4 h-4" />
+                            🛒
                           </button>
-                          <button 
-                            onClick={() => updateMaterialStatus(material.id, 'requested')}
-                            title={t('reorder')}
-                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-200 dark:hover:border-amber-900/30 transition-all"
-                          >
-                            <RefreshCcw className="w-4 h-4" />
-                          </button>
-                          <button 
+                          <button
                             onClick={() => deleteMaterial(material.id)}
-                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900/30 transition-all"
+                            className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-500 hover:border-red-600 dark:hover:border-red-500 transition-all duration-200"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1706,19 +1861,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       </div>
                     </div>
                   </>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('currentStock')}</label>
-                    <input 
-                      type="number" 
-                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                      placeholder="0" 
-                      required
-                      value={formData.stock || 0}
-                      onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
-                    />
-                  </div>
-                )}
+                ) : null}
                 {activeTab === 'materials' && (
                   <div>
                     <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('expiryDate') || 'Expiry Date'}</label>
@@ -1730,17 +1873,19 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     />
                   </div>
                 )}
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('minStock')}</label>
-                  <input 
-                    type="number" 
-                    className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                    placeholder="0" 
-                    required
-                    value={formData.minStock || 0}
-                    onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
-                  />
-                </div>
+                {activeTab === 'products' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('minStock')}</label>
+                    <input
+                      type="number"
+                      className="input bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                      placeholder="0"
+                      required
+                      value={formData.minStock || 0}
+                      onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
+                    />
+                  </div>
+                )}
                 {activeTab === 'products' && (
                   <div>
                     <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('shelfLife')}</label>
@@ -1809,25 +1954,39 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 </div>
                 <div className="text-right">
                   <p className="text-slate-400 dark:text-slate-600 text-xs font-bold uppercase tracking-widest mb-1">{t('status')}</p>
-                  {isEditingDetails ? (
-                    <select 
-                      className="input py-1 text-sm"
-                      value={editFormData.status || 'none'}
-                      onChange={(e) => setEditFormData({...editFormData, status: e.target.value as any})}
-                    >
-                      <option value="none">{t('none')}</option>
-                      <option value="frozen">{t('frozen')}</option>
-                      <option value="ordered">{t('ordered')}</option>
-                    </select>
-                  ) : (
+                  {selectedProduct.itemType === 'material' ? (
+                    // Raw material: show purchase status (not editable)
                     <span className={clsx(
                       "px-4 py-1.5 rounded-xl text-sm font-bold border",
-                      selectedProduct.status === 'frozen' ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30" :
-                      selectedProduct.status === 'ordered' ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30" :
+                      editFormData.lastPurchaseStatus?.toLowerCase().includes('cancel') ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/30" :
+                      editFormData.lastPurchaseStatus?.toLowerCase().includes('draft') ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30" :
+                      editFormData.lastPurchaseStatus?.toLowerCase().includes('received') || editFormData.lastPurchaseStatus?.toLowerCase().includes('approved') ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30" :
                       "bg-slate-50 dark:bg-zinc-900 text-slate-600 dark:text-slate-400 border-slate-100 dark:border-white/10"
                     )}>
-                      {t(selectedProduct.status || 'none')}
+                      {editFormData.lastPurchaseStatus || 'none'}
                     </span>
+                  ) : (
+                    // Product: show editable status
+                    isEditingDetails ? (
+                      <select
+                        className="input py-1 text-sm"
+                        value={editFormData.status || 'none'}
+                        onChange={(e) => setEditFormData({...editFormData, status: e.target.value as any})}
+                      >
+                        <option value="none">{t('none')}</option>
+                        <option value="frozen">{t('frozen')}</option>
+                        <option value="ordered">{t('ordered')}</option>
+                      </select>
+                    ) : (
+                      <span className={clsx(
+                        "px-4 py-1.5 rounded-xl text-sm font-bold border",
+                        selectedProduct.status === 'frozen' ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30" :
+                        selectedProduct.status === 'ordered' ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30" :
+                        "bg-slate-50 dark:bg-zinc-900 text-slate-600 dark:text-slate-400 border-slate-100 dark:border-white/10"
+                      )}>
+                        {t(selectedProduct.status || 'none')}
+                      </span>
+                    )
                   )}
                 </div>
               </div>
@@ -1837,19 +1996,17 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 selectedProduct.itemType === 'product' ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3"
               )}>
                 <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10">
-                  <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">{t('totalStock')}</p>
+                  <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">
+                    {t('totalStock')}
+                    {isEditingDetails && <span className="text-xs text-amber-600 dark:text-amber-400 ml-1">(read-only)</span>}
+                  </p>
                   {isEditingDetails ? (
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="number" 
-                        className="input py-1 text-sm w-full"
-                        disabled
-                        value={(editFormData.shopStock || 0) + (editFormData.freezerStock || 0)}
-                      />
-                      <span className="text-xs font-bold text-slate-500">{selectedProduct.unit || 'g'}</span>
-                    </div>
+                    // Both product and raw material: total stock is READ-ONLY (calculated from locations or purchases)
+                    <p className="text-xl font-bold text-slate-900 dark:text-white cursor-not-allowed opacity-60">
+                      {selectedProduct.itemType === 'product' ? ((editFormData.shopStock || 0) + (editFormData.freezerStock || 0)) : (editFormData.stock || (selectedProduct as any).currentStock || 0)} {selectedProduct.unit || 'g'}
+                    </p>
                   ) : (
-                    <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.stock} {selectedProduct.unit || 'g'}</p>
+                    <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.itemType === 'product' ? ((selectedProduct.shopStock || 0) + (selectedProduct.freezerStock || 0)) : ((selectedProduct as any).currentStock || selectedProduct.stock || 0)} {selectedProduct.unit || 'g'}</p>
                   )}
                 </div>
 
@@ -1860,11 +2017,16 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         <Store className="w-3 h-3" /> {t('shopStock')}
                       </p>
                       {isEditingDetails ? (
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           className="input py-1 text-sm w-full"
                           value={editFormData.shopStock || 0}
-                          onChange={(e) => setEditFormData({...editFormData, shopStock: Number(e.target.value)})}
+                          onChange={(e) => {
+                            const newShop = Number(e.target.value);
+                            const currentTotal = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
+                            const newFrozen = currentTotal - newShop;
+                            setEditFormData({...editFormData, shopStock: newShop, freezerStock: Math.max(0, newFrozen)});
+                          }}
                         />
                       ) : (
                         <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.shopStock || 0}</p>
@@ -1875,11 +2037,16 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         <Snowflake className="w-3 h-3" /> {t('freezerStock')}
                       </p>
                       {isEditingDetails ? (
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           className="input py-1 text-sm w-full"
                           value={editFormData.freezerStock || 0}
-                          onChange={(e) => setEditFormData({...editFormData, freezerStock: Number(e.target.value)})}
+                          onChange={(e) => {
+                            const newFrozen = Number(e.target.value);
+                            const currentTotal = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
+                            const newShop = currentTotal - newFrozen;
+                            setEditFormData({...editFormData, freezerStock: newFrozen, shopStock: Math.max(0, newShop)});
+                          }}
                         />
                       ) : (
                         <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.freezerStock || 0}</p>
@@ -1887,6 +2054,29 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     </div>
                   </>
                 )}
+
+                <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10">
+                  <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-red-500" /> {t('wasteQuantity') || 'Waste'}
+                  </p>
+                  {isEditingDetails ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        className="input py-1 text-sm w-full"
+                        value={editFormData.wasteQuantity || 0}
+                        min="0"
+                        onChange={(e) => {
+                          const newWaste = Math.max(0, Number(e.target.value));
+                          setEditFormData({...editFormData, wasteQuantity: newWaste});
+                        }}
+                      />
+                      <span className="text-xs font-bold text-slate-500">{selectedProduct.unit || 'g'}</span>
+                    </div>
+                  ) : (
+                    <p className="text-xl font-bold text-red-600 dark:text-red-400">{selectedProduct.wasteQuantity || 0} {selectedProduct.unit || 'g'}</p>
+                  )}
+                </div>
 
                 <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10">
                   <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">{t('price')}</p>
@@ -1920,22 +2110,24 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.shelfLife}h</p>
                   )}
                 </div>
-                <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10">
-                  <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">{t('minStock')}</p>
-                  {isEditingDetails ? (
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="number" 
-                        className="input py-1 text-sm w-full"
-                        value={editFormData.minStock || 0}
-                        onChange={(e) => setEditFormData({...editFormData, minStock: Number(e.target.value)})}
-                      />
-                      <span className="text-xs font-bold text-slate-500">{selectedProduct.unit || 'g'}</span>
-                    </div>
-                  ) : (
-                    <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.minStock} {selectedProduct.unit || 'g'}</p>
-                  )}
-                </div>
+                {selectedProduct.itemType !== 'material' && (
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10">
+                    <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">{t('minStock')}</p>
+                    {isEditingDetails ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          className="input py-1 text-sm w-full"
+                          value={editFormData.minStock || 0}
+                          onChange={(e) => setEditFormData({...editFormData, minStock: Number(e.target.value)})}
+                        />
+                        <span className="text-xs font-bold text-slate-500">{selectedProduct.unit || 'g'}</span>
+                      </div>
+                    ) : (
+                      <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.minStock} {selectedProduct.unit || 'g'}</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {selectedProduct.description && (
@@ -2089,48 +2281,121 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     >
                       {t('cancel')}
                     </button>
-                    <button 
+                    <button
                       onClick={async () => {
                         try {
+                          // Get waste values for both products and raw materials
+                          let newWaste = editFormData.wasteQuantity || 0;
+                          let oldWaste = selectedProduct.wasteQuantity || 0;
+
+                          // Validation for products only
+                          if (selectedProduct.itemType === 'product') {
+                            const updatedStock = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
+                            // For products: waste cannot exceed total stock
+                            if (newWaste > updatedStock) {
+                              toast.error('Waste cannot exceed total stock');
+                              return;
+                            }
+                          }
+
                           const updatedStock = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
+                          const oldTotal = (selectedProduct.shopStock || 0) + (selectedProduct.freezerStock || 0);
+                          const { wasteQuantity, lastPurchaseStatus, ...dataToSave } = editFormData;
                           const finalData = {
-                            ...editFormData,
+                            ...dataToSave,
                             stock: updatedStock
                           };
 
-                          await updateDoc(doc(db, 'products', selectedProduct.id), finalData);
-                          
-                          // Log stock movements if changed
+                          await updateDoc(doc(db, selectedProduct.itemType === 'material' ? 'rawMaterials' : 'products', selectedProduct.id), finalData);
+
+                          // Log movements and activities if changed
                           if (currentUserProfile) {
-                            if (editFormData.shopStock !== selectedProduct.shopStock) {
-                              const diff = (editFormData.shopStock || 0) - (selectedProduct.shopStock || 0);
+                            // Handle waste changes (for both products and raw materials)
+                            if (newWaste !== oldWaste) {
+                              const wasteDiff = newWaste - oldWaste;
+                              const movementType = wasteDiff > 0 ? 'waste' : 'waste_recovery';
+
                               await addDoc(collection(db, 'stockMovements'), {
                                 itemId: selectedProduct.id,
                                 itemName: selectedProduct.name,
-                                itemType: 'product',
-                                type: diff > 0 ? 'in' : 'out',
-                                quantity: Math.abs(diff),
-                                location: 'shop',
-                                reason: 'manual_adjustment',
+                                itemType: selectedProduct.itemType === 'material' ? 'material' : 'product',
+                                type: wasteDiff > 0 ? 'out' : 'in',
+                                quantity: Math.abs(wasteDiff),
+                                previousStock: oldWaste,
+                                newStock: newWaste,
+                                location: 'none',
+                                reason: movementType,
                                 userId: currentUserProfile.id,
                                 userName: currentUserProfile.name,
                                 timestamp: Timestamp.now()
                               });
+
+                              // Log activity
+                              await logActivity(
+                                currentUserProfile.id,
+                                currentUserProfile.name,
+                                'inventory_waste_adjusted',
+                                `${selectedProduct.name}: waste ${wasteDiff > 0 ? 'increased' : 'decreased'} by ${Math.abs(wasteDiff)} ${selectedProduct.unit || 'units'}`
+                              );
                             }
-                            if (editFormData.freezerStock !== selectedProduct.freezerStock) {
-                              const diff = (editFormData.freezerStock || 0) - (selectedProduct.freezerStock || 0);
-                              await addDoc(collection(db, 'stockMovements'), {
-                                itemId: selectedProduct.id,
-                                itemName: selectedProduct.name,
-                                itemType: 'product',
-                                type: diff > 0 ? 'in' : 'out',
-                                quantity: Math.abs(diff),
-                                location: 'freezer',
-                                reason: 'manual_adjustment',
-                                userId: currentUserProfile.id,
-                                userName: currentUserProfile.name,
-                                timestamp: Timestamp.now()
-                              });
+
+                            // For products, handle stock distribution changes
+                            if (selectedProduct.itemType !== 'material') {
+                              if (updatedStock < oldTotal) {
+                                const autoWaste = oldTotal - updatedStock;
+                                await addDoc(collection(db, 'stockMovements'), {
+                                  itemId: selectedProduct.id,
+                                  itemName: selectedProduct.name,
+                                  itemType: 'product',
+                                  type: 'out',
+                                  quantity: autoWaste,
+                                  previousStock: oldTotal,
+                                  newStock: updatedStock,
+                                  location: 'none',
+                                  reason: 'waste',
+                                  userId: currentUserProfile.id,
+                                  userName: currentUserProfile.name,
+                                  timestamp: Timestamp.now()
+                                });
+                              }
+                              if (editFormData.shopStock !== selectedProduct.shopStock) {
+                                const prevStock = selectedProduct.shopStock || 0;
+                                const newStock = editFormData.shopStock || 0;
+                                const diff = newStock - prevStock;
+                                await addDoc(collection(db, 'stockMovements'), {
+                                  itemId: selectedProduct.id,
+                                  itemName: selectedProduct.name,
+                                  itemType: 'product',
+                                  type: diff > 0 ? 'in' : 'out',
+                                  quantity: Math.abs(diff),
+                                  previousStock: prevStock,
+                                  newStock: newStock,
+                                  location: 'shop',
+                                  reason: 'manual_adjustment',
+                                  userId: currentUserProfile.id,
+                                  userName: currentUserProfile.name,
+                                  timestamp: Timestamp.now()
+                                });
+                              }
+                              if (editFormData.freezerStock !== selectedProduct.freezerStock) {
+                                const prevStock = selectedProduct.freezerStock || 0;
+                                const newStock = editFormData.freezerStock || 0;
+                                const diff = newStock - prevStock;
+                                await addDoc(collection(db, 'stockMovements'), {
+                                  itemId: selectedProduct.id,
+                                  itemName: selectedProduct.name,
+                                  itemType: 'product',
+                                  type: diff > 0 ? 'in' : 'out',
+                                  quantity: Math.abs(diff),
+                                  previousStock: prevStock,
+                                  newStock: newStock,
+                                  location: 'freezer',
+                                  reason: 'manual_adjustment',
+                                  userId: currentUserProfile.id,
+                                  userName: currentUserProfile.name,
+                                  timestamp: Timestamp.now()
+                                });
+                              }
                             }
                           }
 
@@ -2162,13 +2427,14 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   </>
                 ) : (
                   <>
-                    <button 
-                      onClick={() => {
-                        setEditFormData({
+                    <button
+                      onClick={async () => {
+                        const formData: any = {
                           name: selectedProduct.name,
-                          stock: selectedProduct.stock,
+                          stock: selectedProduct.itemType === 'material' ? (selectedProduct as any).currentStock : selectedProduct.stock,
                           shopStock: selectedProduct.shopStock || 0,
                           freezerStock: selectedProduct.freezerStock || 0,
+                          wasteQuantity: selectedProduct.wasteQuantity || 0,
                           status: selectedProduct.status,
                           category: selectedProduct.category,
                           sellingPrice: selectedProduct.sellingPrice,
@@ -2177,7 +2443,15 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           imageUrl: selectedProduct.imageUrl || '',
                           ingredients: selectedProduct.ingredients || [],
                           packItems: selectedProduct.packItems || []
-                        });
+                        };
+
+                        // For raw materials, fetch last purchase status
+                        if (selectedProduct.itemType === 'material') {
+                          const lastPurchase = await getLastPurchaseForMaterial(selectedProduct.id);
+                          formData.lastPurchaseStatus = lastPurchase.status;
+                        }
+
+                        setEditFormData(formData);
                         setIsEditingDetails(true);
                       }}
                       className="flex-1 btn-secondary justify-center gap-2 dark:bg-zinc-800 dark:border-white/10 dark:text-slate-300"
@@ -2327,7 +2601,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     onChange={(e) => setAdjustmentData({...adjustmentData, reason: e.target.value})}
                   >
                     <option value="manual_adjustment">{t('manual_adjustment') || 'Manual Adjustment'}</option>
-                    <option value="waste_adjustment">{t('waste_adjustment') || 'Waste / Loss'}</option>
+                    <option value="waste">{t('waste') || 'Waste / Loss'}</option>
                     <option value="correction">{t('correction') || 'Inventory Correction'}</option>
                   </select>
                 </div>
@@ -2338,6 +2612,253 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 <button type="submit" className="flex-1 btn-primary justify-center dark:bg-primary-600 dark:hover:bg-primary-700">{t('confirm')}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {isPurchaseModalOpen && selectedMaterialForPurchase && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="card w-full max-w-2xl shadow-2xl p-8 border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t('purchase') || 'Purchase'} - {selectedMaterialForPurchase.name}</h2>
+              <button
+                onClick={() => setIsPurchaseModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <Plus className="w-6 h-6 rotate-45" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePurchaseSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('supplier')} <span className="text-red-600">*</span></label>
+                  <select
+                    required
+                    value={purchaseFormData.supplierId}
+                    onChange={(e) => setPurchaseFormData({...purchaseFormData, supplierId: e.target.value})}
+                    className="input w-full"
+                  >
+                    <option value="">{t('selectSupplier')}</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('quantity')} <span className="text-red-600">*</span></label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={purchaseFormData.quantity}
+                      onChange={(e) => setPurchaseFormData({...purchaseFormData, quantity: Number(e.target.value)})}
+                      className="input flex-1"
+                    />
+                    <span className="flex items-center px-3 bg-slate-100 dark:bg-zinc-800 rounded-lg text-sm font-bold text-slate-500">{selectedMaterialForPurchase.unit}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('price')} <span className="text-red-600">*</span></label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={purchaseFormData.price}
+                    onChange={(e) => setPurchaseFormData({...purchaseFormData, price: Number(e.target.value)})}
+                    className="input w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('brand')}</label>
+                  <input
+                    type="text"
+                    value={purchaseFormData.brand}
+                    onChange={(e) => setPurchaseFormData({...purchaseFormData, brand: e.target.value})}
+                    className="input w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('purchaseDate')} <span className="text-red-600">*</span></label>
+                  <input
+                    type="date"
+                    required
+                    value={purchaseFormData.purchaseDate}
+                    onChange={(e) => setPurchaseFormData({...purchaseFormData, purchaseDate: e.target.value})}
+                    className="input w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('expiryDate')}</label>
+                  <input
+                    type="date"
+                    value={purchaseFormData.expiryDate}
+                    onChange={(e) => setPurchaseFormData({...purchaseFormData, expiryDate: e.target.value})}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => setIsPurchaseModalOpen(false)}
+                  className="flex-1 btn-secondary justify-center dark:bg-zinc-800 dark:border-white/10 dark:text-slate-300"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 btn-primary justify-center dark:bg-primary-600 dark:hover:bg-primary-700"
+                >
+                  {t('purchase')} & {t('sync')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isInventoryModalOpen && selectedItemForInventory && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="card w-full max-w-md shadow-2xl p-8 border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                {t('inventory')} - {selectedItemForInventory.name}
+              </h2>
+              <button
+                onClick={() => setIsInventoryModalOpen(false)}
+                className="p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                <Plus className="w-6 h-6 rotate-45 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {!('currentStock' in selectedItemForInventory) && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                      <Store className="w-3 h-3" /> {t('shopStock')}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="input w-full"
+                      value={inventoryFormData.shopStock}
+                      onChange={(e) => setInventoryFormData({...inventoryFormData, shopStock: Math.max(0, Number(e.target.value))})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                      <Snowflake className="w-3 h-3" /> {t('freezerStock')}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="input w-full"
+                      value={inventoryFormData.freezerStock}
+                      onChange={(e) => setInventoryFormData({...inventoryFormData, freezerStock: Math.max(0, Number(e.target.value))})}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">
+                  {t('totalStock')}
+                </label>
+                <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
+                  <p className="text-lg font-bold text-slate-900 dark:text-white">
+                    {'currentStock' in selectedItemForInventory
+                      ? (selectedItemForInventory as any).currentStock
+                      : (inventoryFormData.shopStock + inventoryFormData.freezerStock)} {selectedItemForInventory.unit}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 text-red-500" /> {t('wasteQuantity') || 'Waste'}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  className="input w-full"
+                  value={inventoryFormData.wasteQuantity}
+                  onChange={(e) => setInventoryFormData({...inventoryFormData, wasteQuantity: Math.max(0, Number(e.target.value))})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">
+                  {t('totalCost')}
+                </label>
+                <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
+                  <p className="text-lg font-bold text-slate-900 dark:text-white">
+                    {((inventoryFormData.costPrice || (selectedItemForInventory as any).costPrice || 0) *
+                    ('currentStock' in selectedItemForInventory
+                      ? (selectedItemForInventory as any).currentStock
+                      : (inventoryFormData.shopStock + inventoryFormData.freezerStock))).toFixed(2)} {CURRENCY}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-white/10">
+                <button
+                  onClick={() => setIsInventoryModalOpen(false)}
+                  className="flex-1 btn-secondary justify-center dark:bg-zinc-800 dark:border-white/10 dark:text-slate-300"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const itemId = selectedItemForInventory.id;
+                      const isMaterial = 'currentStock' in selectedItemForInventory;
+                      const token = localStorage.getItem('bakery_token');
+
+                      const endpoint = isMaterial ? `/api/db/rawMaterials/${itemId}` : `/api/db/products/${itemId}`;
+                      const updateData = isMaterial
+                        ? { wasteQuantity: inventoryFormData.wasteQuantity }
+                        : {
+                            shopStock: inventoryFormData.shopStock,
+                            freezerStock: inventoryFormData.freezerStock,
+                            wasteQuantity: inventoryFormData.wasteQuantity
+                          };
+
+                      const response = await fetch(endpoint, {
+                        method: 'PUT',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${token}`
+                        },
+                        body: JSON.stringify(updateData)
+                      });
+
+                      if (!response.ok) {
+                        throw new Error('Failed to update inventory');
+                      }
+
+                      toast.success(t('updatedSuccessfully') || 'Updated successfully');
+                      setIsInventoryModalOpen(false);
+                    } catch (error) {
+                      console.error('Error updating inventory:', error);
+                      toast.error(t('errorUpdating') || 'Error updating');
+                    }
+                  }}
+                  className="flex-1 btn-primary justify-center dark:bg-primary-600 dark:hover:bg-primary-700"
+                >
+                  {t('save')}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

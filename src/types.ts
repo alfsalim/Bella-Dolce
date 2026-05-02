@@ -23,6 +23,7 @@ export interface Product {
   stock: number;
   shopStock?: number;
   freezerStock?: number;
+  wasteQuantity?: number; // waste tracked separately
   minStock: number;
   description?: string;
   specifications?: string;
@@ -61,6 +62,7 @@ export interface RawMaterial {
   unit: string;
   currentStock: number;
   stock?: number;
+  wasteQuantity?: number; // waste tracked separately
   minStock: number;
   status?: 'none' | 'ordered' | 'requested' | 'cancelled';
   imageUrl?: string;
@@ -101,6 +103,7 @@ export interface SaleItem {
   productId: string;
   quantity: number;
   price: number;
+  location?: 'shop' | 'frozen';
 }
 
 export interface Sale {

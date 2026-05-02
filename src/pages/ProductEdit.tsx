@@ -27,12 +27,24 @@ const ProductEdit: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, tProduct, tCategory, isRTL } = useLanguage();
-  
+
   const [product, setProduct] = useState<Product | null>(null);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  const validateForm = (): boolean => {
+    const errors: string[] = [];
+    if (!product?.name?.trim()) errors.push('name');
+    if (!product?.category) errors.push('category');
+    if (!product?.sellingPrice || product.sellingPrice <= 0) errors.push('sellingPrice');
+    if (!product?.costPrice || product.costPrice <= 0) errors.push('costPrice');
+    if (!recipe?.ingredients || recipe.ingredients.length === 0) errors.push('ingredients');
+    setValidationErrors(errors);
+    return errors.length === 0;
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -90,6 +102,7 @@ const ProductEdit: React.FC = () => {
 
   const handleSave = async () => {
     if (!product || !id) return;
+    if (!validateForm()) return;
     setSaving(true);
     try {
       await updateDoc(doc(db, 'products', id), { ...product });
@@ -185,10 +198,11 @@ const ProductEdit: React.FC = () => {
             <Trash2 className="w-4 h-4" />
             {t('delete')}
           </button>
-          <button 
-            onClick={handleSave} 
-            disabled={saving} 
+          <button
+            onClick={handleSave}
+            disabled={saving || validationErrors.length > 0}
             className="px-6 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20 flex items-center gap-2 disabled:opacity-50"
+            title={validationErrors.length > 0 ? `Remplissez les champs obligatoires: ${validationErrors.join(', ')}` : ''}
           >
             <Save className="w-4 h-4" />
             {saving ? 'Enregistrement...' : t('save')}
@@ -198,6 +212,13 @@ const ProductEdit: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
+          {validationErrors.length > 0 && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
+              <p className="text-sm font-bold text-red-700 dark:text-red-400">
+                Veuillez remplir les champs obligatoires: {validationErrors.join(', ')}
+              </p>
+            </div>
+          )}
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-100 dark:border-white/10 p-8">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
               <Info className="w-5 h-5 text-amber-500" />
@@ -205,7 +226,7 @@ const ProductEdit: React.FC = () => {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="col-span-2">
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('name')}</label>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('name')} <span className="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700" 
@@ -214,7 +235,7 @@ const ProductEdit: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('category')}</label>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('category')} <span className="text-red-500">*</span></label>
                 <select 
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all appearance-none"
                   value={product.category || ''}
@@ -236,7 +257,7 @@ const ProductEdit: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('sellingPrice')} ({CURRENCY})</label>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('sellingPrice')} ({CURRENCY}) <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                   <input 
@@ -249,7 +270,7 @@ const ProductEdit: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('costPrice')} ({CURRENCY})</label>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('costPrice')} ({CURRENCY}) <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                   <input 
@@ -268,7 +289,7 @@ const ProductEdit: React.FC = () => {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <ChefHat className="w-5 h-5 text-amber-500" />
-                {t('artisanalRecipe')}
+                {t('artisanalRecipe')} <span className="text-red-500 text-lg">*</span>
               </h2>
               <button 
                 onClick={addIngredient} 

@@ -51,6 +51,9 @@ const Production: React.FC = () => {
   });
   const [error, setError] = useState<string | null>(null);
   const [rawMaterials, setRawMaterials] = useState<any[]>([]);
+  const [isDistributionModalOpen, setIsDistributionModalOpen] = useState(false);
+  const [batchToComplete, setBatchToComplete] = useState<any | null>(null);
+  const [distribution, setDistribution] = useState({ shop: 0, frozen: 0, waste: 0 });
   // Helper to convert Date to Local ISO string for datetime-local input (YYYY-MM-DDTHH:mm)
   const toLocalISO = (date: Date) => {
     const tzOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
@@ -399,8 +402,8 @@ const Production: React.FC = () => {
     e.preventDefault();
     if (!newBatch.productId || !newBatch.plannedQty) return;
 
-    // Validate ingredients for non-planned batches or if they are explicitly being tracked
-    if (newBatch.ingredients.length === 0 && newBatch.status !== 'planned' && newBatch.status !== 'cancelled') {
+    // Validate ingredients for non-cancelled batches
+    if (newBatch.ingredients.length === 0 && newBatch.status !== 'cancelled') {
       toast.error(t('ingredientsRequired') || 'At least one ingredient is required to start production');
       return;
     }
@@ -651,16 +654,16 @@ const Production: React.FC = () => {
           if (product) {
             const productRef = doc(db, 'products', product.id);
             const location = newBatch.location || 'shop';
+            const qty = Number(newBatch.plannedQty);
+            const newShopStock = location === 'shop' ? (product.shopStock || 0) + qty : (product.shopStock || 0);
+            const newFrozenStock = location === 'freezer' ? (product.freezerStock || 0) + qty : (product.freezerStock || 0);
+
             const updateFields: any = {
-              stock: (product.stock || 0) + Number(newBatch.plannedQty),
-              status: location === 'freezer' ? 'frozen' : 'none'
+              stock: (product.stock || 0) + qty,
+              status: newShopStock === 0 && newFrozenStock > 0 ? 'frozen' : 'none',
+              shopStock: newShopStock,
+              freezerStock: newFrozenStock
             };
-            
-            if (location === 'shop') {
-              updateFields.shopStock = (product.shopStock || 0) + Number(newBatch.plannedQty);
-            } else {
-              updateFields.freezerStock = (product.freezerStock || 0) + Number(newBatch.plannedQty);
-            }
             
             await updateDoc(productRef, updateFields);
 
@@ -698,7 +701,7 @@ const Production: React.FC = () => {
     }
   };
 
-  const updateBatchStatus = async (id: string, status: ProductionBatch['status']) => {
+  const updateBatchStatus = async (id: string, status: ProductionBatch['status'], distribution?: { shop: number; frozen: number; waste: number }) => {
     try {
       const batchRef = doc(db, 'batches', id);
       const batch = batches.find(b => b.id === id);
@@ -766,41 +769,85 @@ const Production: React.FC = () => {
       
       if (status === 'completed') {
         updateData.endDate = new Date().toISOString();
-        
-        // Update product stock and status (Sell / Frozen)
+
+        // Update product stock with distribution
         const product = products.find(p => p.id === batch.productId);
         if (product) {
           const productRef = doc(db, 'products', product.id);
-          const location = (batch as any).location || 'shop';
+          const dist = distribution || { shop: batch.plannedQty, frozen: 0, waste: 0 };
+          const totalToAdd = dist.shop + dist.frozen;
+          const newTotalStock = (product.stock || 0) + totalToAdd;
+          const newShopStock = (product.shopStock || 0) + dist.shop;
+          const newFrozenStock = (product.freezerStock || 0) + dist.frozen;
+
+          // Determine status: frozen only if ALL stock is in freezer
+          const productStatus = newShopStock === 0 && newFrozenStock > 0 ? 'frozen' : 'none';
+
           const updateFields: any = {
-            stock: (product.stock || 0) + batch.plannedQty,
-            status: location === 'freezer' ? 'frozen' : 'none'
+            stock: newTotalStock,
+            shopStock: newShopStock,
+            freezerStock: newFrozenStock,
+            status: productStatus
           };
-          
-          if (location === 'shop') {
-            updateFields.shopStock = (product.shopStock || 0) + batch.plannedQty;
-          } else {
-            updateFields.freezerStock = (product.freezerStock || 0) + batch.plannedQty;
-          }
-          
+
           await updateDoc(productRef, updateFields);
 
-          // Record movement
-          await addDoc(collection(db, 'stockMovements'), {
-            itemId: product.id,
-            itemName: product.name,
-            itemType: 'product',
-            type: 'in',
-            quantity: batch.plannedQty,
-            previousStock: product.stock || 0,
-            newStock: (product.stock || 0) + batch.plannedQty,
-            location: location,
-            reason: 'production',
-            referenceId: id,
-            userId: profile?.id || 'system',
-            userName: profile?.name || 'System',
-            timestamp: new Date().toISOString()
-          });
+          // Record stock movement for shop
+          if (dist.shop > 0) {
+            await addDoc(collection(db, 'stockMovements'), {
+              itemId: product.id,
+              itemName: product.name,
+              itemType: 'product',
+              type: 'in',
+              quantity: dist.shop,
+              previousStock: product.stock || 0,
+              newStock: newTotalStock,
+              location: 'shop',
+              reason: 'production',
+              referenceId: id,
+              userId: profile?.id || 'system',
+              userName: profile?.name || 'System',
+              timestamp: new Date().toISOString()
+            });
+          }
+
+          // Record stock movement for frozen
+          if (dist.frozen > 0) {
+            await addDoc(collection(db, 'stockMovements'), {
+              itemId: product.id,
+              itemName: product.name,
+              itemType: 'product',
+              type: 'in',
+              quantity: dist.frozen,
+              previousStock: product.stock || 0,
+              newStock: newTotalStock,
+              location: 'freezer',
+              reason: 'production',
+              referenceId: id,
+              userId: profile?.id || 'system',
+              userName: profile?.name || 'System',
+              timestamp: new Date().toISOString()
+            });
+          }
+
+          // Record waste
+          if (dist.waste > 0) {
+            await addDoc(collection(db, 'stockMovements'), {
+              itemId: product.id,
+              itemName: product.name,
+              itemType: 'product',
+              type: 'out',
+              quantity: dist.waste,
+              previousStock: product.stock || 0,
+              newStock: newTotalStock,
+              location: 'none',
+              reason: 'waste',
+              referenceId: id,
+              userId: profile?.id || 'system',
+              userName: profile?.name || 'System',
+              timestamp: new Date().toISOString()
+            });
+          }
         }
       }
 
@@ -1014,8 +1061,12 @@ const Production: React.FC = () => {
 
                       <div className="flex items-center gap-2">
                         {batch.status === 'started' && (
-                          <button 
-                            onClick={() => updateBatchStatus(batch.id, 'completed')}
+                          <button
+                            onClick={() => {
+                              setBatchToComplete(batch);
+                              setDistribution({ shop: batch.plannedQty, frozen: 0, waste: 0 });
+                              setIsDistributionModalOpen(true);
+                            }}
                             className="flex-1 btn bg-emerald-600 text-white hover:bg-emerald-700 gap-2 justify-center"
                           >
                             <CheckCircle2 className="w-4 h-4" />
@@ -1287,19 +1338,6 @@ const Production: React.FC = () => {
                 <div className="grid grid-cols-3 gap-3">
                   <button
                     type="button"
-                    onClick={() => setNewBatch({...newBatch, status: 'planned'})}
-                    className={clsx(
-                      "py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all uppercase tracking-wider flex items-center justify-center gap-2",
-                      newBatch.status === 'planned' || (!newBatch.status && !isEditingBatch)
-                        ? "border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"
-                        : "border-slate-100 dark:border-white/5 bg-white dark:bg-zinc-900 text-slate-400 dark:text-slate-600 hover:border-slate-200"
-                    )}
-                  >
-                    <Clock className="w-3 h-3" />
-                    {t('planned')}
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setNewBatch({...newBatch, status: 'started'})}
                     className={clsx(
                       "py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all uppercase tracking-wider flex items-center justify-center gap-2",
@@ -1471,6 +1509,122 @@ const Production: React.FC = () => {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Distribution Modal */}
+      {isDistributionModalOpen && batchToComplete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="card w-full max-w-md p-6 shadow-2xl border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
+            <h2 className="text-2xl font-bold mb-1 text-slate-900 dark:text-white">{t('completeProduction')}</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              {t('distribute')} {batchToComplete.plannedQty} {t('units')}
+            </p>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  <Store className="w-4 h-4 inline mr-2" />
+                  {t('shopStock')} <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="0"
+                    max={batchToComplete.plannedQty}
+                    className="input flex-1"
+                    value={distribution.shop}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value));
+                      const remaining = batchToComplete.plannedQty - val;
+                      setDistribution({ shop: val, frozen: Math.max(0, Math.min(remaining, distribution.frozen)), waste: Math.max(0, batchToComplete.plannedQty - val - Math.max(0, Math.min(remaining, distribution.frozen))) });
+                    }}
+                  />
+                  <span className="text-xs font-bold text-slate-500">{t('units')}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  <Snowflake className="w-4 h-4 inline mr-2" />
+                  {t('freezerStock')} <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="0"
+                    max={batchToComplete.plannedQty - distribution.shop}
+                    className="input flex-1"
+                    value={distribution.frozen}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value));
+                      const available = batchToComplete.plannedQty - distribution.shop;
+                      setDistribution({ shop: distribution.shop, frozen: Math.min(available, val), waste: Math.max(0, batchToComplete.plannedQty - distribution.shop - Math.min(available, val)) });
+                    }}
+                  />
+                  <span className="text-xs font-bold text-slate-500">{t('units')}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  {t('waste')} <span className="text-amber-500 text-xs font-normal">(optional)</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="0"
+                    max={batchToComplete.plannedQty - distribution.shop - distribution.frozen}
+                    className="input flex-1"
+                    value={distribution.waste}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value));
+                      const available = batchToComplete.plannedQty - distribution.shop - distribution.frozen;
+                      setDistribution({ shop: distribution.shop, frozen: distribution.frozen, waste: Math.min(available, val) });
+                    }}
+                  />
+                  <span className="text-xs font-bold text-slate-500">{t('units')}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{t('total')}</span>
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">{distribution.shop + distribution.frozen + distribution.waste} / {batchToComplete.plannedQty} {t('units')}</span>
+                </div>
+                {distribution.shop + distribution.frozen + distribution.waste !== batchToComplete.plannedQty && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">{batchToComplete.plannedQty - (distribution.shop + distribution.frozen + distribution.waste)} {t('units')} not assigned</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setIsDistributionModalOpen(false);
+                  setBatchToComplete(null);
+                }}
+                className="flex-1 btn-secondary justify-center"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={async () => {
+                  if (distribution.shop + distribution.frozen + distribution.waste !== batchToComplete.plannedQty) {
+                    toast.error('Distribution total must equal batch quantity');
+                    return;
+                  }
+                  await updateBatchStatus(batchToComplete.id, 'completed', distribution);
+                  setIsDistributionModalOpen(false);
+                  setBatchToComplete(null);
+                }}
+                className="flex-1 btn-primary justify-center"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {t('complete')}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -32,11 +32,11 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, isPublic }) => {
           
           <Link to="/" className="flex items-center group">
             <div className="w-40 h-10 flex items-center justify-center overflow-hidden transition-all group-hover:scale-105">
-              <img 
-                src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200" 
-                alt="Bella Dolce" 
-                className="w-full h-full object-contain" 
-                referrerPolicy="no-referrer" 
+              <img
+                src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200"
+                alt="Bella Dolce"
+                className="w-full h-full object-contain dark:invert"
+                referrerPolicy="no-referrer"
               />
             </div>
           </Link>

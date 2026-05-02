@@ -1,7 +1,7 @@
 import { Language } from './types';
 
 export const CURRENCY = "DA";
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.3.0";
 
 export const TRANSLATIONS: Record<Language, any> = {
   fr: {
@@ -200,6 +200,10 @@ export const TRANSLATIONS: Record<Language, any> = {
     inventoryConsumption: "Consommation d'inventaire",
     percentage: "Pourcentage",
     frozen: "Congelé",
+    stockLocationShop: "Boutique",
+    stockLocationFrozen: "Congélateur",
+    stockLocationMixed: "Mixte",
+    wasteQuantity: "Quantité de déchet",
     rawMaterials: "Matières Premières",
     critical: "Critique",
     empty: "Vide",
@@ -327,6 +331,8 @@ export const TRANSLATIONS: Record<Language, any> = {
     newPurchase: "Nouvel Achat",
     purchasePrice: "Prix d'achat",
     purchaseDate: "Date d'achat",
+    selectSupplier: "Sélectionner un fournisseur",
+    sync: "Synchroniser",
     brandName: "Marque",
     waste: "Perte / Gaspillage",
     addActivity: "Ajouter une activité",
@@ -335,6 +341,12 @@ export const TRANSLATIONS: Record<Language, any> = {
     addItem: "Ajouter un article",
     editItem: "Modifier l'article",
     waste_adjustment: "Perte / Gaspillage",
+    shopStock: "Stock Boutique",
+    freezerStock: "Stock Congélateur",
+    distribute: "Distribuer",
+    complete: "Terminer",
+    activeNow: "Actif maintenant",
+    completedToday: "Complété aujourd'hui",
   },
   ar: {
     dashboard: "لوحة القيادة",
@@ -532,6 +544,10 @@ export const TRANSLATIONS: Record<Language, any> = {
     inventoryConsumption: "استهلاك المخزون",
     percentage: "نسبة مئوية",
     frozen: "مجمد",
+    stockLocationShop: "المتجر",
+    stockLocationFrozen: "مجمد",
+    stockLocationMixed: "مختلط",
+    wasteQuantity: "كمية النفايات",
     rawMaterials: "المواد الخام",
     critical: "حرج",
     empty: "فارغ",
@@ -585,6 +601,8 @@ export const TRANSLATIONS: Record<Language, any> = {
     newPurchase: "شراء جديد",
     purchasePrice: "سعر الشراء",
     purchaseDate: "تاريخ الشراء",
+    selectSupplier: "اختر المورد",
+    sync: "مزامنة",
     brandName: "العلامة التجارية",
     waste: "نفايات",
     addActivity: "إضافة نشاط",
@@ -593,6 +611,12 @@ export const TRANSLATIONS: Record<Language, any> = {
     addItem: "إضافة عنصر",
     editItem: "تعديل العنصر",
     waste_adjustment: "نفايات / خسارة",
+    shopStock: "المخزون في المحل",
+    freezerStock: "المخزون في المجمد",
+    distribute: "توزيع",
+    complete: "إنهاء",
+    activeNow: "نشط الآن",
+    completedToday: "تم إنجازه اليوم",
     allowedRoutes: "المسارات المسموح بها",
     adminRoleImmutable: "دور المسؤول غير قابل للتغيير",
     manager: "مدير",

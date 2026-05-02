@@ -249,7 +249,8 @@ const ProductManagement: React.FC = () => {
       const currentEditingId = editingProduct?.id || editingMaterial?.id;
 
       if (currentEditingId) {
-        await setDoc(doc(db, collectionName, currentEditingId), formData, { merge: true });
+        const dataToSave = isMaterial ? (() => { const { itemType, ...rest } = formData; return rest; })() : formData;
+        await setDoc(doc(db, collectionName, currentEditingId), dataToSave, { merge: true });
         
         // If it's a material that is ALSO used as a product, sync them
         if (isMaterial) {
@@ -263,8 +264,7 @@ const ProductManagement: React.FC = () => {
                 unit: formData.unit,
                 imageUrl: formData.imageUrl,
                 stock: formData.stock,
-                minStock: formData.minStock,
-                itemType: 'material'
+                minStock: formData.minStock
               }, { merge: true });
             }
           } catch (e) {}
@@ -917,7 +917,7 @@ const ProductManagement: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('name')}</label>
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('name')} <span className="text-red-500">*</span></label>
                   <input 
                     type="text" 
                     required
@@ -927,7 +927,7 @@ const ProductManagement: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('category')}</label>
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('category')} <span className="text-red-500">*</span></label>
                   <select 
                     required
                     className="input" 
@@ -948,7 +948,7 @@ const ProductManagement: React.FC = () => {
                 {formData.itemType !== 'material' && formData.category !== 'raw_material' && (
                   <>
                     <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('sellingPrice')}</label>
+                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('sellingPrice')} <span className="text-red-500">*</span></label>
                       <input 
                         type="number" 
                         required
@@ -958,7 +958,7 @@ const ProductManagement: React.FC = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('costPrice')}</label>
+                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('costPrice')} <span className="text-red-500">*</span></label>
                       <input 
                         type="number" 
                         required
@@ -971,7 +971,7 @@ const ProductManagement: React.FC = () => {
                 )}
                 {(formData.itemType === 'material' || formData.category === 'raw_material') && (
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('currentStock') || 'Current Stock'}</label>
+                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('currentStock') || 'Current Stock'} <span className="text-red-500">*</span></label>
                     <input 
                       type="number" 
                       required
@@ -983,7 +983,7 @@ const ProductManagement: React.FC = () => {
                 )}
                 {(formData.itemType === 'material' || formData.category === 'raw_material') && (
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('minStock')}</label>
+                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('minStock')} <span className="text-red-500">*</span></label>
                     <input 
                       type="number" 
                       required
@@ -994,7 +994,7 @@ const ProductManagement: React.FC = () => {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('unit')}</label>
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('unit')} <span className="text-red-500">*</span></label>
                   <div className="flex bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl gap-1">
                     {['g', 'kg', 'ml', 'l', 'pcs'].map((u) => (
                       <button

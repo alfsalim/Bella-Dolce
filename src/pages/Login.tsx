@@ -51,11 +51,11 @@ const Login: React.FC = () => {
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center shadow-xl overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200" 
-                  alt="Bella Dolce" 
-                  className="w-full h-full object-contain" 
-                  referrerPolicy="no-referrer" 
+                <img
+                  src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200"
+                  alt="Bella Dolce"
+                  className="w-full h-full object-contain dark:invert"
+                  referrerPolicy="no-referrer"
                 />
               </div>
             </div>

@@ -53,18 +53,19 @@ const POS: React.FC = () => {
   const filteredProducts = products.filter(p => {
     const isFrozen = p.status === 'frozen';
     if (isFrozen) return false;
-    const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
+    const matchesCategory = activeCategory === 'All' || (p.category && p.category.toLowerCase()) === (activeCategory.toLowerCase());
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
   const addToCart = (product: Product) => {
+    if ((product.shopStock || 0) <= 0) return;
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       if (existing) {
-        return prev.map(item => 
-          item.productId === product.id 
-            ? { ...item, quantity: item.quantity + 1 } 
+        return prev.map(item =>
+          item.productId === product.id
+            ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       }
@@ -79,7 +80,9 @@ const POS: React.FC = () => {
   const updateQuantity = (productId: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.productId === productId) {
-        const newQty = Math.max(1, item.quantity + delta);
+        const product = products.find(p => p.id === productId);
+        const maxStock = product?.stock || 0;
+        const newQty = Math.max(1, Math.min(maxStock, item.quantity + delta));
         return { ...item, quantity: newQty };
       }
       return item;
@@ -175,36 +178,37 @@ const POS: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 no-scrollbar min-h-[400px]">
+        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-3 no-scrollbar min-h-[400px]">
           {filteredProducts.map((product) => (
-            <button 
+            <button
               key={product.id}
               onClick={() => addToCart(product)}
-              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col h-full min-h-[280px]"
+              disabled={(product.shopStock || 0) <= 0}
+              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col h-full min-h-[320px] disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
-                <div className="h-40 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
-                  <img 
-                    src={product.imageUrl || `https://picsum.photos/seed/${product.name}/300/200`} 
+                <div className="h-48 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
+                  <img
+                    src={product.imageUrl || `https://picsum.photos/seed/${product.name}/300/200`}
                     alt={product.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
-                  {product.stock <= 0 && (
-                    <div className="absolute top-2 right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-white dark:border-black shadow-sm animate-pulse" title={t('notAvailable')} />
-                  )}
+                  <div className={`absolute top-2 left-2 px-2 py-1 rounded-lg text-xs font-bold text-white shadow-sm ${(product.shopStock || 0) <= 0 ? 'bg-red-500' : (product.shopStock || 0) < 5 ? 'bg-amber-500' : 'bg-emerald-500'}`}>
+                    {t('stock')}: {product.shopStock || 0}
+                  </div>
                   <div className="absolute inset-0 bg-primary-600/0 group-hover:bg-primary-600/20 transition-all flex items-center justify-center">
                     <Plus className="text-white opacity-0 group-hover:opacity-100 w-8 h-8 drop-shadow-lg" />
                   </div>
                 </div>
               <div className="p-4 flex flex-col flex-1 justify-between">
                 <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-base mb-1 line-clamp-2" title={tProduct(product.name)}>{tProduct(product.name)}</h3>
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base mb-2 line-clamp-2" title={tProduct(product.name)}>{tProduct(product.name)}</h3>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
                 </div>
-                <div className="flex items-center justify-between mt-4">
-                  <span className="text-lg font-bold text-primary-600 dark:text-primary-400">{product.sellingPrice.toLocaleString()} {CURRENCY}</span>
-                  <div className="w-8 h-8 rounded-full bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center text-primary-600 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white transition-colors">
-                    <Plus className="w-4 h-4" />
+                <div className="flex items-center justify-between mt-4 gap-2">
+                  <span className="text-xl font-bold text-primary-600 dark:text-primary-400">{product.sellingPrice.toLocaleString()}</span>
+                  <div className="w-12 h-12 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90">
+                    <Plus className="w-6 h-6" />
                   </div>
                 </div>
               </div>
@@ -225,43 +229,44 @@ const POS: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar max-h-[400px] lg:max-h-none">
+          <div className="flex-1 overflow-y-auto p-6 space-y-3 no-scrollbar max-h-[400px] lg:max-h-none">
             {cart.length > 0 ? cart.map((item) => {
               const product = products.find(p => p.id === item.productId);
               return (
-                <div key={item.productId} className="flex items-center gap-4 group">
-                  <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-[#1a1512] overflow-hidden flex-shrink-0">
-                    <img 
-                      src={product?.imageUrl || `https://picsum.photos/seed/${product?.name}/100/100`} 
+                <div key={item.productId} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-[#0f0a07] rounded-xl border border-slate-100 dark:border-[#2a1e17]">
+                  <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-[#1a1512] overflow-hidden flex-shrink-0">
+                    <img
+                      src={product?.imageUrl || `https://picsum.photos/seed/${product?.name}/100/100`}
                       alt={product?.name}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">{tProduct(product?.name || '')}</h4>
-                    <p className="text-xs font-bold text-primary-600 dark:text-primary-400">{(item.price * item.quantity).toLocaleString()} {CURRENCY}</p>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{tProduct(product?.name || '')}</h4>
+                    <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">{(item.price * item.quantity).toLocaleString()} {CURRENCY}</p>
                   </div>
-                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#1a1512] rounded-lg p-1">
-                    <button 
+                  <div className="flex items-center gap-1.5 bg-white dark:bg-black rounded-lg p-2 border border-slate-200 dark:border-[#2a1e17]">
+                    <button
                       onClick={() => updateQuantity(item.productId, -1)}
-                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-white dark:hover:bg-black transition-all text-slate-500 dark:text-slate-400"
+                      className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg"
                     >
-                      <Minus className="w-3 h-3" />
+                      <Minus className="w-5 h-5" />
                     </button>
-                    <span className="text-xs font-bold w-4 text-center dark:text-white">{item.quantity}</span>
-                    <button 
+                    <span className="text-sm font-bold w-8 text-center text-slate-900 dark:text-white">{item.quantity}</span>
+                    <button
                       onClick={() => updateQuantity(item.productId, 1)}
-                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-white dark:hover:bg-black transition-all text-slate-500 dark:text-slate-400"
+                      disabled={(product?.stock || 0) <= item.quantity}
+                      className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus className="w-5 h-5" />
                     </button>
                   </div>
-                  <button 
+                  <button
                     onClick={() => removeFromCart(item.productId)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-300 dark:text-slate-700 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all opacity-0 group-hover:opacity-100"
+                    className="w-12 h-12 flex items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all font-bold"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-6 h-6" />
                   </button>
                 </div>
               );
@@ -289,10 +294,10 @@ const POS: React.FC = () => {
               </div>
             </div>
 
-            <button 
+            <button
               onClick={() => setIsCheckoutOpen(true)}
               disabled={cart.length === 0}
-              className="w-full btn-primary py-4 text-lg"
+              className="w-full btn-primary py-5 text-xl font-bold rounded-xl disabled:opacity-50 active:scale-95 transition-transform"
             >
               {t('checkout')}
             </button>
@@ -338,37 +343,37 @@ const POS: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-3">{t('paymentMethod')}</label>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4">{t('paymentMethod')}</label>
                     <div className="grid grid-cols-3 gap-3">
-                      <button 
+                      <button
                         onClick={() => setPaymentMethod('cash')}
                         className={clsx(
-                          "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
-                          paymentMethod === 'cash' ? "border-primary-600 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400" : "border-slate-100 dark:border-[#2a1e17] hover:border-slate-200 dark:hover:border-[#3d2b1f] text-slate-500 dark:text-slate-400"
+                          "flex flex-col items-center gap-2 p-5 rounded-xl border-2 transition-all active:scale-95",
+                          paymentMethod === 'cash' ? "border-primary-600 bg-primary-600 text-white" : "border-slate-200 dark:border-[#2a1e17] hover:border-slate-300 dark:hover:border-[#3d2b1f] text-slate-700 dark:text-slate-400"
                         )}
                       >
-                        <Banknote className="w-6 h-6" />
-                        <span className="text-xs font-bold">{t('cash')}</span>
+                        <Banknote className="w-8 h-8" />
+                        <span className="text-sm font-bold">{t('cash')}</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => setPaymentMethod('card')}
                         className={clsx(
-                          "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
-                          paymentMethod === 'card' ? "border-primary-600 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400" : "border-slate-100 dark:border-[#2a1e17] hover:border-slate-200 dark:hover:border-[#3d2b1f] text-slate-500 dark:text-slate-400"
+                          "flex flex-col items-center gap-2 p-5 rounded-xl border-2 transition-all active:scale-95",
+                          paymentMethod === 'card' ? "border-primary-600 bg-primary-600 text-white" : "border-slate-200 dark:border-[#2a1e17] hover:border-slate-300 dark:hover:border-[#3d2b1f] text-slate-700 dark:text-slate-400"
                         )}
                       >
-                        <CreditCard className="w-6 h-6" />
-                        <span className="text-xs font-bold">{t('card')}</span>
+                        <CreditCard className="w-8 h-8" />
+                        <span className="text-sm font-bold">{t('card')}</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => setPaymentMethod('mobile')}
                         className={clsx(
-                          "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
-                          paymentMethod === 'mobile' ? "border-primary-600 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400" : "border-slate-100 dark:border-[#2a1e17] hover:border-slate-200 dark:hover:border-[#3d2b1f] text-slate-500 dark:text-slate-400"
+                          "flex flex-col items-center gap-2 p-5 rounded-xl border-2 transition-all active:scale-95",
+                          paymentMethod === 'mobile' ? "border-primary-600 bg-primary-600 text-white" : "border-slate-200 dark:border-[#2a1e17] hover:border-slate-300 dark:hover:border-[#3d2b1f] text-slate-700 dark:text-slate-400"
                         )}
                       >
-                        <Smartphone className="w-6 h-6" />
-                        <span className="text-xs font-bold">{t('mobile')}</span>
+                        <Smartphone className="w-8 h-8" />
+                        <span className="text-sm font-bold">{t('mobile')}</span>
                       </button>
                     </div>
                   </div>
@@ -380,9 +385,9 @@ const POS: React.FC = () => {
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     onClick={handleCheckout}
-                    className="w-full btn-primary py-4 text-lg"
+                    className="w-full btn-primary py-5 text-xl font-bold rounded-xl active:scale-95 transition-transform"
                   >
                     {t('confirmPayment')}
                   </button>

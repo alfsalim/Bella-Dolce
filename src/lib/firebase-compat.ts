@@ -68,20 +68,35 @@ export function onSnapshot(
 ) {
   const fetchData = async () => {
     try {
-      const data = await getDocsFromApi(queryOrRef.path || queryOrRef.collectionName, queryOrRef.params);
-      const snapshot = {
-        docs: data.docs,
-        empty: data.empty,
-        size: data.size,
-        docChanges: () => data.docs.map((doc: any) => ({
-          type: 'added',
-          doc: {
-            id: doc.id,
-            data: () => doc.data()
-          }
-        }))
-      };
-      onNext(snapshot);
+      // Check if this is a single document reference (has id) or a query
+      const isSingleDoc = queryOrRef.id && !queryOrRef.params;
+
+      if (isSingleDoc) {
+        // Single document reference
+        const docData = await getDocFromApi(queryOrRef.collectionName, queryOrRef.id);
+        const snapshot = {
+          exists: () => !!docData,
+          data: () => docData,
+          id: queryOrRef.id
+        };
+        onNext(snapshot);
+      } else {
+        // Collection query
+        const data = await getDocsFromApi(queryOrRef.path || queryOrRef.collectionName, queryOrRef.params);
+        const snapshot = {
+          docs: data.docs,
+          empty: data.empty,
+          size: data.size,
+          docChanges: () => data.docs.map((doc: any) => ({
+            type: 'added',
+            doc: {
+              id: doc.id,
+              data: () => doc.data()
+            }
+          }))
+        };
+        onNext(snapshot);
+      }
     } catch (error) {
       if (onError) {
         onError(error);
@@ -98,9 +113,21 @@ export function onSnapshot(
 
 // Where constraint
 export function where(field: string, operator: string, value: any) {
+  // Map Firebase operators to Prisma operators
+  const operatorMap: Record<string, string> = {
+    '>=': 'gte',
+    '<=': 'lte',
+    '>': 'gt',
+    '<': 'lt',
+    '==': 'equals',
+    '!=': 'not'
+  };
+
+  const prismaOperator = operatorMap[operator] || operator;
+
   return {
     type: 'where',
-    value: { [field]: { [operator]: value } }
+    value: { [field]: { [prismaOperator]: value } }
   };
 }
 

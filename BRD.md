@@ -26,8 +26,10 @@ The objective of this application is to replace manual processes with a digital 
 
 ### 5.2 Sales & Point of Sale (POS)
 *   **Transaction Recording:** Ability to process sales quickly with product selection and automatic total calculation.
+*   **Inventory Validation:** Products with zero stock cannot be added to cart. "Add to Cart" button is disabled with visual feedback (reduced opacity).
+*   **Stock-Aware Quantity:** When modifying cart quantities, the system prevents quantity from exceeding available stock. The quantity increase button is disabled when at max stock.
 *   **Sales History:** Searchable log of all past transactions for auditing and customer service.
-*   **Inventory Integration:** Automatic deduction of product stock upon successful sale.
+*   **Inventory Integration:** Automatic deduction of product stock upon successful sale (server-side atomic transaction).
 
 ### 5.3 Production Management
 *   **Batch Planning:** Create and schedule production batches for specific products.
@@ -40,6 +42,43 @@ The objective of this application is to replace manual processes with a digital 
 *   **Auto-Image Loading (Future Enhancement):** When new products are created, system automatically fetches and assigns relevant product images via Unsplash API based on product name/category, eliminating manual image upload requirement.
 *   **Raw Material Management:** Monitor ingredients (flour, sugar, etc.) with low-stock notifications.
 *   **Stock History:** Track movements and adjustments in inventory levels.
+*   **Stock Locations:** Products tracked across two physical locations (Shop/Front Counter and Freezer) with automatic distribution maintenance.
+*   **Traceability Principle:** "Nothing comes from nowhere" — all stock changes must be traceable via stock movements with documented reasons (purchase, sale, waste, transfer, etc.).
+
+### 5.4.1 Purchase Management
+*   **Purchase Orders:** Create purchase orders for raw materials from suppliers with specified quantities, prices, and brands.
+*   **Supplier Integration:** Maintain supplier database with contact information and material history.
+*   **Purchase Tracking:** Record purchase date, expiry date, cost price, and supplier details for each acquisition.
+*   **Inventory Sync:** Auto-sync mechanism to convert approved purchases into inventory stock movements (reason='purchase').
+*   **Status Workflow:** Purchase orders progress through states (Ordered, Received, Invoiced, Paid) with visibility into each stage.
+*   **Cost Price Recording:** Track cost price per unit for COGS calculations and profitability analysis.
+
+### 5.4.2 Waste Management & Tracking
+*   **Waste Recording:** All waste is tracked via stock movements (reason='waste') with automatic journaling to both Activities and Waste Management tabs.
+*   **Waste Sources:** Track waste from multiple sources including manual adjustments during inventory checks, production losses, and expiry/spoilage.
+*   **Waste Logging:** When inventory stock is reduced during edit, the difference automatically creates a waste movement.
+*   **Waste Audit Trail:** All waste transactions include timestamp, user, quantity, and reason for full auditability.
+*   **No Waste Field:** Waste is NOT stored as a field on products/materials; it exists only as stock movements for traceability.
+*   **Waste vs. Actual Stock:** Waste movements decrease actual usable stock; total stock can only increase through purchases or transfers, never through waste adjustment alone.
+
+### 5.4.3 Stock Movement Audit Trail
+*   **Movement Types:** All inventory changes create entries in stockMovements collection:
+    - **Purchase:** Raw material acquisition from suppliers (increases stock)
+    - **Sale:** Product sold through POS (decreases shop stock)
+    - **Waste:** Product/material reduction during inventory checks or spoilage (decreases stock with waste reason)
+    - **Transfer:** Movement between locations (shop ↔ freezer, maintains total stock)
+    - **Adjustment:** Manual stock corrections by authorized staff
+*   **Movement Details:** Each movement records:
+    - Item ID and name
+    - Item type (product or material)
+    - Quantity changed
+    - Previous and new stock levels
+    - Location affected (shop, freezer, warehouse)
+    - Reason for movement
+    - Reference ID (batchId, orderId, purchaseId, etc.)
+    - User who made the change
+    - Timestamp of the transaction
+*   **Real-Time Logging:** All movements logged immediately to Activities tab for staff awareness; waste-specific movements also appear in Waste Management tab for compliance/analysis.
 
 ### 5.5 Order Management
 *   **Customer Orders:** Manage custom or bulk orders from creation to delivery.

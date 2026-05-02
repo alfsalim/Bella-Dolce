@@ -138,17 +138,23 @@ const PurchaseManagement: React.FC = () => {
     operation: 'add' | 'subtract'
   ) => {
     try {
-      const material = materials.find(m => m.id === materialId);
-      if (!material) {
+      const token = localStorage.getItem('bakery_token');
+
+      // Fetch fresh material data instead of using stale state
+      const freshResponse = await fetch(`/api/db/rawMaterials/${materialId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!freshResponse.ok) {
         console.warn(`Material not found: ${materialId}`);
         return;
       }
+      const freshMaterial = await freshResponse.json();
+      const currentStock = freshMaterial.currentStock || 0;
 
       const newStock = operation === 'add'
-        ? (material.currentStock || 0) + quantityChange
-        : (material.currentStock || 0) - quantityChange;
+        ? currentStock + quantityChange
+        : currentStock - quantityChange;
 
-      const token = localStorage.getItem('bakery_token');
       const response = await fetch(`/api/db/rawMaterials/${materialId}`, {
         method: 'PUT',
         headers: {
@@ -292,7 +298,35 @@ const PurchaseManagement: React.FC = () => {
 
         // Update inventory (don't fail if it errors)
         try {
-          await updateInventory(formData.materialId, formData.quantity, 'add');
+          const material = materials.find(m => m.id === formData.materialId);
+          if (material) {
+            const previousStock = material.currentStock || 0;
+            await updateInventory(formData.materialId, formData.quantity, 'add');
+            const newStock = previousStock + formData.quantity;
+
+            // Create stock movement record
+            await fetch('/api/db/stockMovements', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                itemId: formData.materialId,
+                itemName: material.name,
+                itemType: 'material',
+                type: 'in',
+                quantity: formData.quantity,
+                previousStock: previousStock,
+                newStock: newStock,
+                location: 'none',
+                reason: 'purchase',
+                userId: profile?.id || 'unknown',
+                userName: profile?.name || 'Unknown User',
+                timestamp: new Date().toISOString()
+              })
+            });
+          }
         } catch (invError) {
           console.error('Inventory sync warning:', invError);
           // Don't fail the purchase creation if inventory sync fails
@@ -309,6 +343,72 @@ const PurchaseManagement: React.FC = () => {
     } catch (error) {
       console.error('Error saving purchase:', error);
       toast.error(editingPurchase ? 'Failed to update purchase' : 'Failed to create purchase');
+    }
+  };
+
+  const handleSyncToInventory = async (purchase: Purchase) => {
+    try {
+      const material = materials.find(m => m.id === purchase.materialId);
+      if (!material) {
+        toast.error(`Material not found: ${purchase.materialId}`);
+        return;
+      }
+
+      const newStock = (material.currentStock || 0) + purchase.quantity;
+      const token = localStorage.getItem('bakery_token');
+
+      const response = await fetch(`/api/db/rawMaterials/${purchase.materialId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentStock: newStock,
+          stock: newStock
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error(`Sync failed: ${errorData.error || response.statusText}`);
+        return;
+      }
+
+      // Create stock movement record
+      try {
+        const movementResponse = await fetch('/api/db/stockMovements', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            itemId: purchase.materialId,
+            itemName: purchase.materialName,
+            itemType: 'material',
+            type: 'in',
+            quantity: purchase.quantity,
+            previousStock: material.currentStock || 0,
+            newStock: newStock,
+            location: 'none',
+            reason: 'purchase',
+            userId: profile?.id || 'unknown',
+            userName: profile?.name || 'Unknown User',
+            timestamp: new Date().toISOString()
+          })
+        });
+        if (!movementResponse.ok) {
+          console.warn('Failed to create stock movement');
+        }
+      } catch (movementError) {
+        console.warn('Error creating stock movement:', movementError);
+      }
+
+      toast.success(`Synced ${purchase.quantity} ${purchase.unit} to inventory`);
+      fetchMaterials();
+    } catch (error) {
+      toast.error(`Sync error: ${(error as Error).message}`);
     }
   };
 
@@ -458,6 +558,13 @@ const PurchaseManagement: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleSyncToInventory(purchase)}
+                        className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
+                        title="Sync to Inventory"
+                      >
+                        ⤴️
+                      </button>
                       <button
                         onClick={() => handleEdit(purchase)}
                         className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
