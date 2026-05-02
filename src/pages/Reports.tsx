@@ -24,7 +24,8 @@ import {
   ChevronRight,
   AlertTriangle,
   User as UserIcon,
-  Search
+  Search,
+  Activity
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -51,21 +52,23 @@ import {
   subDays 
 } from 'date-fns';
 import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase-compat';
-import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem } from '../types';
+import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
 import { clsx } from 'clsx';
 import { CURRENCY } from '../constants';
 
 const Reports: React.FC = () => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'analytics' | 'sales'>('analytics');
-  
+  const [activeTab, setActiveTab] = useState<'analytics' | 'sales' | 'activities'>('analytics');
+
   const [sales, setSales] = useState<Sale[]>([]);
   const [cashiers, setCashiers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [activitySearch, setActivitySearch] = useState('');
   const [chartMode, setChartMode] = useState<'revenue' | 'orders'>('revenue');
   const [timeFilter, setTimeFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
   const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -137,10 +140,15 @@ const Reports: React.FC = () => {
       setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
     });
 
+    const unsubscribeActivities = onSnapshot(query(collection(db, 'activityLogs'), orderBy('timestamp', 'desc'), limit(500)), (snapshot) => {
+      setActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
+    });
+
     return () => {
       unsubscribeProducts();
       unsubscribeOrders();
       unsubscribeMaterials();
+      unsubscribeActivities();
     };
   }, []);
 
@@ -320,7 +328,7 @@ const Reports: React.FC = () => {
           >
             {t('analytics') || 'Analytics'}
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('sales')}
             className={clsx(
               "px-6 py-2 rounded-xl text-sm font-bold transition-all",
@@ -329,10 +337,19 @@ const Reports: React.FC = () => {
           >
             {t('salesReport') || 'Sales Log'}
           </button>
+          <button
+            onClick={() => setActiveTab('activities')}
+            className={clsx(
+              "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+              activeTab === 'activities' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            {t('activities') || 'Activities'}
+          </button>
         </div>
       </div>
 
-      {activeTab === 'analytics' ? (
+      {activeTab === 'analytics' && (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 dark:bg-white/[0.02] p-4 rounded-3xl border border-slate-100 dark:border-white/5">
             <div className="flex flex-col sm:flex-row gap-3">
@@ -698,7 +715,8 @@ const Reports: React.FC = () => {
         </div>
       </div>
     </div>
-      ) : (
+      )}
+      {activeTab === 'sales' && (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
@@ -892,6 +910,73 @@ const Reports: React.FC = () => {
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {activeTab === 'activities' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 border border-slate-100 dark:border-white/10">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                className="input pl-10 w-full"
+                placeholder={t('search') || 'Search activities...'}
+                value={activitySearch}
+                onChange={(e) => setActivitySearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] overflow-hidden border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Activity className="w-5 h-5 text-amber-500" />
+                {t('activities') || 'User Activities'}
+              </h2>
+              <span className="text-xs font-bold text-slate-400">
+                {activities.filter(a =>
+                  !activitySearch ||
+                  a.userName?.toLowerCase().includes(activitySearch.toLowerCase()) ||
+                  a.action?.toLowerCase().includes(activitySearch.toLowerCase()) ||
+                  a.details?.toLowerCase().includes(activitySearch.toLowerCase())
+                ).length} {t('total') || 'total'}
+              </span>
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-white/5 max-h-[600px] overflow-y-auto">
+              {activities
+                .filter(a =>
+                  !activitySearch ||
+                  a.userName?.toLowerCase().includes(activitySearch.toLowerCase()) ||
+                  a.action?.toLowerCase().includes(activitySearch.toLowerCase()) ||
+                  a.details?.toLowerCase().includes(activitySearch.toLowerCase())
+                )
+                .map((log) => (
+                <div key={log.id} className="p-6 hover:bg-slate-50 dark:hover:bg-black/40 transition-all">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black flex items-center justify-center text-zinc-500">
+                      <Activity className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="font-bold text-slate-900 dark:text-white">{log.userName}</p>
+                        <p className="text-xs text-zinc-500 font-medium">
+                          {log.timestamp ? format(new Date(log.timestamp), 'MMM dd, HH:mm') : 'N/A'}
+                        </p>
+                      </div>
+                      <p className="text-sm text-zinc-400">
+                        <span className="font-bold text-amber-500">{log.action}</span>: {log.details}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {activities.length === 0 && (
+                <div className="p-12 text-center">
+                  <Activity className="w-12 h-12 text-slate-400 dark:text-zinc-600 mx-auto mb-4" />
+                  <p className="text-zinc-500 font-medium">{t('noActivities') || 'No activity logs found'}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

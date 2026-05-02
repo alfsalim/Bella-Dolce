@@ -1242,6 +1242,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         setInventoryFormData({
                           shopStock: product.shopStock || 0,
                           freezerStock: product.freezerStock || 0,
+                          currentStock: 0,
                           wasteQuantity: product.wasteQuantity || 0,
                           minStock: product.minStock || 0,
                           costPrice: product.costPrice || 0
@@ -1309,6 +1310,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                                   setInventoryFormData({
                                     shopStock: product.shopStock || 0,
                                     freezerStock: product.freezerStock || 0,
+                                    currentStock: 0,
                                     wasteQuantity: product.wasteQuantity || 0,
                                     minStock: product.minStock || 0,
                                     costPrice: product.costPrice || 0

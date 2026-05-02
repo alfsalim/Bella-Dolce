@@ -33,10 +33,12 @@ import { CURRENCY } from '../constants';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
+import DeliveryManagement from './DeliveryManagement';
 
 const Orders: React.FC = () => {
   const { t, isRTL, tProduct } = useLanguage();
   const { profile } = useAuth();
+  const [activeTab, setActiveTab] = useState<'orders' | 'tracking'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -391,8 +393,33 @@ const Orders: React.FC = () => {
             <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('orders')}</h1>
             <p className="text-slate-500 dark:text-slate-400 font-medium">{t('manageOrdersDesc') || 'Manage client orders and delivery status'}</p>
           </div>
+          <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={clsx(
+                "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                activeTab === 'orders' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              <ClipboardList className="w-4 h-4" />
+              {t('orders')}
+            </button>
+            <button
+              onClick={() => setActiveTab('tracking')}
+              className={clsx(
+                "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                activeTab === 'tracking' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              <Truck className="w-4 h-4" />
+              {t('tracking') || 'Tracking'}
+            </button>
+          </div>
         </div>
 
+      {activeTab === 'tracking' ? (
+        <DeliveryManagement />
+      ) : (<>
       <div className="card flex flex-col sm:flex-row items-stretch sm:items-center gap-4 py-4 border-slate-100 dark:border-[#2a1e17]">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 w-5 h-5" />
@@ -685,13 +712,14 @@ const Orders: React.FC = () => {
               </tbody>
             </table>
           </div>
-          <Pagination 
+          <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
           />
         </div>
       )}
+      </>)}
       </div>
     </div>
   );

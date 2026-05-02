@@ -45,9 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { icon: ShoppingCart, tKey: 'pos', path: '/pos' },
     { icon: ShoppingCart, tKey: 'businessStore', path: '/b2b' },
     { icon: ClipboardList, tKey: 'orders', path: '/orders' },
-    { icon: Store, tKey: 'delivery', path: '/delivery' },
     { icon: Wallet, tKey: 'finance', path: '/finance' },
-    { icon: Users, tKey: 'users', path: '/users' },
     { icon: BarChart3, tKey: 'reports', path: '/reports' },
     { icon: Settings, tKey: 'settings', path: '/settings' },
   ];

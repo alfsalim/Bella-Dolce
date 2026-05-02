@@ -4,7 +4,8 @@ import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, addDoc, set
 import { UserProfile, ActivityLog, Role, RolePermission, Promotion, Product, RawMaterial } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { DEFAULT_PERMISSIONS } from '../lib/seedData';
-import { Settings as SettingsIcon, Users, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X } from 'lucide-react';
+import { Settings as SettingsIcon, Users as UsersIcon, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X } from 'lucide-react';
+import UsersPage from './Users';
 import { clsx } from 'clsx';
 import { format, addDays } from 'date-fns';
 import { motion } from 'motion/react';
@@ -16,7 +17,7 @@ import { compressImage } from '../lib/utils';
 const Settings: React.FC = () => {
   const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual } = useLanguage();
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'general' | 'roles' | 'logs' | 'promotions'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions'>('general');
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -459,12 +460,24 @@ const Settings: React.FC = () => {
           <SettingsIcon className="w-4 h-4" />
           {t('general')}
         </button>
-        <button 
+        <button
+          onClick={() => setActiveTab('users')}
+          className={clsx(
+            "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+            activeTab === 'users'
+              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+              : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+          )}
+        >
+          <UsersIcon className="w-4 h-4" />
+          {t('users')}
+        </button>
+        <button
           onClick={() => setActiveTab('roles')}
           className={clsx(
             "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'roles' 
-              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
+            activeTab === 'roles'
+              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
               : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
           )}
         >
@@ -496,6 +509,10 @@ const Settings: React.FC = () => {
           {t('promotions')}
         </button>
       </div>
+
+      {activeTab === 'users' && (
+        <UsersPage />
+      )}
 
       {activeTab === 'general' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

@@ -10,11 +10,9 @@ import Production from './pages/Production';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
 import Customers from './pages/Customers';
-import Users from './pages/Users';
 import ProductManagement from './pages/ProductManagement';
 import PublicStore from './pages/PublicStore';
 import B2BStore from './pages/B2BStore';
-import DeliveryManagement from './pages/DeliveryManagement';
 import Settings from './pages/Settings';
 import Reports from './pages/Reports';
 import ProductEdit from './pages/ProductEdit';
@@ -70,10 +68,10 @@ const App: React.FC = () => {
               <Route path="/product-management" element={<ProductManagement />} />
               <Route path="/pos" element={<POS />} />
               <Route path="/b2b" element={<B2BStore />} />
-              <Route path="/delivery" element={<DeliveryManagement />} />
+              <Route path="/delivery" element={<Navigate to="/orders" replace />} />
               <Route path="/finance" element={<Finance />} />
               <Route path="/customers" element={<Customers />} />
-              <Route path="/users" element={<Users />} />
+              <Route path="/users" element={<Navigate to="/settings" replace />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/orders" element={<Orders />} />

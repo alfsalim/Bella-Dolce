@@ -24,7 +24,8 @@ export async function getDocsFromApi(collectionPath: string, queryParams?: any) 
     docs: data.map((item: any) => ({
       id: item.id,
       data: () => item,
-      exists: () => true
+      exists: () => true,
+      ref: { collectionName: collectionPath, id: item.id }
     })),
     empty: data.length === 0,
     size: data.length
@@ -36,9 +37,10 @@ export async function getDocFromApi(collectionPath: string, id: string) {
   if (!res.ok) throw new Error(await res.text());
   const item = await res.json();
   return {
-    id: item.id,
+    id: item?.id || id,
     data: () => item,
-    exists: () => !!item
+    exists: () => !!item,
+    ref: { collectionName: collectionPath, id: item?.id || id }
   };
 }
 
