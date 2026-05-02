@@ -1,4 +1,5 @@
 import "dotenv/config";
+import config from './app.config';
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -7,13 +8,25 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import fs from "fs/promises";
-import { createWriteStream } from "fs";
+import {
+  createWriteStream,
+  existsSync,
+  readFileSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from "fs";
+import https from "https";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || "bella-dolce-secret-change-in-production";
 const SALT_ROUNDS = 10;
+
+const BACKUP_DIR = path.join(process.cwd(), "backups");
+const BACKUP_RETENTION_DAYS = 3;
 
 function sanitizeUser(user: any) {
   const { password, ...safe } = user;
@@ -95,6 +108,34 @@ const unwrapDataIfNeeded = (collection: string, item: any) => {
   return item;
 };
 
+/** Prisma DateTime filters reject bare YYYY-MM-DD; normalize at any depth (Express query shapes vary). */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function deepNormalizePrismaWhere(where: unknown): unknown {
+  if (where == null) return where;
+  if (typeof where === 'string') {
+    const s = where.trim();
+    return DATE_ONLY.test(s) ? `${s}T00:00:00.000Z` : where;
+  }
+  if (Array.isArray(where)) {
+    return where.map((x) => deepNormalizePrismaWhere(x));
+  }
+  if (typeof where !== 'object') return where;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(where as Record<string, unknown>)) {
+    out[k] = deepNormalizePrismaWhere(v);
+  }
+  return out;
+}
+
+function parseWhereQuery(raw: unknown): unknown | undefined {
+  if (raw == null || raw === '') return undefined;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof first === 'string') return JSON.parse(first);
+  if (typeof first === 'object') return first;
+  return JSON.parse(String(first));
+}
+
 // Role-based collection access control
 const COLLECTION_ROLES: Record<string, string[]> = {
   users:               ['admin'],
@@ -127,9 +168,61 @@ const COLLECTION_ROLES: Record<string, string[]> = {
   orders:              ['admin', 'manager', 'cashier'],
 };
 
+async function getBackupConfig(): Promise<{ enabled: boolean; time: string }> {
+  try {
+    const prisma = getPrisma();
+    const setting = await prisma.setting.findUnique({ where: { id: "backup_config" } });
+    if (!setting?.data) return { enabled: true, time: "23:59" };
+    return JSON.parse(setting.data);
+  } catch {
+    return { enabled: true, time: "23:59" };
+  }
+}
+
+function cleanOldBackups() {
+  if (!existsSync(BACKUP_DIR)) return;
+  const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  for (const file of readdirSync(BACKUP_DIR)) {
+    if (!file.endsWith(".db.bak")) continue;
+    const fp = path.join(BACKUP_DIR, file);
+    try {
+      if (statSync(fp).mtimeMs < cutoff) unlinkSync(fp);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function performBackup() {
+  if (!existsSync(BACKUP_DIR)) mkdirSync(BACKUP_DIR, { recursive: true });
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const filename = `${dateStr}_${hh}-${mm}_dev.db.bak`;
+  const destPath = path.resolve(BACKUP_DIR, filename);
+  const prisma = getPrisma();
+  const sqlPath = destPath.replace(/\\/g, "/").replace(/'/g, "''");
+  await prisma.$executeRawUnsafe(`VACUUM INTO '${sqlPath}'`);
+  cleanOldBackups();
+  return { filename, size: statSync(destPath).size };
+}
+
+function listBackups() {
+  if (!existsSync(BACKUP_DIR)) return [];
+  return readdirSync(BACKUP_DIR)
+    .filter((f) => f.endsWith(".db.bak"))
+    .map((f) => {
+      const fp = path.join(BACKUP_DIR, f);
+      const st = statSync(fp);
+      return { filename: f, size: st.size, createdAt: st.mtime.toISOString() };
+    })
+    .sort((a, b) => b.filename.localeCompare(a.filename));
+}
+
 async function startServer() {
   const app = express();
-  const PORT = parseInt(process.env.PORT || '3000', 10);
+  const PORT = parseInt(process.env.PORT || String(config.PORT), 10);
   const PUBLIC_GET_COLLECTIONS = ['products', 'promotions', 'settings'];
   const PUBLIC_POST_COLLECTIONS = ['orders', 'customers', 'activityLogs'];
   const PUBLIC_PUT_COLLECTIONS = ['products'];
@@ -161,6 +254,9 @@ async function startServer() {
     if (method === 'PUT' && PUBLIC_PUT_COLLECTIONS.includes(collection)) return next();
 
     const userRole: string = req.user?.role || '';
+    if (collection === "settings" && req.params.id === "backup_config" && userRole !== "admin") {
+      return res.status(403).json({ error: "Forbidden: admin only" });
+    }
     const allowed = COLLECTION_ROLES[collection];
     if (!allowed) return next();
     if (userRole === 'admin' || allowed.includes(userRole)) return next();
@@ -286,6 +382,32 @@ async function startServer() {
     }
   });
 
+  // SQLite backup — admin only
+  app.post("/api/backup/trigger", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const result = await performBackup();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/backup/list", requireAuth, (req: any, res) => {
+    const role = req.user?.role;
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      res.json(listBackups());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Generalized API routes for CRUD (Prisma bridge)
   app.get("/api/db/:collection", (req, res, next) => {
     if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();
@@ -298,8 +420,11 @@ async function startServer() {
       const model = getModel(collection);
       if (!model) return res.status(404).json({ error: `Collection ${collection} not found` });
 
+      const parsedWhereRaw = parseWhereQuery(where);
+      const parsedWhere =
+        parsedWhereRaw != null ? deepNormalizePrismaWhere(parsedWhereRaw) : undefined;
       const rawData = await model.findMany({
-        where: where ? JSON.parse(where as string) : undefined,
+        where: parsedWhere as object | undefined,
         orderBy: orderBy ? JSON.parse(orderBy as string) : undefined,
         take: take ? parseInt(take as string) : undefined,
       });
@@ -626,6 +751,151 @@ async function startServer() {
     }
   });
 
+  function parseDbJsonField<T>(raw: unknown, fallback: T): T {
+    if (raw == null) return fallback;
+    if (typeof raw === "string") {
+      try {
+        return JSON.parse(raw) as T;
+      } catch {
+        return fallback;
+      }
+    }
+    if (typeof raw === "object") return raw as T;
+    return fallback;
+  }
+
+  function normalizeReconciledStock(unit: string, value: number): number {
+    const u = (unit || "").toLowerCase();
+    if (u === "dozen" || u.includes("dozen")) {
+      return Math.max(0, Math.round(value));
+    }
+    return Math.max(0, Math.round(value * 100) / 100);
+  }
+
+  /** Align raw material stock with sum(purchases) − consumption from completed batches × recipes; refresh batch ingredient snapshots. Admin/manager only. */
+  app.post("/api/admin/reconcile-raw-inventory", requireAuth, async (req: any, res) => {
+    const role = req.user?.role || "";
+    if (!["admin", "manager"].includes(role)) {
+      return res.status(403).json({ error: "Admin or manager only" });
+    }
+    try {
+      const prisma = getPrisma();
+      const includeTermination =
+        req.query.includeTermination === "1" ||
+        req.query.includeTermination === "true" ||
+        req.body?.includeTermination === true;
+
+      const invoices = await prisma.supplierInvoice.findMany();
+      const purchasedByMaterial: Record<string, number> = {};
+      for (const inv of invoices) {
+        const details = parseDbJsonField<Record<string, unknown>>(inv.amountHT, {});
+        const mid = details.materialId as string | undefined;
+        const qtyRaw = details.quantity;
+        if (!mid || qtyRaw === undefined || qtyRaw === null) continue;
+        const q = typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw));
+        if (!Number.isFinite(q)) continue;
+        purchasedByMaterial[mid] = (purchasedByMaterial[mid] || 0) + q;
+      }
+
+      const recipes = await prisma.recipe.findMany();
+      const recipeByProduct: Record<string, { batchSize: number; ingredients: { materialId: string; quantity: number; unit: string }[] }> = {};
+      for (const r of recipes) {
+        const rawIngs = parseDbJsonField<unknown>(r.ingredients, []);
+        const arr = Array.isArray(rawIngs) ? rawIngs : [];
+        const ingredients = arr.map((x: any) => ({
+          materialId: String(x.materialId),
+          quantity: Number(x.quantity),
+          unit: String(x.unit || ""),
+        }));
+        recipeByProduct[r.productId] = {
+          batchSize: r.batchSize && r.batchSize > 0 ? r.batchSize : 1,
+          ingredients,
+        };
+      }
+
+      const batches = await prisma.productionBatch.findMany();
+      const consumedByMaterial: Record<string, number> = {};
+      const warnings: string[] = [];
+
+      const countBatchTowardConsumption = (status: string | null | undefined) => {
+        if (status === "completed") return true;
+        if (includeTermination && status === "termination") return true;
+        return false;
+      };
+
+      const batchSnapshotPayloads: { id: string; ingredients: string }[] = [];
+
+      for (const b of batches) {
+        if (!countBatchTowardConsumption(b.status)) continue;
+        const rec = recipeByProduct[b.productId];
+        if (!rec || rec.ingredients.length === 0) {
+          warnings.push(`Batch ${b.id}: no recipe for product ${b.productId}; consumption not counted`);
+          continue;
+        }
+        const planned = b.plannedQty ?? 0;
+        const factor = planned / rec.batchSize;
+        const snapshot: { materialId: string; quantity: number; type: string; unit?: string }[] = [];
+        for (const ing of rec.ingredients) {
+          const used = ing.quantity * factor;
+          consumedByMaterial[ing.materialId] = (consumedByMaterial[ing.materialId] || 0) + used;
+          snapshot.push({
+            materialId: ing.materialId,
+            quantity: Math.round(used * 10000) / 10000,
+            type: "quantity",
+            unit: ing.unit,
+          });
+        }
+        batchSnapshotPayloads.push({ id: b.id, ingredients: JSON.stringify(snapshot) });
+      }
+
+      const materials = await prisma.rawMaterial.findMany();
+      const materialRows: {
+        id: string;
+        name: string;
+        unit: string;
+        oldStock: number;
+        newStock: number;
+        purchased: number;
+        consumed: number;
+      }[] = [];
+
+      for (const m of materials) {
+        const purchased = purchasedByMaterial[m.id] || 0;
+        const consumed = consumedByMaterial[m.id] || 0;
+        const newStock = normalizeReconciledStock(m.unit, purchased - consumed);
+        await prisma.$executeRaw`
+          UPDATE RawMaterial SET currentStock = ${newStock}, stock = ${newStock} WHERE id = ${m.id}
+        `;
+        materialRows.push({
+          id: m.id,
+          name: m.name,
+          unit: m.unit,
+          oldStock: m.currentStock,
+          newStock,
+          purchased,
+          consumed: Math.round(consumed * 10000) / 10000,
+        });
+      }
+
+      for (const snap of batchSnapshotPayloads) {
+        await prisma.productionBatch.update({
+          where: { id: snap.id },
+          data: { ingredients: snap.ingredients },
+        });
+      }
+
+      res.json({
+        ok: true,
+        includeTermination,
+        materials: materialRows,
+        batchSnapshotsUpdated: batchSnapshotPayloads.length,
+        warnings,
+      });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   app.get("/api/health", async (req, res) => {
     let dbStatus = "unknown";
     let userList: string[] = [];
@@ -651,7 +921,7 @@ async function startServer() {
   // Serve uploaded files
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-  // Vite middleware for development
+  // Vite middleware in dev — same port as API (default PORT from app.config, e.g. 3000).
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -666,8 +936,22 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", async () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const certPath = process.env.SSL_CERT_PATH || '/app/certs/cert.pem';
+  const keyPath = process.env.SSL_KEY_PATH || '/app/certs/key.pem';
+  const httpOnly =
+    process.env.BELLA_HTTP_ONLY === '1' || process.env.BELLA_HTTP_ONLY === 'true';
+  const haveTls = !httpOnly && existsSync(certPath) && existsSync(keyPath);
+
+  const server = haveTls
+    ? https.createServer(
+        { cert: readFileSync(certPath), key: readFileSync(keyPath) },
+        app
+      )
+    : app;
+
+  server.listen(PORT, "0.0.0.0", async () => {
+    const proto = (server !== app) ? 'https' : 'http';
+    console.log(`Server running on ${proto}://localhost:${PORT}`);
 
     // Auto-seed admin user and default settings if missing
     try {
@@ -796,6 +1080,32 @@ async function startServer() {
     } catch (error) {
       console.error("Error during auto-seeding:", error);
     }
+
+    // Nightly backup scheduler — check every minute against config in settings
+    let lastBackupDate = "";
+    setInterval(async () => {
+      try {
+        const cfg = await getBackupConfig();
+        if (!cfg.enabled) return;
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const parts = cfg.time.split(":");
+        const h = parseInt(parts[0] ?? "23", 10);
+        const m = parseInt(parts[1] ?? "59", 10);
+        if (
+          now.getHours() === h &&
+          now.getMinutes() === m &&
+          lastBackupDate !== today
+        ) {
+          lastBackupDate = today;
+          performBackup().catch((err) =>
+            console.error("Scheduled backup failed:", err)
+          );
+        }
+      } catch (e) {
+        console.error("Backup scheduler tick failed:", e);
+      }
+    }, 60_000);
   });
 }
 

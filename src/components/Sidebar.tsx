@@ -13,7 +13,6 @@ import {
   Store,
   ClipboardList,
   Wallet,
-  Sparkles,
   Truck
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -36,7 +35,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const navItems = [
     { icon: LayoutDashboard, tKey: 'dashboard', path: '/dashboard' },
-    { icon: Sparkles, tKey: 'aiManager', path: '/ai-manager' },
     { icon: ChefHat, tKey: 'production', path: '/production' },
     { icon: Package, tKey: 'inventory', path: '/inventory' },
     { icon: Truck, tKey: 'procurementAndSuppliers', path: '/procurement' },

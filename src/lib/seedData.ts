@@ -3,7 +3,7 @@ import { Product, RawMaterial, Supplier, Customer, ProductionBatch, Sale, RolePe
 
 export const DEFAULT_PERMISSIONS: RolePermission[] = [
   { id: 'admin', allowedPaths: ['*'] },
-  { id: 'manager', allowedPaths: ['/dashboard', '/ai-manager', '/production', '/inventory', '/suppliers', '/product-management', '/orders', '/delivery', '/reports', '/sales-report', '/interview-questions', '/settings'] },
+  { id: 'manager', allowedPaths: ['/dashboard', '/production', '/inventory', '/suppliers', '/product-management', '/orders', '/delivery', '/reports', '/sales-report', '/interview-questions', '/settings'] },
   { id: 'cashier', allowedPaths: ['/dashboard', '/pos', '/orders', '/sales-report', '/interview-questions'] },
   { id: 'baker', allowedPaths: ['/dashboard', '/production', '/inventory', '/interview-questions'] },
   { id: 'inventory', allowedPaths: ['/dashboard', '/inventory', '/product-management', '/interview-questions'] },

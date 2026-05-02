@@ -1,7 +1,9 @@
 import { Language } from './types';
+import config from '../app.config';
 
-export const CURRENCY = "DA";
-export const APP_VERSION = "1.3.0";
+export const CURRENCY    = config.CURRENCY;
+export const APP_VERSION = config.APP_VERSION;
+export const PAGE_SIZE   = config.PAGE_SIZE;
 
 export const TRANSLATIONS: Record<Language, any> = {
   fr: {
@@ -270,6 +272,19 @@ export const TRANSLATIONS: Record<Language, any> = {
     packItems: "Articles du pack",
     selectProduct: "Sélectionner un produit",
     noPromotions: "Aucune promotion active",
+    dataManagement: "Gestion des données",
+    databaseBackup: "Sauvegarde de base",
+    autoBackup: "Sauvegarde auto.",
+    backupSchedule: "Heure de sauvegarde",
+    backupNow: "Sauvegarder maintenant",
+    backupFiles: "Fichiers de sauvegarde",
+    noBackups: "Aucune sauvegarde",
+    backupSuccess: "Sauvegarde réussie",
+    backupFailed: "Échec de la sauvegarde",
+    backupFileSize: "Taille",
+    backupCreated: "Créé le",
+    backupListError: "Impossible de charger la liste des sauvegardes.",
+    backupAccessDenied: "Accès aux sauvegardes réservé aux administrateurs.",
     day: "Jour",
     week: "Semaine",
     month: "Mois",
@@ -634,6 +649,19 @@ export const TRANSLATIONS: Record<Language, any> = {
     packItems: "عناصر الحزمة",
     selectProduct: "اختر منتجاً",
     noPromotions: "لا توجد عروض نشطة",
+    dataManagement: "إدارة البيانات",
+    databaseBackup: "نسخ قاعدة البيانات",
+    autoBackup: "نسخ تلقائي",
+    backupSchedule: "وقت النسخ",
+    backupNow: "نسخ الآن",
+    backupFiles: "ملفات النسخ",
+    noBackups: "لا توجد نسخ",
+    backupSuccess: "نجح النسخ",
+    backupFailed: "فشل النسخ",
+    backupFileSize: "الحجم",
+    backupCreated: "تاريخ الإنشاء",
+    backupListError: "تعذر تحميل قائمة النسخ الاحتياطية.",
+    backupAccessDenied: "النسخ الاحتياطية متاحة للمسؤولين فقط.",
     day: "يوم",
     week: "أسبوع",
     month: "شهر",
@@ -936,29 +964,6 @@ export const CATEGORY_NAMES: Record<Language, Record<string, string>> = {
   }
 };
 
-export const CATEGORIES = [
-  "viennoiserie",
-  "patisserie",
-  "boulangerie",
-  "traiteur",
-  "boissons",
-  "cooking",
-  "maintenance",
-  "cleaning",
-  "others",
-  "raw_material",
-  "flour",
-  "dairy",
-  "sugar",
-  "liquid",
-  "other_material"
-];
+export const CATEGORIES = config.CATEGORIES;
 
-export const UNITS = [
-  "kg",
-  "g",
-  "l",
-  "ml",
-  "pcs",
-  "unit"
-];
+export const UNITS = config.UNITS;

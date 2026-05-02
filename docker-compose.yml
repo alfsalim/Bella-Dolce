@@ -2,15 +2,16 @@ services:
   bella-dolce2:
     container_name: bella-dolce2
     build: .
-    # ADD THIS COMMAND TO RUN MIGRATIONS THEN START APP
-    command: sh -c "npx prisma migrate deploy && node dist/server.js"
     ports:
-      - "3500:3500"
+      - "3000:3000"
     environment:
-      - PORT=3500
-      - DATABASE_URL=file:/app/prisma_data/dev.db
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - JWT_SECRET=${JWT_SECRET:-bella-dolce-secret-change-in-production}
+      PORT: "3000"
+      NODE_ENV: production
+      DATABASE_URL: file:/app/data/dev.db
+      # Image includes self-signed certs; use plain HTTP on localhost (see server.ts BELLA_HTTP_ONLY)
+      BELLA_HTTP_ONLY: "1"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-bella-dolce-secret-change-in-production}
     volumes:
-      - ./prisma_data:/app/prisma_data
-    restart: always
+      - ./data:/app/data
+    restart: unless-stopped

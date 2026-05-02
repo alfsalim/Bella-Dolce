@@ -30,6 +30,7 @@ import { format } from 'date-fns';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
+import { PAGE_SIZE } from '../constants';
 
 const Production: React.FC = () => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
@@ -38,7 +39,7 @@ const Production: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(25);
+
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditingBatch, setIsEditingBatch] = useState(false);
@@ -281,11 +282,11 @@ const Production: React.FC = () => {
       }
 
       const snapshot = await getCountFromServer(q);
-      setTotalPages(Math.ceil(snapshot.data().count / pageSize));
+      setTotalPages(Math.ceil(snapshot.data().count / PAGE_SIZE));
     };
     fetchCounts();
 
-    let q = query(collection(db, 'batches'), orderBy('startDate', 'desc'), limit(pageSize * currentPage));
+    let q = query(collection(db, 'batches'), orderBy('startDate', 'desc'), limit(PAGE_SIZE * currentPage));
     
     // Apply status filter to query
     if (statusFilter !== 'all') {
@@ -299,8 +300,8 @@ const Production: React.FC = () => {
 
     const unsubscribeBatches = onSnapshot(q, (snapshot) => {
       const allBatches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductionBatch));
-      const startIndex = (currentPage - 1) * pageSize;
-      setBatches(allBatches.slice(startIndex, startIndex + pageSize));
+      const startIndex = (currentPage - 1) * PAGE_SIZE;
+      setBatches(allBatches.slice(startIndex, startIndex + PAGE_SIZE));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'batches'));
 
     const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -316,7 +317,7 @@ const Production: React.FC = () => {
       unsubscribeProducts();
       unsubscribeRecipes();
     };
-  }, [currentPage, pageSize, statusFilter, userFilter]);
+  }, [currentPage, PAGE_SIZE, statusFilter, userFilter]);
 
   const handleDeleteBatch = async (batch: ProductionBatch) => {
     if (!window.confirm(t('confirmDeleteBatch') || 'Are you sure you want to delete this batch?')) return;

@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, addDoc, setDoc, deleteDoc, getDocs, getDoc, isAuthError } from '../lib/firebase-compat';
 import { UserProfile, ActivityLog, Role, RolePermission, Promotion, Product, RawMaterial } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { DEFAULT_PERMISSIONS } from '../lib/seedData';
-import { Settings as SettingsIcon, Users as UsersIcon, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X } from 'lucide-react';
+import { Settings as SettingsIcon, Users as UsersIcon, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X, Database, Sparkles } from 'lucide-react';
 import UsersPage from './Users';
+import AIManager from './AIManager';
 import { clsx } from 'clsx';
 import { format, addDays } from 'date-fns';
 import { motion } from 'motion/react';
@@ -13,11 +15,14 @@ import toast from 'react-hot-toast';
 
 import { logActivity } from '../lib/logger';
 import { compressImage } from '../lib/utils';
+import { PAGE_SIZE } from '../constants';
+import Pagination from '../components/Pagination';
 
 const Settings: React.FC = () => {
   const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual } = useLanguage();
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions'>('general');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'aiManager' | 'data'>('general');
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -26,6 +31,11 @@ const Settings: React.FC = () => {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
+  const [backupConfig, setBackupConfig] = useState<{ enabled: boolean; time: string }>({ enabled: true, time: '23:59' });
+  const [backups, setBackups] = useState<{ filename: string; size: number; createdAt: string }[]>([]);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupListError, setBackupListError] = useState<string | null>(null);
+  const [logsPage, setLogsPage] = useState(1);
   const [promoFormData, setPromoFormData] = useState<Partial<Promotion>>({
     title: '',
     description: '',
@@ -36,6 +46,133 @@ const Settings: React.FC = () => {
   });
 
   const isAdmin = profile?.role === 'admin';
+
+  useEffect(() => {
+    if (searchParams.get('tab') !== 'ai-manager') return;
+    if (!profile) return;
+    if (profile.role === 'admin') setActiveTab('aiManager');
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('tab');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [profile, searchParams, setSearchParams]);
+
+  const formatBackupSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const saveBackupConfig = async () => {
+    const token = localStorage.getItem('bakery_token');
+    const headers: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    try {
+      const res = await fetch('/api/db/settings/backup_config', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ id: 'backup_config', ...backupConfig }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(t('save'));
+    } catch {
+      toast.error(t('backupFailed'));
+    }
+  };
+
+  const triggerBackup = async () => {
+    setIsBackingUp(true);
+    const token = localStorage.getItem('bakery_token');
+    const authHeaders: HeadersInit = { Authorization: `Bearer ${token}` };
+    try {
+      const r = await fetch('/api/backup/trigger', {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      if (!r.ok) throw new Error();
+      const data = await r.json();
+      toast.success(`${t('backupSuccess')}: ${data.filename}`);
+      const list = await fetch('/api/backup/list', { headers: authHeaders });
+      if (list.ok) {
+        const raw = await list.json();
+        setBackups(Array.isArray(raw) ? raw : []);
+        setBackupListError(null);
+      }
+    } catch {
+      toast.error(t('backupFailed'));
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'data' || !isAdmin) return;
+    const token = localStorage.getItem('bakery_token');
+    const headers: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    fetch('/api/db/settings/backup_config', { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((doc) => {
+        if (!doc) return;
+        if (typeof doc.enabled === 'boolean' && typeof doc.time === 'string') {
+          setBackupConfig({ enabled: doc.enabled, time: doc.time });
+        } else if (doc.data && typeof doc.data === 'string') {
+          try {
+            const p = JSON.parse(doc.data);
+            setBackupConfig({
+              enabled: p.enabled !== false,
+              time: typeof p.time === 'string' ? p.time : '23:59',
+            });
+          } catch {
+            /* keep default */
+          }
+        }
+      });
+    const loadBackups = async () => {
+      if (!token) {
+        setBackupListError(t('backupListError'));
+        setBackups([]);
+        return;
+      }
+      try {
+        const r = await fetch('/api/backup/list', { headers: { Authorization: `Bearer ${token}` } });
+        if (r.status === 403) {
+          setBackupListError(t('backupAccessDenied'));
+          setBackups([]);
+          return;
+        }
+        if (!r.ok) {
+          setBackupListError(t('backupListError'));
+          setBackups([]);
+          return;
+        }
+        const data = await r.json();
+        setBackupListError(null);
+        setBackups(Array.isArray(data) ? data : []);
+      } catch {
+        setBackupListError(t('backupListError'));
+        setBackups([]);
+      }
+    };
+    void loadBackups();
+  }, [activeTab, isAdmin, language]);
+
+  useEffect(() => {
+    if (activeTab === 'logs') setLogsPage(1);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const totalPages = Math.ceil(logs.length / PAGE_SIZE) || 1;
+    setLogsPage((p) => Math.min(p, totalPages));
+  }, [logs.length, PAGE_SIZE]);
+
+  const { auditLogTotalPages, pagedAuditLogs } = useMemo(() => {
+    const totalPages = Math.ceil(logs.length / PAGE_SIZE) || 1;
+    const slice = logs.slice((logsPage - 1) * PAGE_SIZE, logsPage * PAGE_SIZE);
+    return { auditLogTotalPages: totalPages, pagedAuditLogs: slice };
+  }, [logs, logsPage, PAGE_SIZE]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'promotions'), (snapshot) => {
@@ -508,6 +645,34 @@ const Settings: React.FC = () => {
           <ImageIcon className="w-4 h-4" />
           {t('promotions')}
         </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('aiManager')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'aiManager'
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Sparkles className="w-4 h-4" />
+            {t('aiManager')}
+          </button>
+        )}
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('data')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'data'
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Database className="w-4 h-4" />
+            {t('dataManagement')}
+          </button>
+        )}
       </div>
 
       {activeTab === 'users' && (
@@ -717,7 +882,7 @@ const Settings: React.FC = () => {
             </h2>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-white/5">
-            {logs.map((log) => (
+            {pagedAuditLogs.map((log) => (
               <div key={log.id} className="p-6 hover:bg-slate-50 dark:hover:bg-black/40 transition-all">
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black flex items-center justify-center text-zinc-500">
@@ -744,6 +909,11 @@ const Settings: React.FC = () => {
               </div>
             )}
           </div>
+          <Pagination
+            currentPage={logsPage}
+            totalPages={auditLogTotalPages}
+            onPageChange={setLogsPage}
+          />
         </div>
       )}
       {activeTab === 'promotions' && (
@@ -941,6 +1111,99 @@ const Settings: React.FC = () => {
               </motion.div>
             </div>
           )}
+        </div>
+      )}
+      {activeTab === 'aiManager' && isAdmin && <AIManager embedded />}
+      {activeTab === 'data' && isAdmin && (
+        <div className="space-y-8">
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none space-y-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Database className="w-5 h-5 text-amber-500" />
+              {t('databaseBackup')}
+            </h2>
+            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-black rounded-2xl border border-slate-100 dark:border-white/5">
+              <div>
+                <p className="font-bold text-slate-900 dark:text-white">{t('autoBackup')}</p>
+                <p className="text-xs text-zinc-500">{t('backupSchedule')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBackupConfig((c) => ({ ...c, enabled: !c.enabled }))}
+                className={clsx(
+                  'w-12 h-6 rounded-full relative transition-all',
+                  backupConfig.enabled ? 'bg-amber-600' : 'bg-slate-200 dark:bg-zinc-800'
+                )}
+              >
+                <div
+                  className={clsx(
+                    'absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all',
+                    backupConfig.enabled ? 'right-1' : 'left-1'
+                  )}
+                />
+              </button>
+            </div>
+            {backupConfig.enabled && (
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('backupSchedule')}</label>
+                <input
+                  type="time"
+                  className="input max-w-xs"
+                  value={backupConfig.time}
+                  onChange={(e) => setBackupConfig((c) => ({ ...c, time: e.target.value }))}
+                />
+              </div>
+            )}
+            <div className="flex flex-wrap gap-4">
+              <button type="button" onClick={saveBackupConfig} className="btn-primary gap-2">
+                <Save className="w-4 h-4" />
+                {t('save')}
+              </button>
+              <button
+                type="button"
+                onClick={triggerBackup}
+                disabled={isBackingUp}
+                className="btn-secondary gap-2 disabled:opacity-50"
+              >
+                {isBackingUp ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                {t('backupNow')}
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">{t('backupFiles')}</h3>
+            {backupListError && (
+              <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl px-4 py-3 mb-4">
+                {backupListError}
+              </p>
+            )}
+            {!backupListError && backups.length === 0 ? (
+              <p className="text-zinc-500 text-center py-8">{t('noBackups')}</p>
+            ) : !backupListError ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-white/10 text-zinc-500">
+                      <th className="pb-3 font-bold">{t('name')}</th>
+                      <th className="pb-3 font-bold">{t('backupFileSize')}</th>
+                      <th className="pb-3 font-bold">{t('backupCreated')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backups.map((b) => (
+                      <tr key={b.filename} className="border-b border-slate-50 dark:border-white/5">
+                        <td className="py-3 font-mono text-xs text-slate-800 dark:text-zinc-200">{b.filename}</td>
+                        <td className="py-3 text-zinc-600 dark:text-zinc-400">{formatBackupSize(b.size)}</td>
+                        <td className="py-3 text-zinc-500">
+                          {format(new Date(b.createdAt), 'PPp')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
     </div>

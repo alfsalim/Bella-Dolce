@@ -21,6 +21,8 @@ import { Customer, Order } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
+import Pagination from '../components/Pagination';
+import { PAGE_SIZE } from '../constants';
 
 const Customers: React.FC = () => {
   const { t, isRTL, formatCurrency } = useLanguage();
@@ -29,6 +31,8 @@ const Customers: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [customersPage, setCustomersPage] = useState(1);
+
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -119,10 +123,15 @@ const Customers: React.FC = () => {
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
+  const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.phone.includes(searchQuery)
   );
+
+  useEffect(() => { setCustomersPage(1); }, [searchQuery]);
+
+  const totalCustomerPages = Math.ceil(filteredCustomers.length / PAGE_SIZE);
+  const pagedCustomers = filteredCustomers.slice((customersPage - 1) * PAGE_SIZE, customersPage * PAGE_SIZE);
 
   if (!profile || !['admin', 'manager', 'cashier'].includes(profile.role)) {
     return (
@@ -170,8 +179,8 @@ const Customers: React.FC = () => {
             />
           </div>
 
-          <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-2 no-scrollbar">
-            {filteredCustomers.map((customer) => (
+          <div className="space-y-3">
+            {pagedCustomers.map((customer) => (
               <motion.button
                 key={customer.id}
                 layoutId={customer.id}
@@ -207,6 +216,7 @@ const Customers: React.FC = () => {
               </motion.button>
             ))}
           </div>
+          <Pagination currentPage={customersPage} totalPages={totalCustomerPages} onPageChange={setCustomersPage} />
         </div>
 
         {/* Detailed View */}

@@ -40,13 +40,27 @@ export async function deleteDoc(docRef: any) {
   return deleteDocFromApi(docRef.collectionName, docRef.id);
 }
 
+function mergeWhereClause(a: Record<string, unknown> | undefined, b: Record<string, unknown>): Record<string, unknown> {
+  if (!a) return { ...b };
+  const out: Record<string, unknown> = { ...a };
+  for (const [field, cond] of Object.entries(b)) {
+    const existing = out[field];
+    if (existing != null && typeof existing === 'object' && !Array.isArray(existing) && cond != null && typeof cond === 'object' && !Array.isArray(cond)) {
+      out[field] = { ...(existing as Record<string, unknown>), ...(cond as Record<string, unknown>) };
+    } else {
+      out[field] = cond;
+    }
+  }
+  return out;
+}
+
 // Query
 export function query(collectionRef: any, ...constraints: any[]) {
   const params: any = {};
 
   for (const constraint of constraints) {
     if (constraint.type === 'where') {
-      params.where = constraint.value;
+      params.where = mergeWhereClause(params.where, constraint.value);
     } else if (constraint.type === 'orderBy') {
       params.orderBy = constraint.value;
     } else if (constraint.type === 'limit') {
@@ -111,6 +125,15 @@ export function onSnapshot(
   return () => clearInterval(interval);
 }
 
+// Calendar day YYYY-MM-DD → UTC midnight ISO (Prisma DateTime)
+const CAL_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function prismaDateValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const s = value.trim();
+  return CAL_DAY.test(s) ? `${s}T00:00:00.000Z` : value;
+}
+
 // Where constraint
 export function where(field: string, operator: string, value: any) {
   // Map Firebase operators to Prisma operators
@@ -124,10 +147,11 @@ export function where(field: string, operator: string, value: any) {
   };
 
   const prismaOperator = operatorMap[operator] || operator;
+  const v = prismaDateValue(value);
 
   return {
     type: 'where',
-    value: { [field]: { [prismaOperator]: value } }
+    value: { [field]: { [prismaOperator]: v } }
   };
 }
 

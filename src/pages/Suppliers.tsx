@@ -18,6 +18,8 @@ import {
   Info
 } from 'lucide-react';
 import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy } from '../lib/firebase-compat';
+import Pagination from '../components/Pagination';
+import { PAGE_SIZE } from '../constants';
 import { Supplier, RawMaterial, SupplierInvoice } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
@@ -31,6 +33,8 @@ const Suppliers: React.FC = () => {
   const [invoices, setInvoices] = useState<SupplierInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [suppliersPage, setSuppliersPage] = useState(1);
+
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -131,10 +135,15 @@ const Suppliers: React.FC = () => {
     }
   };
 
-  const filteredSuppliers = suppliers.filter(s => 
+  const filteredSuppliers = suppliers.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.contact.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  useEffect(() => { setSuppliersPage(1); }, [searchQuery]);
+
+  const totalSupplierPages = Math.ceil(filteredSuppliers.length / PAGE_SIZE);
+  const pagedSuppliers = filteredSuppliers.slice((suppliersPage - 1) * PAGE_SIZE, suppliersPage * PAGE_SIZE);
 
   const getMaterialNames = (materialIds?: string[]) => {
     if (!materialIds) return [];
@@ -189,8 +198,8 @@ const Suppliers: React.FC = () => {
             />
           </div>
 
-          <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
-            {filteredSuppliers.map((supplier) => (
+          <div className="space-y-3">
+            {pagedSuppliers.map((supplier) => (
               <motion.button
                 key={supplier.id}
                 layoutId={supplier.id}
@@ -226,6 +235,7 @@ const Suppliers: React.FC = () => {
               </motion.button>
             ))}
           </div>
+          <Pagination currentPage={suppliersPage} totalPages={totalSupplierPages} onPageChange={setSuppliersPage} />
         </div>
 
         {/* Detailed View */}

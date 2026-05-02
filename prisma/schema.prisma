@@ -47,6 +47,7 @@ model Product {
   isPack         Boolean           @default(false)
   packItems      String?
   disabled       Boolean           @default(false)
+  unit           String            @default("pcs")
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   batches        ProductionBatch[]

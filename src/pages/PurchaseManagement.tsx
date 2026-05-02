@@ -31,6 +31,25 @@ interface Purchase {
   createdBy: string;
 }
 
+/** Whole-number quantities for purchases; dozen (eggs) is always an integer. */
+function roundPurchaseQuantity(unit: string, quantity: number): number {
+  const q = Number(quantity);
+  if (!Number.isFinite(q)) return 0;
+  const u = (unit || '').toLowerCase();
+  if (u === 'dozen' || u.includes('dozen')) {
+    return Math.max(1, Math.round(q));
+  }
+  return Math.max(0, Math.round(q));
+}
+
+function scaleTotalPrice(originalQty: number, newQty: number, totalPrice: number): number {
+  if (originalQty <= 0 || !Number.isFinite(totalPrice)) {
+    return Math.round(Number(totalPrice) * 100) / 100;
+  }
+  const scaled = (totalPrice / originalQty) * newQty;
+  return Math.round(scaled * 100) / 100;
+}
+
 interface RawMaterial {
   id: string;
   name: string;
@@ -118,6 +137,24 @@ const PurchaseManagement: React.FC = () => {
     }
   };
 
+  /** Sets each raw material to sum(purchases) − consumption(completed batches × recipes); refreshes batch ingredient snapshots. */
+  const reconcileInventoryWithProduction = async (): Promise<void> => {
+    try {
+      const token = localStorage.getItem('bakery_token');
+      const res = await fetch('/api/admin/reconcile-raw-inventory', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      });
+      if (res.ok) await fetchMaterials();
+    } catch {
+      /* server may be older than this route */
+    }
+  };
+
   const fetchSuppliers = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
@@ -200,6 +237,12 @@ const PurchaseManagement: React.FC = () => {
       return;
     }
 
+    const quantity = roundPurchaseQuantity(material.unit, formData.quantity);
+    const price = scaleTotalPrice(formData.quantity, quantity, formData.price);
+    if (quantity !== formData.quantity) {
+      toast(`Quantity adjusted to ${quantity} ${material.unit} (whole units)`, { icon: 'ℹ️' });
+    }
+
     const token = localStorage.getItem('bakery_token');
 
     try {
@@ -234,7 +277,7 @@ const PurchaseManagement: React.FC = () => {
 
       if (editingPurchase) {
         // UPDATE: Calculate quantity difference
-        const quantityDifference = formData.quantity - editingPurchase.quantity;
+        const quantityDifference = quantity - editingPurchase.quantity;
 
         const supplier = suppliers.find(s => s.id === formData.supplierId);
         const response = await fetch(`/api/db/purchases/${editingPurchase.id}`, {
@@ -245,10 +288,12 @@ const PurchaseManagement: React.FC = () => {
           },
           body: JSON.stringify({
             ...formData,
+            quantity,
+            price,
             materialName: material.name,
             supplierName: supplier?.name || 'Unknown Supplier',
             unit: material.unit,
-            totalAmount: formData.price,
+            totalAmount: price,
             ...(pdfPath && { invoicePdfPath: pdfPath }),
             updatedAt: new Date().toISOString()
           })
@@ -276,10 +321,12 @@ const PurchaseManagement: React.FC = () => {
         const supplier = suppliers.find(s => s.id === formData.supplierId);
         const purchaseData = {
           ...formData,
+          quantity,
+          price,
           materialName: material.name,
           supplierName: supplier?.name || 'Unknown Supplier',
           unit: material.unit,
-          totalAmount: formData.price,
+          totalAmount: price,
           ...(pdfPath && { invoicePdfPath: pdfPath }),
           createdAt: new Date().toISOString(),
           createdBy: profile?.id
@@ -301,8 +348,8 @@ const PurchaseManagement: React.FC = () => {
           const material = materials.find(m => m.id === formData.materialId);
           if (material) {
             const previousStock = material.currentStock || 0;
-            await updateInventory(formData.materialId, formData.quantity, 'add');
-            const newStock = previousStock + formData.quantity;
+            await updateInventory(formData.materialId, quantity, 'add');
+            const newStock = previousStock + quantity;
 
             // Create stock movement record
             await fetch('/api/db/stockMovements', {
@@ -316,7 +363,7 @@ const PurchaseManagement: React.FC = () => {
                 itemName: material.name,
                 itemType: 'material',
                 type: 'in',
-                quantity: formData.quantity,
+                quantity,
                 previousStock: previousStock,
                 newStock: newStock,
                 location: 'none',
@@ -340,6 +387,7 @@ const PurchaseManagement: React.FC = () => {
       setPdfFile(null);
       resetForm();
       fetchPurchases();
+      await reconcileInventoryWithProduction();
     } catch (error) {
       console.error('Error saving purchase:', error);
       toast.error(editingPurchase ? 'Failed to update purchase' : 'Failed to create purchase');
@@ -428,11 +476,9 @@ const PurchaseManagement: React.FC = () => {
 
       if (!response.ok) throw new Error('Failed to delete purchase');
 
-      // Decrease inventory
-      await updateInventory(purchase.materialId, purchase.quantity, 'subtract');
-
       toast.success('Purchase deleted successfully');
       fetchPurchases();
+      await reconcileInventoryWithProduction();
     } catch (error) {
       console.error('Error deleting purchase:', error);
       toast.error('Failed to delete purchase');
@@ -659,7 +705,8 @@ const PurchaseManagement: React.FC = () => {
                     </label>
                     <input
                       type="number"
-                      step="0.01"
+                      min={1}
+                      step={1}
                       required
                       value={formData.quantity}
                       onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}

@@ -20,7 +20,6 @@ import B2BRegistration from './pages/B2BRegistration';
 import Checkout from './pages/Checkout';
 import Orders from './pages/Orders';
 import Finance from './pages/Finance';
-import AIManager from './pages/AIManager';
 import Procurement from './pages/Procurement';
 import { seedDatabase } from './lib/seedData';
 
@@ -75,7 +74,7 @@ const App: React.FC = () => {
               <Route path="/settings" element={<Settings />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/orders" element={<Orders />} />
-              <Route path="/ai-manager" element={<AIManager />} />
+              <Route path="/ai-manager" element={<Navigate to="/settings?tab=ai-manager" replace />} />
               <Route path="/products/:id" element={<ProductEdit />} />
             </Route>
 

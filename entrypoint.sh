@@ -14,4 +14,4 @@ npx prisma db push --accept-data-loss
 echo ">> [2/3] Schema sync done"
 
 echo ">> [3/3] Starting server..."
-exec node -r tsx ./server.ts
+exec ./node_modules/.bin/tsx ./server.ts

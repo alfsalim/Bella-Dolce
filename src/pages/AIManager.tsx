@@ -27,7 +27,7 @@ import { clsx } from 'clsx';
 import { CURRENCY } from '../constants';
 import toast from 'react-hot-toast';
 
-const AIManager: React.FC = () => {
+const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
   const { t, isRTL, language } = useLanguage();
   const { profile } = useAuth();
   
@@ -42,7 +42,7 @@ const AIManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile || !['admin', 'manager'].includes(profile.role)) return;
+    if (!profile || profile.role !== 'admin') return;
 
     const fetchData = async () => {
       setLoading(true);
@@ -119,20 +119,28 @@ const AIManager: React.FC = () => {
     }
   };
 
-  if (!profile || !['admin', 'manager'].includes(profile.role)) {
+  if (!profile || profile.role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center px-4">
         <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Restricted</h2>
-        <p className="text-slate-500 max-w-md">Only administrators and managers have access to the AI Manager insights and daily reports.</p>
+        <p className="text-slate-500 max-w-md">Only administrators have access to the AI Manager insights and daily reports.</p>
       </div>
     );
   }
 
+  const outerClass = embedded ? 'space-y-6 pb-2' : 'space-y-8 pb-20';
+  const heroClass = embedded
+    ? 'relative overflow-hidden rounded-[32px] bg-slate-900 dark:bg-black p-6 lg:p-10 border border-white/5 shadow-2xl'
+    : 'relative overflow-hidden rounded-[40px] bg-slate-900 dark:bg-black p-10 lg:p-16 border border-white/5 shadow-2xl';
+  const heroTitleClass = embedded
+    ? 'text-3xl lg:text-4xl font-display font-bold text-white mb-4 leading-tight'
+    : 'text-4xl lg:text-6xl font-display font-bold text-white mb-6 leading-tight';
+
   return (
-    <div className="space-y-8 pb-20">
+    <div className={outerClass}>
       {/* Header Section */}
-      <div className="relative overflow-hidden rounded-[40px] bg-slate-900 dark:bg-black p-10 lg:p-16 border border-white/5 shadow-2xl">
+      <div className={heroClass}>
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-600/10 rounded-full blur-[120px] -mr-40 -mt-40" />
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-amber-600/5 rounded-full blur-[100px] -ml-20 -mb-20" />
         
@@ -142,7 +150,7 @@ const AIManager: React.FC = () => {
               <Sparkles className="w-4 h-4" />
               AI Bakery Manager
             </div>
-            <h1 className="text-4xl lg:text-6xl font-display font-bold text-white mb-6 leading-tight">
+            <h1 className={heroTitleClass}>
               {language === 'ar' ? 'رؤى المدير الذكي' : 'Insights du Manager IA'}
             </h1>
             <p className="text-slate-400 text-lg lg:text-xl font-medium leading-relaxed mb-8">

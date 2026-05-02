@@ -31,7 +31,7 @@ import { Product, RawMaterial, StockMovement, Recipe } from '../types';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
-import { CATEGORIES, UNITS, CURRENCY } from '../constants';
+import { CATEGORIES, UNITS, CURRENCY, PAGE_SIZE } from '../constants';
 import { compressImage } from '../lib/utils';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
@@ -49,7 +49,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const [materialsPage, setMaterialsPage] = useState(1);
   const [totalProductsPages, setTotalProductsPages] = useState(1);
   const [totalMaterialsPages, setTotalMaterialsPages] = useState(1);
-  const [pageSize] = useState(25);
+
   const [activeTab, setActiveTab] = useState<'products' | 'materials' | 'activities' | 'waste'>(defaultTab || 'products');
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [movementsPage, setMovementsPage] = useState(1);
@@ -332,15 +332,15 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           getCountFromServer(filteredMaterialsQ)
         ]);
         
-        setTotalProductsPages(Math.ceil(productsSnapshot.data().count / pageSize));
-        setTotalMaterialsPages(Math.ceil(materialsSnapshot.data().count / pageSize));
+        setTotalProductsPages(Math.ceil(productsSnapshot.data().count / PAGE_SIZE));
+        setTotalMaterialsPages(Math.ceil(materialsSnapshot.data().count / PAGE_SIZE));
       } catch (error) {
         console.error('Error fetching counts:', error);
       }
     };
     fetchCounts();
 
-    let productsQ = query(collection(db, 'products'), orderBy('name'), limit(pageSize * productsPage));
+    let productsQ = query(collection(db, 'products'), orderBy('name'), limit(PAGE_SIZE * productsPage));
     if (selectedCategory !== 'all') {
       productsQ = query(productsQ, where('category', '==', selectedCategory));
     }
@@ -358,21 +358,21 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           freezerStock: data.freezerStock || 0
         } as Product;
       });
-      const startIndex = (productsPage - 1) * pageSize;
-      setProducts(allProducts.slice(startIndex, startIndex + pageSize));
+      const startIndex = (productsPage - 1) * PAGE_SIZE;
+      setProducts(allProducts.slice(startIndex, startIndex + PAGE_SIZE));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'products'));
 
     let unsubscribeMaterials = () => {};
     if (currentUserProfile) {
-      let materialsQ = query(collection(db, 'rawMaterials'), orderBy('name'), limit(pageSize * materialsPage));
+      let materialsQ = query(collection(db, 'rawMaterials'), orderBy('name'), limit(PAGE_SIZE * materialsPage));
       if (selectedStatus !== 'all') {
         materialsQ = query(materialsQ, where('status', '==', selectedStatus));
       }
 
       unsubscribeMaterials = onSnapshot(materialsQ, async (snapshot) => {
         const allMaterials = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial));
-        const startIndex = (materialsPage - 1) * pageSize;
-        const currentMaterials = allMaterials.slice(startIndex, startIndex + pageSize);
+        const startIndex = (materialsPage - 1) * PAGE_SIZE;
+        const currentMaterials = allMaterials.slice(startIndex, startIndex + PAGE_SIZE);
         setMaterials(currentMaterials);
 
         // Populate random brands for materials that don't have one
@@ -393,15 +393,15 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
 
     let unsubscribeMovements = () => {};
     if (currentUserProfile) {
-      const movementsQ = query(collection(db, 'stockMovements'), orderBy('timestamp', 'desc'), limit(pageSize * movementsPage));
+      const movementsQ = query(collection(db, 'stockMovements'), orderBy('timestamp', 'desc'), limit(PAGE_SIZE * movementsPage));
       unsubscribeMovements = onSnapshot(movementsQ, (snapshot) => {
         const allMovements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockMovement));
-        const startIndex = (movementsPage - 1) * pageSize;
-        setMovements(allMovements.slice(startIndex, startIndex + pageSize));
+        const startIndex = (movementsPage - 1) * PAGE_SIZE;
+        setMovements(allMovements.slice(startIndex, startIndex + PAGE_SIZE));
         
         // Update total pages for movements
         getCountFromServer(collection(db, 'stockMovements')).then(countSnapshot => {
-          setTotalMovementsPages(Math.ceil(countSnapshot.data().count / pageSize));
+          setTotalMovementsPages(Math.ceil(countSnapshot.data().count / PAGE_SIZE));
         });
       }, (error) => handleFirestoreError(error, OperationType.GET, 'stockMovements'));
     }
@@ -411,7 +411,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       unsubscribeMaterials();
       unsubscribeMovements();
     };
-  }, [productsPage, materialsPage, movementsPage, pageSize, currentUserProfile, selectedCategory, selectedStatus]);
+  }, [productsPage, materialsPage, movementsPage, PAGE_SIZE, currentUserProfile, selectedCategory, selectedStatus]);
 
   useEffect(() => {
     localStorage.setItem('inventoryViewMode', viewMode);

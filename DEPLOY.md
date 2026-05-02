@@ -1,59 +1,71 @@
-# Local Docker Deployment Guide
+# Bella Dolce — run locally
 
-To deploy the **Bella Dolce Bakery Management System** on your local machine using Docker, follow these steps.
+## Development: single app (Node + Vite, no Docker)
 
-## Prerequisites
-- [Docker](https://www.docker.com/get-started) installed.
-- [Docker Compose](https://docs.docker.com/compose/install/) installed.
+Day-to-day work uses **one process**: Express serves the API and **Vite in middleware mode** for the React UI (same origin, HMR for `src/`).
 
-## Quick Start (SQLite)
+1. **Install**  
+   `npm install`
 
-The default configuration is set up to use **SQLite** for zero-config deployment.
-
-1. **Clone the repository** (if you haven't already).
-2. **Create a `.env` file** in the root directory:
+2. **Database**  
+   Set in `.env` (example):
    ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
+   DATABASE_URL="file:./dev.db"
    ```
-3. **Build and start the container**:
+   Then:
    ```bash
-   docker-compose up --build -d
+   npx prisma generate
+   npx prisma db push
    ```
-4. **Access the application**:
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-- **Default Credentials**: 
-  - Username: `admin`
-  - Password: `password`
-
-## Advanced: Switching to PostgreSQL
-
-If you prefer a production-grade database like PostgreSQL:
-
-1. **Modify `prisma/schema.prisma`**:
-   Change the datasource provider:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-2. **Modify `docker-compose.yml`**:
-   - Uncomment the `db` service.
-   - Update the `app` service's `DATABASE_URL` to:
-     `postgresql://postgres:postgres@db:5432/belladolce?schema=public`
-   - Uncomment the `postgres_data` volume.
-3. **Restart the containers**:
+3. **Start**  
    ```bash
-   docker-compose down
-   docker-compose up --build -d
+   npm run dev
    ```
 
-## Useful Commands
+4. **Open**  
+   [http://localhost:3000](http://localhost:3000)  
+   (Port comes from `app.config.ts` / `PORT` in `.env` if set.)
 
-- **View Logs**: `docker-compose logs -f app`
-- **Stop App**: `docker-compose down`
-- **Reset Database**: `docker-compose down -v` (removes volumes)
+`BELLA_HTTP_ONLY` and Docker-only settings **do not apply** here unless you set them yourself.
 
-## Note on Environment Variables
-Ensure all required variables from `.env.example` are provided in your local `.env` or in the `docker-compose.yml` environment section.
+---
+
+## Optional: Docker Compose
+
+Use this when you want the app in a container instead of local Node.
+
+### Prerequisites
+
+- [Docker](https://www.docker.com/get-started)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
+### Quick Start (SQLite)
+
+1. `.env` with at least `GEMINI_API_KEY` if you use AI features.
+2. ```bash
+   docker compose up --build -d
+   ```
+3. Open [http://localhost:3000](http://localhost:3000).
+
+- **Default login**: `admin` / `password`
+
+### Advanced: PostgreSQL
+
+1. Change `prisma/schema.prisma` `provider` to `postgresql` and set `DATABASE_URL`.
+2. Add a `db` service and matching `DATABASE_URL` in `docker-compose.yml`.
+3. `docker compose down && docker compose up --build -d`
+
+### Useful commands
+
+- **Logs**: `docker compose logs -f bella-dolce2`
+- **Stop**: `docker compose down`
+
+### Docker notes
+
+- SQLite file on the host: **`./data`** → `/app/data` in the container (`file:/app/data/dev.db`).
+- **HTTP vs HTTPS**: Compose sets `BELLA_HTTP_ONLY=1` so **http://localhost:3000** works. Remove it in compose if you want TLS from the image certs.
+
+### Environment variables
+
+Provide secrets in `.env` or under `environment:` in `docker-compose.yml`.

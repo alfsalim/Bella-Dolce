@@ -7,7 +7,7 @@ import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
 import { compressImage } from '../lib/utils';
-import { CATEGORIES } from '../constants';
+import { CATEGORIES, PAGE_SIZE } from '../constants';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
 
@@ -46,7 +46,7 @@ const ProductManagement: React.FC = () => {
   const [materialsPage, setMaterialsPage] = useState(1);
   const [totalProductsPages, setTotalProductsPages] = useState(1);
   const [totalMaterialsPages, setTotalMaterialsPages] = useState(1);
-  const [pageSize] = useState(25);
+
 
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
@@ -89,15 +89,15 @@ const ProductManagement: React.FC = () => {
     const fetchCounts = async () => {
       const productsSnapshot = await getCountFromServer(collection(db, 'products'));
       const materialsSnapshot = await getCountFromServer(collection(db, 'rawMaterials'));
-      setTotalProductsPages(Math.ceil(productsSnapshot.data().count / pageSize));
-      setTotalMaterialsPages(Math.ceil(materialsSnapshot.data().count / pageSize));
+      setTotalProductsPages(Math.ceil(productsSnapshot.data().count / PAGE_SIZE));
+      setTotalMaterialsPages(Math.ceil(materialsSnapshot.data().count / PAGE_SIZE));
     };
     fetchCounts();
 
     const pq = query(
       collection(db, 'products'), 
       orderBy('name'), 
-      limit(pageSize * productsPage)
+      limit(PAGE_SIZE * productsPage)
     );
     const unsubscribeProducts = onSnapshot(pq, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
@@ -106,7 +106,7 @@ const ProductManagement: React.FC = () => {
     const mq = query(
       collection(db, 'rawMaterials'), 
       orderBy('name'), 
-      limit(pageSize * materialsPage)
+      limit(PAGE_SIZE * materialsPage)
     );
     const unsubscribeMaterials = onSnapshot(mq, (snapshot) => {
       setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
@@ -141,7 +141,7 @@ const ProductManagement: React.FC = () => {
       oUnsubscribe();
       catUnsubscribe();
     };
-  }, [currentUserProfile, pageSize, productsPage, materialsPage]);
+  }, [currentUserProfile, PAGE_SIZE, productsPage, materialsPage]);
 
   const isProductDeletable = (productId: string) => {
     const activeBatches = batches.filter(b => 
@@ -400,9 +400,9 @@ const ProductManagement: React.FC = () => {
 
   const paginatedItems = useMemo(() => {
     const page = activeTab === 'products' ? productsPage : materialsPage;
-    const startIndex = (page - 1) * pageSize;
-    return filteredItems.slice(startIndex, startIndex + pageSize);
-  }, [filteredItems, productsPage, materialsPage, pageSize, activeTab]);
+    const startIndex = (page - 1) * PAGE_SIZE;
+    return filteredItems.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredItems, productsPage, materialsPage, PAGE_SIZE, activeTab]);
 
   const resetFilters = () => {
     setSearchTerm('');

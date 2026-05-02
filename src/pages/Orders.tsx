@@ -29,7 +29,7 @@ import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { CURRENCY } from '../constants';
+import { CURRENCY, PAGE_SIZE } from '../constants';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
@@ -43,7 +43,7 @@ const Orders: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(25);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [userFilter, setUserFilter] = useState('All');
@@ -79,18 +79,18 @@ const Orders: React.FC = () => {
       }
 
       const snapshot = await getCountFromServer(q);
-      setTotalPages(Math.ceil(snapshot.data().count / pageSize));
+      setTotalPages(Math.ceil(snapshot.data().count / PAGE_SIZE));
     };
 
     fetchTotalCount();
 
-    let q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(pageSize * currentPage));
+    let q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE * currentPage));
     
     // If customer, only show their orders
     if (profile.role === 'customer_business' || profile.role === 'customer_customers') {
-      q = query(collection(db, 'orders'), where('customerId', '==', profile.id), orderBy('createdAt', 'desc'), limit(pageSize * currentPage));
+      q = query(collection(db, 'orders'), where('customerId', '==', profile.id), orderBy('createdAt', 'desc'), limit(PAGE_SIZE * currentPage));
     } else if (profile.role === 'delivery_guy') {
-      q = query(collection(db, 'orders'), where('deliveryId', '==', profile.id), orderBy('createdAt', 'desc'), limit(pageSize * currentPage));
+      q = query(collection(db, 'orders'), where('deliveryId', '==', profile.id), orderBy('createdAt', 'desc'), limit(PAGE_SIZE * currentPage));
     }
 
     // Apply status filter to query
@@ -106,8 +106,8 @@ const Orders: React.FC = () => {
     const unsubscribeOrders = onSnapshot(q, (snapshot) => {
       const allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
       // Slice for current page to simulate server-side pagination with onSnapshot
-      const startIndex = (currentPage - 1) * pageSize;
-      const paginatedOrders = allOrders.slice(startIndex, startIndex + pageSize);
+      const startIndex = (currentPage - 1) * PAGE_SIZE;
+      const paginatedOrders = allOrders.slice(startIndex, startIndex + PAGE_SIZE);
       setOrders(paginatedOrders);
     }, (error) => handleFirestoreError(error, OperationType.GET, 'orders'));
 
@@ -119,7 +119,7 @@ const Orders: React.FC = () => {
       unsubscribeOrders();
       unsubscribeProducts();
     };
-  }, [currentPage, pageSize, profile, statusFilter, userFilter]);
+  }, [currentPage, PAGE_SIZE, profile, statusFilter, userFilter]);
 
   const updateOrderStatus = async (id: string, status: Order['status']) => {
     try {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { PAGE_SIZE } from '../constants';
 import { 
   Users as UsersIcon, 
   Plus, 
@@ -35,7 +36,7 @@ const Users: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(25);
+
   const [auditLogs, setAuditLogs] = useState<ActivityLog[]>([]);
   const [logsLimit, setLogsLimit] = useState(25);
   const [hasMoreLogs, setHasMoreLogs] = useState(true);
@@ -55,15 +56,15 @@ const Users: React.FC = () => {
   useEffect(() => {
     const fetchCounts = async () => {
       const snapshot = await getCountFromServer(collection(db, 'users'));
-      setTotalPages(Math.ceil(snapshot.data().count / pageSize));
+      setTotalPages(Math.ceil(snapshot.data().count / PAGE_SIZE));
     };
     fetchCounts();
 
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(pageSize * currentPage));
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE * currentPage));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
-      const startIndex = (currentPage - 1) * pageSize;
-      const usersData = allUsers.slice(startIndex, startIndex + pageSize);
+      const startIndex = (currentPage - 1) * PAGE_SIZE;
+      const usersData = allUsers.slice(startIndex, startIndex + PAGE_SIZE);
       setUsers(usersData);
 
       // One-time fix for specific users with empty usernames
@@ -100,7 +101,7 @@ const Users: React.FC = () => {
       unsubscribe();
       unsubscribeLogs();
     };
-  }, [pageSize, currentPage, logsLimit]);
+  }, [PAGE_SIZE, currentPage, logsLimit]);
 
   useEffect(() => {
     if (selectedUserForLogs) {

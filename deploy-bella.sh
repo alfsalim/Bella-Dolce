@@ -111,6 +111,7 @@ if [ "$MODE" = "--dev" ]; then
         -p "$DEV_EXT_PORT:$INT_PORT" \
         -e DATABASE_URL="$DB_URL" \
         -e NODE_ENV=production \
+        -e BELLA_HTTP_ONLY=1 \
         -v "$DEV_DATA_DIR:/app/data" \
         --restart unless-stopped \
         "$IMAGE_NAME"
