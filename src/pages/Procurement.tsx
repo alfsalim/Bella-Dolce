@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -9,14 +9,17 @@ import {
   Trash2,
   Building2,
   AlertCircle,
-  AlertTriangle
+  AlertTriangle,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import Suppliers from './Suppliers';
-import { authFetch } from '../lib/api-client';
-import { PAGE_SIZE } from '../constants';
+import { authFetch, readApiErrorMessage } from '../lib/api-client';
+import { buildPurchasesListUrl } from '../lib/purchaseListQuery';
+import { PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
 import Pagination from '../components/Pagination';
 
 interface Purchase {
@@ -56,7 +59,22 @@ const Procurement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showMissingOnly, setShowMissingOnly] = useState(false);
   const [purchasesPage, setPurchasesPage] = useState(1);
+  const [sortCol, setSortCol] = useState<'date' | 'supplier' | 'total'>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  /** `all` = no date filter (still limited to QUERY_MAX_ITEMS on the server). */
+  const [purchaseTimeScope, setPurchaseTimeScope] = useState<number | 'all'>('all');
+  const firstPurchasesLoad = useRef(true);
+
+  const handleSort = (col: 'date' | 'supplier' | 'total') => {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir(col === 'date' ? 'desc' : 'asc');
+    }
+    setPurchasesPage(1);
+  };
 
   const [formData, setFormData] = useState({
     materialId: '',
@@ -72,33 +90,6 @@ const Procurement: React.FC = () => {
     const date = new Date();
     date.setMonth(date.getMonth() + 3);
     return date.toISOString().split('T')[0];
-  };
-
-  useEffect(() => {
-    fetchPurchases();
-    fetchMaterials();
-    fetchSuppliers();
-  }, []);
-
-  useEffect(() => {
-    setPurchasesPage(1);
-  }, [searchTerm, showMissingOnly]);
-
-  const fetchPurchases = async () => {
-    try {
-      const token = localStorage.getItem('bakery_token');
-      const response = await authFetch('/api/db/purchases', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error('Failed to fetch purchases');
-      const data = await response.json();
-      setPurchases(data || []);
-    } catch (error) {
-      console.error('Error fetching purchases:', error);
-      toast.error('Failed to load purchases');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const fetchMaterials = async () => {
@@ -128,6 +119,56 @@ const Procurement: React.FC = () => {
       console.error('Error fetching suppliers:', error);
     }
   };
+
+  const fetchPurchases = useCallback(async () => {
+    const showSpinner = firstPurchasesLoad.current;
+    try {
+      if (showSpinner) setLoading(true);
+      const token = localStorage.getItem('bakery_token');
+      const end = new Date();
+      const path =
+        purchaseTimeScope === 'all'
+          ? buildPurchasesListUrl({ scope: 'all', sortCol, sortDir })
+          : (() => {
+              const start = new Date(end);
+              start.setDate(start.getDate() - purchaseTimeScope);
+              return buildPurchasesListUrl({
+                scope: 'window',
+                sortCol,
+                sortDir,
+                dateFromYmd: start.toISOString().slice(0, 10),
+                dateToYmd: end.toISOString().slice(0, 10),
+              });
+            })();
+      const response = await authFetch(path, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
+      const data = await response.json();
+      setPurchases(data || []);
+    } catch (error) {
+      console.error('Error fetching purchases:', error);
+      toast.error('Failed to load purchases');
+    } finally {
+      if (showSpinner) {
+        setLoading(false);
+        firstPurchasesLoad.current = false;
+      }
+    }
+  }, [purchaseTimeScope, sortCol, sortDir]);
+
+  useEffect(() => {
+    void fetchMaterials();
+    void fetchSuppliers();
+  }, []);
+
+  useEffect(() => {
+    void fetchPurchases();
+  }, [fetchPurchases]);
+
+  useEffect(() => {
+    setPurchasesPage(1);
+  }, [searchTerm, showMissingOnly, purchaseTimeScope, sortCol, sortDir]);
 
   const updateInventory = async (
     materialId: string,
@@ -292,15 +333,22 @@ const Procurement: React.FC = () => {
       setEditingPurchase(null);
       setPdfFile(null);
       resetForm();
-      fetchPurchases();
+      void fetchPurchases();
     } catch (error) {
       console.error('Error saving purchase:', error);
       toast.error(editingPurchase ? 'Failed to update purchase' : 'Failed to create purchase');
     }
   };
 
+  const canDeletePurchase = (purchase: Purchase) => {
+    const m = materials.find(x => x.id === purchase.materialId);
+    const stock = m?.currentStock ?? 0;
+    return stock >= (Number(purchase.quantity) || 0) - 1e-9;
+  };
+
   const handleDelete = async (purchase: Purchase) => {
-    if (!confirm('Are you sure you want to delete this purchase? This will also decrease the material inventory.')) {
+    if (!canDeletePurchase(purchase)) return;
+    if (!confirm('Are you sure you want to delete this purchase? Inventory will decrease by this order quantity.')) {
       return;
     }
 
@@ -312,12 +360,20 @@ const Procurement: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (!response.ok) throw new Error('Failed to delete purchase');
+      if (!response.ok) {
+        toast.error(await readApiErrorMessage(response));
+        return;
+      }
 
-      await updateInventory(purchase.materialId, purchase.quantity, 'subtract');
-
+      setMaterials(ms =>
+        ms.map(m =>
+          m.id === purchase.materialId
+            ? { ...m, currentStock: Math.max(0, (m.currentStock || 0) - (Number(purchase.quantity) || 0)) }
+            : m
+        )
+      );
       toast.success('Purchase deleted successfully');
-      fetchPurchases();
+      void fetchPurchases();
     } catch (error) {
       console.error('Error deleting purchase:', error);
       toast.error('Failed to delete purchase');
@@ -353,12 +409,12 @@ const Procurement: React.FC = () => {
   const missingSupplierCount = purchases.filter(p => !p.supplierId && !p.supplierName).length;
 
   const filteredPurchases = purchases.filter(p => {
-    const matchesSearch =
-      (p.materialName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()));
-    const isMissing = !p.supplierId && !p.supplierName;
-    return matchesSearch && (!showMissingOnly || isMissing);
-  });
+      const matchesSearch =
+        (p.materialName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (p.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()));
+      const isMissing = !p.supplierId && !p.supplierName;
+      return matchesSearch && (!showMissingOnly || isMissing);
+    });
 
   const purchasesTotalPages = Math.ceil(filteredPurchases.length / PAGE_SIZE) || 1;
   const safePurchasesPage = Math.min(purchasesPage, purchasesTotalPages);
@@ -442,7 +498,7 @@ const Procurement: React.FC = () => {
             )}
 
             {/* Search and Add Button */}
-            <div className="flex flex-col sm:flex-row justify-between gap-4">
+            <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
@@ -453,6 +509,28 @@ const Procurement: React.FC = () => {
                   className="input pl-12 w-full"
                 />
               </div>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 shrink-0">
+                <span className="font-bold whitespace-nowrap">Show purchases</span>
+                <select
+                  className="input py-2 text-sm"
+                  value={purchaseTimeScope === 'all' ? 'all' : String(purchaseTimeScope)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPurchaseTimeScope(v === 'all' ? 'all' : Number(v));
+                  }}
+                >
+                  <option value="all">{`All time (latest ${QUERY_MAX_ITEMS})`}</option>
+                  <option value={30}>Last 30 days</option>
+                  <option value={90}>Last 90 days</option>
+                  <option value={180}>Last 180 days</option>
+                  <option value={365}>Last 365 days</option>
+                </select>
+                <span className="text-xs text-slate-400">
+                  {purchaseTimeScope === 'all'
+                    ? '(newest first, bounded by settings)'
+                    : '(by invoice date — older lines may be hidden)'}
+                </span>
+              </label>
               <button
                 onClick={() => {
                   setEditingPurchase(null);
@@ -473,11 +551,26 @@ const Procurement: React.FC = () => {
                   <thead>
                     <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-white/5">
                       <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Material</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Supplier</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">
+                        <button type="button" onClick={() => handleSort('supplier')} className="flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                          Supplier
+                          {sortCol === 'supplier' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
+                        </button>
+                      </th>
                       <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Qty</th>
                       <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Price</th>
-                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Total</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Date</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">
+                        <button type="button" onClick={() => handleSort('total')} className="flex items-center gap-1 ml-auto hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                          Total
+                          {sortCol === 'total' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
+                        </button>
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">
+                        <button type="button" onClick={() => handleSort('date')} className="flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                          Date
+                          {sortCol === 'date' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
+                        </button>
+                      </th>
                       <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Invoice</th>
                       <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Actions</th>
                     </tr>
@@ -542,9 +635,15 @@ const Procurement: React.FC = () => {
                               {missingSupplier ? <AlertTriangle className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleDelete(purchase)}
-                              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                              title="Delete"
+                              disabled={!canDeletePurchase(purchase)}
+                              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all disabled:opacity-35 disabled:pointer-events-none"
+                              title={
+                                canDeletePurchase(purchase)
+                                  ? 'Delete purchase'
+                                  : 'Cannot delete — not enough inventory to remove this receipt'
+                              }
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

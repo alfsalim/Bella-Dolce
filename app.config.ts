@@ -13,6 +13,8 @@ const config = {
   // ── Display ────────────────────────────────────────────────
   CURRENCY:  "DA",
   PAGE_SIZE: 15,          // rows shown per page in all list views
+  /** Max rows per bounded list/query against /api/db (purchase history, etc.) */
+  QUERY_MAX_ITEMS: 100,
 
   // ── Server ─────────────────────────────────────────────────
   PORT: 3000,             // overridden by process.env.PORT in production
@@ -28,6 +30,15 @@ const config = {
     "maintenance",
     "cleaning",
     "others",
+  ],
+
+  // Categories that can be sold at POS (excludes supplies/maintenance)
+  SELLABLE_CATEGORIES: [
+    "viennoiserie",
+    "patisserie",
+    "boulangerie",
+    "traiteur",
+    "boissons",
   ],
 
   // ── Units of Measure ───────────────────────────────────────

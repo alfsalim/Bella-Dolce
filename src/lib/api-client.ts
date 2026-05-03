@@ -4,7 +4,7 @@ export const db = {
   // Mock db object that will be used by our compatibility layer
 };
 
-function getAuthHeaders(): HeadersInit {
+export function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('bakery_token');
   const base: HeadersInit = { 'Content-Type': 'application/json' };
   return token ? { ...base, 'Authorization': `Bearer ${token}` } : base;

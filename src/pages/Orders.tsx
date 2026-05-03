@@ -127,17 +127,18 @@ const Orders: React.FC = () => {
       const order = orders.find(o => o.id === id);
       if (!order) return;
 
-      // Handle stock return if cancelled
+      // Handle stock return if cancelled — restore shopStock (orders come from shop)
+      // stock = shopStock + freezerStock + wasteQuantity (invariant)
       if (status === 'cancelled' && order.status !== 'cancelled') {
         for (const item of order.items) {
           try {
             const productRef = doc(db, 'products', item.productId);
             const productSnap = await getDoc(productRef);
             if (productSnap.exists()) {
-              const currentStock = productSnap.data().stock || 0;
-              await updateDoc(productRef, {
-                stock: currentStock + item.quantity
-              });
+              const data = productSnap.data();
+              const newShopStock = (data.shopStock || 0) + item.quantity;
+              const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
+              await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
             }
           } catch (err) {
             console.error(`Error returning stock for product ${item.productId}:`, err);

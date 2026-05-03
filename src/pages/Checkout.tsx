@@ -58,16 +58,17 @@ const Checkout: React.FC = () => {
 
       await addDoc(collection(db, 'orders'), orderData);
 
-      // Deduct stock for each item
+      // Deduct shopStock for each item (orders come from shop)
+      // stock = shopStock + freezerStock + wasteQuantity (invariant)
       for (const item of cart) {
         try {
           const productRef = doc(db, 'products', item.id);
           const productSnap = await getDoc(productRef);
           if (productSnap.exists()) {
-            const currentStock = productSnap.data().stock || 0;
-            await updateDoc(productRef, {
-              stock: Math.max(0, currentStock - item.quantity)
-            });
+            const data = productSnap.data();
+            const newShopStock = Math.max(0, (data.shopStock || 0) - item.quantity);
+            const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
+            await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
           }
         } catch (err) {
           console.error(`Error updating stock for product ${item.id}:`, err);

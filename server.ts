@@ -4,7 +4,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import fs from "fs/promises";
@@ -187,6 +187,424 @@ const COLLECTION_ROUTE_MAP: Record<string, string> = {
 // Collections that are always admin-only regardless of rolePermissions
 const ADMIN_ONLY_COLLECTIONS = new Set(['users', 'rolePermissions', 'system']);
 
+const PUBLIC_GET_COLLECTIONS: string[] = ['products', 'promotions', 'settings'];
+const PUBLIC_POST_COLLECTIONS: string[] = ['orders', 'customers', 'activityLogs'];
+const PUBLIC_PUT_COLLECTIONS: string[] = ['products'];
+
+/** Mirrors `requireCollectionAccess` for GET (authenticated search). */
+async function canReadCollectionForSearch(userRole: string, collection: string): Promise<boolean> {
+  if (PUBLIC_GET_COLLECTIONS.includes(collection)) return true;
+  const role = userRole.trim();
+  if (role === 'admin') return true;
+  if (ADMIN_ONLY_COLLECTIONS.has(collection)) return false;
+  const routeRequired = COLLECTION_ROUTE_MAP[collection];
+  if (!routeRequired) return true;
+  const allowedPaths = await getCachedAllowedPaths(role);
+  return allowedPaths.includes('*') || allowedPaths.includes(routeRequired);
+}
+
+const SEARCH_HITS_PER_TYPE = 8;
+
+type SearchHitDto = {
+  type: string;
+  id: string;
+  label: string;
+  subtitle?: string;
+  path: string;
+};
+
+/** Global staff search: only whitelisted collections; RBAC per row type. */
+async function runGlobalSearch(userRole: string, q: string): Promise<SearchHitDto[]> {
+  const prisma = getPrisma();
+  const trimmed = q.trim();
+  const hits: SearchHitDto[] = [];
+  const take = SEARCH_HITS_PER_TYPE;
+
+  const [
+    okProducts,
+    okCustomers,
+    okOrders,
+    okSuppliers,
+    okRawMaterials,
+    okPromotions,
+    okDeliveries,
+    okUsers,
+    okAccounts,
+    okJournalEntries,
+    okPurchases,
+    okSupplierInvoices,
+    okActivityLogs,
+    okStockMovements,
+  ] = await Promise.all([
+    canReadCollectionForSearch(userRole, 'products'),
+    canReadCollectionForSearch(userRole, 'customers'),
+    canReadCollectionForSearch(userRole, 'orders'),
+    canReadCollectionForSearch(userRole, 'suppliers'),
+    canReadCollectionForSearch(userRole, 'rawMaterials'),
+    canReadCollectionForSearch(userRole, 'promotions'),
+    canReadCollectionForSearch(userRole, 'deliveries'),
+    canReadCollectionForSearch(userRole, 'users'),
+    canReadCollectionForSearch(userRole, 'accounts'),
+    canReadCollectionForSearch(userRole, 'journalEntries'),
+    canReadCollectionForSearch(userRole, 'purchases'),
+    canReadCollectionForSearch(userRole, 'supplierInvoices'),
+    canReadCollectionForSearch(userRole, 'activityLogs'),
+    canReadCollectionForSearch(userRole, 'stockMovements'),
+  ]);
+
+  const tasks: Promise<void>[] = [];
+
+  if (okProducts) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.product.findMany({
+          where: {
+            OR: [
+              { name: { contains: trimmed } },
+              { description: { contains: trimmed } },
+              { category: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { name: 'asc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'product',
+            id: r.id,
+            label: r.name,
+            subtitle: r.category,
+            path: `/products/${r.id}`,
+          });
+        }
+      })()
+    );
+  }
+
+  if (okCustomers) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.customer.findMany({
+          where: {
+            OR: [
+              { name: { contains: trimmed } },
+              { email: { contains: trimmed } },
+              { phone: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { name: 'asc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'customer',
+            id: r.id,
+            label: r.name,
+            subtitle: r.email ?? undefined,
+            path: '/customers',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okOrders) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.order.findMany({
+          where: {
+            OR: [
+              { id: { contains: trimmed } },
+              { clientName: { contains: trimmed } },
+              { description: { contains: trimmed } },
+              { status: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { createdAt: 'desc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'order',
+            id: r.id,
+            label: r.clientName || r.id,
+            subtitle: r.status,
+            path: '/orders',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okSuppliers) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.supplier.findMany({
+          where: {
+            OR: [
+              { name: { contains: trimmed } },
+              { email: { contains: trimmed } },
+              { phone: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { name: 'asc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'supplier',
+            id: r.id,
+            label: r.name,
+            subtitle: r.phone ?? undefined,
+            path: '/procurement',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okRawMaterials) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.rawMaterial.findMany({
+          where: {
+            OR: [{ name: { contains: trimmed } }, { category: { contains: trimmed } }],
+          },
+          take,
+          orderBy: { name: 'asc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'rawMaterial',
+            id: r.id,
+            label: r.name,
+            subtitle: r.category,
+            path: '/inventory',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okPromotions) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.promotion.findMany({
+          where: {
+            OR: [{ title: { contains: trimmed } }, { description: { contains: trimmed } }],
+          },
+          take,
+          orderBy: { createdAt: 'desc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'promotion',
+            id: r.id,
+            label: r.title || r.id,
+            subtitle: r.type,
+            path: '/settings',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okDeliveries) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.delivery.findMany({
+          where: {
+            OR: [
+              { id: { contains: trimmed } },
+              { orderId: { contains: trimmed } },
+              { comments: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { updatedAt: 'desc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'delivery',
+            id: r.id,
+            label: r.orderId,
+            subtitle: r.status,
+            path: '/orders',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okUsers) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.user.findMany({
+          where: {
+            OR: [
+              { name: { contains: trimmed } },
+              { email: { contains: trimmed } },
+              { username: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { name: 'asc' },
+        });
+        for (const r of rows) {
+          const safe = sanitizeUser(r);
+          hits.push({
+            type: 'user',
+            id: safe.id,
+            label: safe.name,
+            subtitle: safe.email ?? safe.username ?? undefined,
+            path: '/settings',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okAccounts) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.account.findMany({
+          where: {
+            OR: [{ number: { contains: trimmed } }, { name: { contains: trimmed } }],
+          },
+          take,
+          orderBy: { number: 'asc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'account',
+            id: r.id,
+            label: r.name,
+            subtitle: r.number,
+            path: '/finance',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okJournalEntries) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.journalEntry.findMany({
+          where: {
+            OR: [
+              { number: { contains: trimmed } },
+              { label: { contains: trimmed } },
+              { reference: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { date: 'desc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'journalEntry',
+            id: r.id,
+            label: r.label,
+            subtitle: r.number,
+            path: '/finance',
+          });
+        }
+      })()
+    );
+  }
+
+  const okInvoiceSearch = okPurchases || okSupplierInvoices;
+  if (okInvoiceSearch) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.supplierInvoice.findMany({
+          where: {
+            OR: [
+              { invoiceNumber: { contains: trimmed } },
+              { supplierName: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { date: 'desc' },
+        });
+        for (const r of rows) {
+          const dest =
+            okPurchases && okSupplierInvoices
+              ? '/procurement'
+              : okPurchases
+                ? '/procurement'
+                : '/finance';
+          hits.push({
+            type: 'supplierInvoice',
+            id: r.id,
+            label: r.invoiceNumber,
+            subtitle: r.supplierName ?? undefined,
+            path: dest,
+          });
+        }
+      })()
+    );
+  }
+
+  if (okActivityLogs) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.activityLog.findMany({
+          where: {
+            OR: [
+              { action: { contains: trimmed } },
+              { details: { contains: trimmed } },
+              { userName: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { timestamp: 'desc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'activityLog',
+            id: r.id,
+            label: r.action,
+            subtitle: r.userName,
+            path: '/dashboard',
+          });
+        }
+      })()
+    );
+  }
+
+  if (okStockMovements) {
+    tasks.push(
+      (async () => {
+        const rows = await prisma.stockMovement.findMany({
+          where: {
+            OR: [
+              { itemName: { contains: trimmed } },
+              { reason: { contains: trimmed } },
+              { userName: { contains: trimmed } },
+            ],
+          },
+          take,
+          orderBy: { timestamp: 'desc' },
+        });
+        for (const r of rows) {
+          hits.push({
+            type: 'stockMovement',
+            id: r.id,
+            label: r.itemName || r.reason,
+            subtitle: r.itemType,
+            path: '/inventory',
+          });
+        }
+      })()
+    );
+  }
+
+  await Promise.all(tasks);
+  return hits;
+}
+
 // In-memory cache for role → allowedPaths (avoids a DB hit on every API call)
 const _permCache = new Map<string, { paths: string[]; at: number }>();
 const PERM_CACHE_TTL = 60_000; // 1 minute
@@ -289,9 +707,6 @@ async function resolveAllowedPaths(role: string): Promise<string[]> {
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || String(config.PORT), 10);
-  const PUBLIC_GET_COLLECTIONS = ['products', 'promotions', 'settings'];
-  const PUBLIC_POST_COLLECTIONS = ['orders', 'customers', 'activityLogs'];
-  const PUBLIC_PUT_COLLECTIONS = ['products'];
 
   app.use(express.json());
 
@@ -397,6 +812,29 @@ async function startServer() {
     } catch (error: any) {
       console.error('role-permissions error:', error);
       return res.status(500).json({ error: error?.message || 'Failed to load permissions' });
+    }
+  });
+
+  app.get('/api/search', requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const qRaw = req.query.q;
+      const q = typeof qRaw === 'string' ? qRaw.trim() : '';
+      if (q.length < 2) {
+        return res.status(400).json({ error: 'searchQueryTooShort' });
+      }
+      if (q.length > 80) {
+        return res.status(400).json({ error: 'searchQueryTooLong' });
+      }
+      const roleRaw = req.user?.role;
+      const role = typeof roleRaw === 'string' ? roleRaw.trim() : '';
+      if (!role) {
+        return res.status(400).json({ error: 'Invalid token: missing role' });
+      }
+      const results = await runGlobalSearch(role, q);
+      return res.json({ query: q, results });
+    } catch (error: any) {
+      console.error('search error:', error);
+      return res.status(500).json({ error: error?.message || 'Search failed' });
     }
   });
 
@@ -649,7 +1087,7 @@ async function startServer() {
     return requireAuth(req, res, next);
   }, requireCollectionAccess, async (req: express.Request, res: express.Response) => {
     const { collection } = req.params;
-    const { where, orderBy, take } = req.query;
+    const { where, orderBy, take, skip } = req.query;
 
     try {
       const model = getModel(collection);
@@ -658,10 +1096,23 @@ async function startServer() {
       const parsedWhereRaw = parseWhereQuery(where);
       const parsedWhere =
         parsedWhereRaw != null ? deepNormalizePrismaWhere(parsedWhereRaw) : undefined;
+      let takeLimit: number | undefined;
+      if (take !== undefined && String(take).length > 0) {
+        const n = parseInt(String(take), 10);
+        if (!Number.isNaN(n) && n > 0)
+          takeLimit = Math.min(n, config.QUERY_MAX_ITEMS);
+      }
+      let skipN: number | undefined;
+      if (skip !== undefined && String(skip).length > 0) {
+        const n = parseInt(String(skip), 10);
+        if (!Number.isNaN(n) && n >= 0) skipN = n;
+      }
+
       const rawData = await model.findMany({
         where: parsedWhere as object | undefined,
         orderBy: orderBy ? JSON.parse(orderBy as string) : undefined,
-        take: take ? parseInt(take as string) : undefined,
+        ...(skipN != null ? { skip: skipN } : {}),
+        ...(takeLimit != null ? { take: takeLimit } : {}),
       });
 
       const data = rawData.map((item: any) => {
@@ -899,13 +1350,65 @@ async function startServer() {
   app.delete("/api/db/:collection/:id", requireAuth, requireCollectionAccess, async (req, res) => {
     const { collection, id } = req.params;
     try {
+      if (collection === "purchases") {
+        const prisma = getPrisma();
+        const invoice = await prisma.supplierInvoice.findUnique({ where: { id } });
+        if (!invoice) return res.status(404).json({ error: "Purchase not found" });
+
+        let details: { materialId?: string; quantity?: number } = {};
+        if (invoice.amountHT) {
+          try {
+            details = typeof invoice.amountHT === "string" ? JSON.parse(invoice.amountHT) : invoice.amountHT;
+          } catch {
+            return res.status(400).json({ error: "Invalid purchase payload" });
+          }
+        }
+
+        const materialId = details.materialId;
+        const quantity = Number(details.quantity) || 0;
+        if (!materialId) {
+          await prisma.supplierInvoice.delete({ where: { id } });
+          return res.json({ success: true });
+        }
+
+        const mat = await prisma.rawMaterial.findUnique({ where: { id: materialId } });
+        const current = mat?.currentStock ?? 0;
+        if (current < quantity - 1e-6) {
+          return res.status(409).json({
+            error: `Cannot delete: removing ${quantity} ${mat?.unit || "units"} would leave insufficient stock (${current} on hand).`,
+          });
+        }
+
+        await prisma.$transaction(async (tx) => {
+          const row = await tx.rawMaterial.findUnique({ where: { id: materialId } });
+          if (!row || (row.currentStock ?? 0) < quantity - 1e-6) {
+            throw new Error("STOCK_GUARD");
+          }
+          await tx.supplierInvoice.delete({ where: { id } });
+          const next = (row.currentStock ?? 0) - quantity;
+          const baseline = Number((row as { stock?: number }).stock ?? row.currentStock ?? 0);
+          const nextStock = baseline - quantity;
+          await tx.rawMaterial.update({
+            where: { id: materialId },
+            data: { currentStock: next, stock: nextStock } as Prisma.RawMaterialUncheckedUpdateInput,
+          });
+        });
+        return res.json({ success: true });
+      }
+
       const model = getModel(collection);
       if (!model) return res.status(404).json({ error: `Collection ${collection} not found` });
 
       await model.delete({ where: { id } });
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ error: (error as Error).message });
+      const msg = (error as Error).message;
+      if (msg === "STOCK_GUARD") {
+        return res.status(409).json({
+          error: "Cannot delete: insufficient stock to remove this purchase line.",
+        });
+      }
+      res.status(500).json({ error: msg });
     }
   });
 
@@ -925,22 +1428,8 @@ async function startServer() {
         const cashier = await tx.user.findUnique({ where: { id: cashierId } });
         const cashierName = cashier?.name || 'Unknown Cashier';
 
-        // Validate stock for all items first
-        for (const item of items) {
-          const product = await tx.product.findUnique({ where: { id: item.productId } });
-          if (!product) throw new Error(`Product not found: ${item.productId}`);
-          if ((product.stock || 0) < item.quantity) {
-            throw new Error(`Insufficient stock for: ${product.name}`);
-          }
-        }
-
-        // Deduct stock atomically
-        for (const item of items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { decrement: item.quantity } }
-          });
-        }
+        // Stock validation and deduction are handled client-side via Firestore.
+        // SQLite is used only for recording the sale transaction.
 
         // Create sale record
         return await tx.sale.create({

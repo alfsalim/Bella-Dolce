@@ -32,7 +32,7 @@ import { Product, RawMaterial, StockMovement, Recipe } from '../types';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
-import { CATEGORIES, UNITS, CURRENCY, PAGE_SIZE } from '../constants';
+import { CATEGORIES, UNITS, CURRENCY, PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
 import { compressImage } from '../lib/utils';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
@@ -69,7 +69,8 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     type: 'in' as 'in' | 'out',
     quantity: 0,
     reason: 'manual_adjustment',
-    location: 'none' as 'shop' | 'freezer' | 'none'
+    location: 'shop' as 'shop' | 'freezer' | 'none',
+    toLocation: 'waste' as 'shop' | 'freezer' | 'waste' | 'none'
   });
   const [viewMode, setViewMode] = useState<'list' | 'card'>(() => {
     return (localStorage.getItem('inventoryViewMode') as 'list' | 'card') || 'card';
@@ -99,6 +100,39 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     minStock: 0,
     costPrice: 0
   });
+  const [inventoryStockWarning, setInventoryStockWarning] = useState(false);
+  const [lastBatch, setLastBatch] = useState<any>(null);
+
+  const openInventoryModal = (item: Product | RawMaterial) => {
+    const isProduct = !('currentStock' in item);
+    setSelectedItemForInventory(item);
+    setInventoryFormData(isProduct ? {
+      shopStock: (item as Product).shopStock || 0,
+      freezerStock: (item as Product).freezerStock || 0,
+      currentStock: 0,
+      wasteQuantity: (item as Product).wasteQuantity || 0,
+      minStock: (item as Product).minStock || 0,
+      costPrice: (item as Product).costPrice || 0
+    } : {
+      shopStock: 0,
+      freezerStock: 0,
+      currentStock: (item as RawMaterial).currentStock || 0,
+      wasteQuantity: (item as RawMaterial).wasteQuantity || 0,
+      minStock: (item as RawMaterial).minStock || 0,
+      costPrice: 0
+    });
+    setInventoryStockWarning(false);
+    setLastBatch(null);
+    setIsInventoryModalOpen(true);
+    if (isProduct) {
+      const token = localStorage.getItem('bakery_token');
+      authFetch(`/api/db/batches?where=${encodeURIComponent(JSON.stringify({productId: item.id, status: 'completed'}))}&orderBy=${encodeURIComponent(JSON.stringify({startDate: 'desc'}))}&take=1`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(r => r.ok ? r.json() : []).then((data: any[]) => {
+        if (data && data.length > 0) setLastBatch(data[0]);
+      }).catch(() => {});
+    }
+  };
 
 
   const updateMaterialStatus = async (id: string, status: RawMaterial['status']) => {
@@ -268,14 +302,38 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         newTotalStock = Math.max(0, previousTotalStock + diff);
         updateData.currentStock = newTotalStock;
       } else {
-        // Product stock logic (shop vs freezer)
-        const diff = adjustmentData.type === 'in' ? adjustmentData.quantity : -adjustmentData.quantity;
-        if (adjustmentData.location === 'shop') {
-          updateData.shopStock = Math.max(0, (currentData.shopStock || 0) + diff);
-        } else if (adjustmentData.location === 'freezer') {
-          updateData.freezerStock = Math.max(0, (currentData.freezerStock || 0) + diff);
+        // Products: "Move" stock between shop / freezer / waste — total never changes
+        const fromLoc = adjustmentData.location; // 'shop' | 'freezer'
+        const toLoc = adjustmentData.toLocation;  // 'shop' | 'freezer' | 'waste'
+        const qty = adjustmentData.quantity;
+
+        if (!fromLoc || fromLoc === 'none' || !toLoc || toLoc === 'none') {
+          toast.error('Please select both source and destination locations.');
+          return;
         }
-        newTotalStock = (updateData.shopStock ?? currentData.shopStock ?? 0) + (updateData.freezerStock ?? currentData.freezerStock ?? 0);
+        if (fromLoc === toLoc) {
+          toast.error('Source and destination must be different.');
+          return;
+        }
+
+        // Check source has enough
+        const sourceAvailable = fromLoc === 'shop' ? (currentData.shopStock || 0) : (currentData.freezerStock || 0);
+        if (qty > sourceAvailable) {
+          toast.error(`Not enough stock in ${fromLoc}: available ${sourceAvailable}, requested ${qty}`);
+          return;
+        }
+
+        // Deduct from source
+        if (fromLoc === 'shop') updateData.shopStock = (currentData.shopStock || 0) - qty;
+        else updateData.freezerStock = (currentData.freezerStock || 0) - qty;
+
+        // Add to destination
+        if (toLoc === 'shop') updateData.shopStock = (updateData.shopStock ?? currentData.shopStock ?? 0) + qty;
+        else if (toLoc === 'freezer') updateData.freezerStock = (updateData.freezerStock ?? currentData.freezerStock ?? 0) + qty;
+        else if (toLoc === 'waste') updateData.wasteQuantity = (currentData.wasteQuantity || 0) + qty;
+
+        // stock = shopStock + freezerStock + wasteQuantity (total unchanged)
+        newTotalStock = (updateData.shopStock ?? currentData.shopStock ?? 0) + (updateData.freezerStock ?? currentData.freezerStock ?? 0) + (updateData.wasteQuantity ?? currentData.wasteQuantity ?? 0);
         updateData.stock = newTotalStock;
       }
 
@@ -287,11 +345,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           itemId: adjustmentData.itemId,
           itemName: adjustmentData.itemName,
           itemType: adjustmentData.itemType,
-          type: adjustmentData.type,
+          type: adjustmentData.itemType === 'product' ? 'move' : adjustmentData.type,
           quantity: adjustmentData.quantity,
           previousStock: previousTotalStock,
           newStock: newTotalStock,
           location: adjustmentData.location,
+          toLocation: adjustmentData.itemType === 'product' ? adjustmentData.toLocation : undefined,
           reason: adjustmentData.reason,
           userId: currentUserProfile.id,
           userName: currentUserProfile.name,
@@ -436,13 +495,18 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const getLastPurchaseForMaterial = async (materialId: string) => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await authFetch(`/api/db/purchases?materialId=${materialId}`, {
+      const qs = new URLSearchParams();
+      qs.set('orderBy', JSON.stringify({ date: 'desc' }));
+      qs.set('take', String(QUERY_MAX_ITEMS));
+      const response = await authFetch(`/api/db/purchases?${qs}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
         const data = await response.json();
-        if (data && data.length > 0) {
-          const lastPurchase = data[0];
+        const lastPurchase = Array.isArray(data)
+          ? data.find((p: { materialId?: string }) => p.materialId === materialId)
+          : undefined;
+        if (lastPurchase) {
           return {
             supplierId: lastPurchase.supplierId,
             price: lastPurchase.price,
@@ -637,11 +701,27 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       if (selectedProduct && selectedProduct.id) {
         // Handle Edit
         const itemRef = doc(db, activeTab === 'products' ? 'products' : 'rawMaterials', selectedProduct.id);
+
+        // For products: validate that stock total cannot increase through editing
+        if (activeTab === 'products') {
+          const originalStock = (selectedProduct as Product).stock || 0;
+          const existingWaste = (selectedProduct as Product).wasteQuantity || 0;
+          const newShop = Number(formData.shopStock);
+          const newFrozen = Number(formData.freezerStock);
+          const newTotal = newShop + newFrozen + existingWaste;
+          if (newTotal !== originalStock) {
+            toast.error(
+              `Total must stay at ${originalStock}. Shop ${newShop} + Frozen ${newFrozen} + Waste ${existingWaste} = ${newTotal}. Adjust values to sum to ${originalStock}.`
+            );
+            return;
+          }
+        }
+
         const updateData = activeTab === 'products' ? {
           name: formData.name,
           category: formData.category,
           sellingPrice: Number(formData.price),
-          stock: Number(formData.shopStock) + Number(formData.freezerStock),
+          stock: (selectedProduct as Product).stock || 0,
           shopStock: Number(formData.shopStock),
           freezerStock: Number(formData.freezerStock),
           minStock: Number(formData.minStock),
@@ -1049,7 +1129,14 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 <div key={product.id}
                   onClick={() => {
                     setSelectedProduct(product);
+                    setLastBatch(null);
                     setIsDetailsModalOpen(true);
+                    const token = localStorage.getItem('bakery_token');
+                    authFetch(`/api/db/batches?where=${encodeURIComponent(JSON.stringify({productId: product.id, status: 'completed'}))}&orderBy=${encodeURIComponent(JSON.stringify({startDate: 'desc'}))}&take=1`, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    }).then(r => r.ok ? r.json() : []).then((data: any[]) => {
+                      if (data && data.length > 0) setLastBatch(data[0]);
+                    }).catch(() => {});
                   }}
                   className="card group hover:shadow-xl transition-all duration-300 overflow-hidden p-0 border-slate-100 dark:border-white/10 cursor-pointer"
                 >
@@ -1102,10 +1189,11 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                                 itemId: product.id,
                                 itemName: product.name,
                                 itemType: 'product',
-                                type: 'in',
+                                type: 'out',
                                 quantity: 0,
                                 reason: 'manual_adjustment',
-                                location: 'shop'
+                                location: 'shop',
+                                toLocation: 'waste'
                               });
                               setIsAdjustmentModalOpen(true);
                             }}
@@ -1192,16 +1280,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         onClick={(e) => {
                           e.stopPropagation();
                           setIsDetailsModalOpen(false);
-                          setSelectedItemForInventory(product);
-                          setInventoryFormData({
-                            shopStock: product.shopStock || 0,
-                            freezerStock: product.freezerStock || 0,
-                            currentStock: 0,
-                            wasteQuantity: product.wasteQuantity || 0,
-                            minStock: product.minStock || 0,
-                            costPrice: product.costPrice || 0
-                          });
-                          setIsInventoryModalOpen(true);
+                          openInventoryModal(product);
                         }}
                         className="p-2 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
                         title={t('edit')}
@@ -1238,18 +1317,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 <tbody className="divide-y divide-slate-50 dark:divide-white/10">
                   {filteredProducts.map((product) => (
                     <tr key={product.id}
-                      onClick={() => {
-                        setSelectedItemForInventory(product);
-                        setInventoryFormData({
-                          shopStock: product.shopStock || 0,
-                          freezerStock: product.freezerStock || 0,
-                          currentStock: 0,
-                          wasteQuantity: product.wasteQuantity || 0,
-                          minStock: product.minStock || 0,
-                          costPrice: product.costPrice || 0
-                        });
-                        setIsInventoryModalOpen(true);
-                      }}
+                      onClick={() => openInventoryModal(product)}
                       className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer"
                     >
                       <td className="px-8 py-5">
@@ -1307,16 +1375,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setIsDetailsModalOpen(false);
-                                  setSelectedItemForInventory(product);
-                                  setInventoryFormData({
-                                    shopStock: product.shopStock || 0,
-                                    freezerStock: product.freezerStock || 0,
-                                    currentStock: 0,
-                                    wasteQuantity: product.wasteQuantity || 0,
-                                    minStock: product.minStock || 0,
-                                    costPrice: product.costPrice || 0
-                                  });
-                                  setIsInventoryModalOpen(true);
+                                  openInventoryModal(product);
                                 }}
                                 className="px-3 py-1 text-xs font-bold text-primary-600 dark:text-primary-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
                                 title={t('edit')}
@@ -1532,16 +1591,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           <button
                             onClick={() => {
                               setIsDetailsModalOpen(false);
-                              setSelectedItemForInventory(material);
-                              setInventoryFormData({
-                                shopStock: 0,
-                                freezerStock: 0,
-                                currentStock: material.currentStock || 0,
-                                wasteQuantity: material.wasteQuantity || 0,
-                                minStock: material.minStock || 0,
-                                costPrice: 0
-                              });
-                              setIsInventoryModalOpen(true);
+                              openInventoryModal(material);
                             }}
                             className="p-2 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
                             title={t('edit')}
@@ -1642,16 +1692,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             onClick={(e) => {
                               e.stopPropagation();
                               setIsDetailsModalOpen(false);
-                              setSelectedItemForInventory(material);
-                              setInventoryFormData({
-                                shopStock: 0,
-                                freezerStock: 0,
-                                currentStock: material.currentStock || 0,
-                                wasteQuantity: material.wasteQuantity || 0,
-                                minStock: material.minStock || 0,
-                                costPrice: 0
-                              });
-                              setIsInventoryModalOpen(true);
+                              openInventoryModal(material);
                             }}
                             title={t('edit')}
                             className="w-9 h-9 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 hover:border-primary-600 dark:hover:border-primary-500 transition-all duration-200"
@@ -1726,6 +1767,20 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         {tCategory(selectedProduct.category)}
                       </span>
                       <h2 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(selectedProduct)}</h2>
+                      {selectedProduct.itemType !== 'material' && (
+                        <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span>🏭</span>
+                          {lastBatch ? (
+                            <span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-200">Production Batch — {lastBatch.location || 'shop'}</span>
+                              {lastBatch.createdBy ? <span> · <span className="font-semibold text-slate-700 dark:text-slate-200">{lastBatch.createdBy}</span></span> : ''}
+                              {(lastBatch.endDate || lastBatch.startDate) ? (() => { const d = lastBatch.endDate || lastBatch.startDate; return <span> · {new Date(Number(d) || d).toLocaleDateString()} {new Date(Number(d) || d).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>; })() : null}
+                            </span>
+                          ) : (
+                            <span className="italic text-slate-400 dark:text-slate-500">No production batch recorded</span>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1780,10 +1835,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   {isEditingDetails ? (
                     // Both product and raw material: total stock is READ-ONLY (calculated from locations or purchases)
                     <p className="text-xl font-bold text-slate-900 dark:text-white cursor-not-allowed opacity-60">
-                      {selectedProduct.itemType === 'product' ? ((editFormData.shopStock || 0) + (editFormData.freezerStock || 0)) : (editFormData.stock || (selectedProduct as any).currentStock || 0)} {selectedProduct.unit || 'g'}
+                      {selectedProduct.itemType === 'product'
+                        ? ((editFormData.shopStock || 0) + (editFormData.freezerStock || 0) + (editFormData.wasteQuantity || 0))
+                        : (editFormData.stock || (selectedProduct as any).currentStock || 0)} {selectedProduct.unit || 'g'}
                     </p>
                   ) : (
-                    <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.itemType === 'product' ? ((selectedProduct.shopStock || 0) + (selectedProduct.freezerStock || 0)) : ((selectedProduct as any).currentStock || selectedProduct.stock || 0)} {selectedProduct.unit || 'g'}</p>
+                    <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProduct.itemType === 'product' ? ((selectedProduct.shopStock || 0) + (selectedProduct.freezerStock || 0) + (selectedProduct.wasteQuantity || 0)) : ((selectedProduct as any).currentStock || selectedProduct.stock || 0)} {selectedProduct.unit || 'g'}</p>
                   )}
                 </div>
 
@@ -1799,10 +1856,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           className="input py-1 text-sm w-full"
                           value={editFormData.shopStock || 0}
                           onChange={(e) => {
-                            const newShop = Number(e.target.value);
-                            const currentTotal = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
-                            const newFrozen = currentTotal - newShop;
-                            setEditFormData({...editFormData, shopStock: newShop, freezerStock: Math.max(0, newFrozen)});
+                            const waste = editFormData.wasteQuantity || 0;
+                            const originalStock = selectedProduct.stock || 0;
+                            const maxShop = Math.max(0, originalStock - waste);
+                            const newShop = Math.min(Number(e.target.value), maxShop);
+                            const newFrozen = Math.max(0, maxShop - newShop);
+                            setEditFormData({...editFormData, shopStock: newShop, freezerStock: newFrozen});
                           }}
                         />
                       ) : (
@@ -1819,10 +1878,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           className="input py-1 text-sm w-full"
                           value={editFormData.freezerStock || 0}
                           onChange={(e) => {
-                            const newFrozen = Number(e.target.value);
-                            const currentTotal = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
-                            const newShop = currentTotal - newFrozen;
-                            setEditFormData({...editFormData, freezerStock: newFrozen, shopStock: Math.max(0, newShop)});
+                            const waste = editFormData.wasteQuantity || 0;
+                            const originalStock = selectedProduct.stock || 0;
+                            const maxFrozen = Math.max(0, originalStock - waste);
+                            const newFrozen = Math.min(Number(e.target.value), maxFrozen);
+                            const newShop = Math.max(0, maxFrozen - newFrozen);
+                            setEditFormData({...editFormData, freezerStock: newFrozen, shopStock: newShop});
                           }}
                         />
                       ) : (
@@ -2065,23 +2126,29 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           let newWaste = editFormData.wasteQuantity || 0;
                           let oldWaste = selectedProduct.wasteQuantity || 0;
 
-                          // Validation for products only
+                          // stock = shopStock + freezerStock + wasteQuantity (invariant — total cannot change via editing)
+                          const originalStock = selectedProduct.stock || 0;
+                          let updatedStock: number;
+
                           if (selectedProduct.itemType === 'product') {
-                            const updatedStock = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
-                            // For products: waste cannot exceed total stock
-                            if (newWaste > updatedStock) {
-                              toast.error('Waste cannot exceed total stock');
+                            const newShop = editFormData.shopStock || 0;
+                            const newFrozen = editFormData.freezerStock || 0;
+                            const newWasteVal = newWaste || 0;
+                            updatedStock = newShop + newFrozen + newWasteVal;
+                            if (updatedStock !== originalStock) {
+                              toast.error(
+                                `Total must stay at ${originalStock}. Current: ${updatedStock} (Shop ${newShop} + Frozen ${newFrozen} + Waste ${newWasteVal}). Adjust the values so they sum to ${originalStock}.`
+                              );
                               return;
                             }
+                          } else {
+                            updatedStock = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
                           }
 
-                          const updatedStock = (editFormData.shopStock || 0) + (editFormData.freezerStock || 0);
-                          const oldTotal = (selectedProduct.shopStock || 0) + (selectedProduct.freezerStock || 0);
-                          const { wasteQuantity, lastPurchaseStatus, ...dataToSave } = editFormData;
-                          const finalData = {
-                            ...dataToSave,
-                            stock: updatedStock
-                          };
+                          const { lastPurchaseStatus, ...dataToSave } = editFormData;
+                          const finalData = selectedProduct.itemType === 'product'
+                            ? { ...dataToSave, stock: originalStock, wasteQuantity: newWaste }
+                            : { ...dataToSave, stock: updatedStock };
 
                           await updateDoc(doc(db, selectedProduct.itemType === 'material' ? 'rawMaterials' : 'products', selectedProduct.id), finalData);
 
@@ -2109,16 +2176,17 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             }
 
                             // For products, handle stock distribution changes
+                            const prevTotalStock = (selectedProduct.shopStock || 0) + (selectedProduct.freezerStock || 0) + (selectedProduct.wasteQuantity || 0);
                             if (selectedProduct.itemType !== 'material') {
-                              if (updatedStock < oldTotal) {
-                                const autoWaste = oldTotal - updatedStock;
+                              if (updatedStock < prevTotalStock) {
+                                const autoWaste = prevTotalStock - updatedStock;
                                 await addDoc(collection(db, 'stockMovements'), {
                                   itemId: selectedProduct.id,
                                   itemName: selectedProduct.name,
                                   itemType: 'product',
                                   type: 'out',
                                   quantity: autoWaste,
-                                  previousStock: oldTotal,
+                                  previousStock: prevTotalStock,
                                   newStock: updatedStock,
                                   location: 'none',
                                   reason: 'waste',
@@ -2262,7 +2330,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
                         <button 
                           type="button"
-                          onClick={() => setAdjustmentData({...adjustmentData, itemType: 'product', itemId: '', itemName: ''})}
+                          onClick={() => setAdjustmentData({...adjustmentData, itemType: 'product', itemId: '', itemName: '', type: 'out'})}
                           className={clsx(
                             "flex-1 py-1 px-3 rounded-lg text-xs font-bold transition-all",
                             adjustmentData.itemType === 'product' ? "bg-white dark:bg-primary-600 text-primary-600 dark:text-white shadow-sm" : "text-slate-400"
@@ -2307,33 +2375,66 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   </>
                 )}
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('type')}</label>
-                  <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
-                    <button 
-                      type="button"
-                      onClick={() => setAdjustmentData({...adjustmentData, type: 'in'})}
-                      className={clsx(
-                        "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all",
-                        adjustmentData.type === 'in' ? "bg-white dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500"
-                      )}
-                    >
-                      <ArrowUpRight className="w-4 h-4" />
-                      {t('in') || 'In'}
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => setAdjustmentData({...adjustmentData, type: 'out'})}
-                      className={clsx(
-                        "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all",
-                        adjustmentData.type === 'out' ? "bg-white dark:bg-red-600 text-red-600 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500"
-                      )}
-                    >
-                      <ArrowDownRight className="w-4 h-4" />
-                      {t('out') || 'Out'}
-                    </button>
+                {adjustmentData.itemType === 'product' ? (
+                  <>
+                    <div className="col-span-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-400">
+                      {t('productMoveInfo') || 'Moves stock between locations. Total stock never changes — only Production can create new stock.'}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('from') || 'From'}</label>
+                      <select 
+                        required
+                        className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                        value={adjustmentData.location}
+                        onChange={(e) => setAdjustmentData({...adjustmentData, location: e.target.value as any})}
+                      >
+                        <option value="shop">{t('shop') || 'Shop'}</option>
+                        <option value="freezer">{t('freezer') || 'Freezer'}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('to') || 'To'}</label>
+                      <select 
+                        required
+                        className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                        value={adjustmentData.toLocation}
+                        onChange={(e) => setAdjustmentData({...adjustmentData, toLocation: e.target.value as any})}
+                      >
+                        {adjustmentData.location !== 'shop' && <option value="shop">{t('shop') || 'Shop'}</option>}
+                        {adjustmentData.location !== 'freezer' && <option value="freezer">{t('freezer') || 'Freezer'}</option>}
+                        <option value="waste">{t('waste') || 'Waste'}</option>
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('type')}</label>
+                    <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
+                      <button 
+                        type="button"
+                        onClick={() => setAdjustmentData({...adjustmentData, type: 'in'})}
+                        className={clsx(
+                          "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all",
+                          adjustmentData.type === 'in' ? "bg-white dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500"
+                        )}
+                      >
+                        <ArrowUpRight className="w-4 h-4" />
+                        {t('in') || 'In'}
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => setAdjustmentData({...adjustmentData, type: 'out'})}
+                        className={clsx(
+                          "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all",
+                          adjustmentData.type === 'out' ? "bg-white dark:bg-red-600 text-red-600 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500"
+                        )}
+                      >
+                        <ArrowDownRight className="w-4 h-4" />
+                        {t('out') || 'Out'}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('quantity')}</label>
@@ -2347,20 +2448,6 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     onChange={(e) => setAdjustmentData({...adjustmentData, quantity: Number(e.target.value)})}
                   />
                 </div>
-
-                {adjustmentData.itemType === 'product' && (
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('location')}</label>
-                    <select 
-                      className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                      value={adjustmentData.location}
-                      onChange={(e) => setAdjustmentData({...adjustmentData, location: e.target.value as any})}
-                    >
-                      <option value="shop">{t('shop')}</option>
-                      <option value="freezer">{t('freezer')}</option>
-                    </select>
-                  </div>
-                )}
 
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('reason')}</label>
@@ -2497,13 +2584,30 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       {isInventoryModalOpen && selectedItemForInventory && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
           <div className="card w-full max-w-md shadow-2xl p-8 border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                {t('inventory')} - {selectedItemForInventory.name}
-              </h2>
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {t('inventory')} – {selectedItemForInventory.name}
+                </h2>
+                {!('currentStock' in selectedItemForInventory) && (
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                    <span>🏭</span>
+                    {lastBatch ? (
+                      <span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">Production Batch — {lastBatch.location || 'shop'}</span>
+                        <span className="mx-1">·</span>
+                        {(() => { const d = lastBatch.endDate || lastBatch.startDate; return d ? `${new Date(Number(d) || d).toLocaleDateString()} ${new Date(Number(d) || d).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}` : ''; })()}
+                        {lastBatch.createdBy ? ` · ${lastBatch.createdBy}` : ''}
+                      </span>
+                    ) : (
+                      <span className="italic text-slate-400 dark:text-slate-500">No production batch recorded</span>
+                    )}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setIsInventoryModalOpen(false)}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                className="p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors shrink-0 ml-4"
               >
                 <Plus className="w-6 h-6 rotate-45 text-slate-400" />
               </button>
@@ -2521,7 +2625,15 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       min="0"
                       className="input w-full"
                       value={inventoryFormData.shopStock}
-                      onChange={(e) => setInventoryFormData({...inventoryFormData, shopStock: Math.max(0, Number(e.target.value))})}
+                      onChange={(e) => {
+                        const waste = inventoryFormData.wasteQuantity;
+                        const originalStock = (selectedItemForInventory as any).stock || 0;
+                        const maxShop = Math.max(0, originalStock - waste);
+                        const typed = Math.max(0, Number(e.target.value));
+                        const newShop = Math.min(typed, maxShop);
+                        setInventoryStockWarning(typed > maxShop);
+                        setInventoryFormData({...inventoryFormData, shopStock: newShop, freezerStock: Math.max(0, maxShop - newShop)});
+                      }}
                     />
                   </div>
                   <div>
@@ -2533,24 +2645,19 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       min="0"
                       className="input w-full"
                       value={inventoryFormData.freezerStock}
-                      onChange={(e) => setInventoryFormData({...inventoryFormData, freezerStock: Math.max(0, Number(e.target.value))})}
+                      onChange={(e) => {
+                        const waste = inventoryFormData.wasteQuantity;
+                        const originalStock = (selectedItemForInventory as any).stock || 0;
+                        const maxFrozen = Math.max(0, originalStock - waste);
+                        const typed = Math.max(0, Number(e.target.value));
+                        const newFrozen = Math.min(typed, maxFrozen);
+                        setInventoryStockWarning(typed > maxFrozen);
+                        setInventoryFormData({...inventoryFormData, freezerStock: newFrozen, shopStock: Math.max(0, maxFrozen - newFrozen)});
+                      }}
                     />
                   </div>
                 </>
               )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">
-                  {t('totalStock')}
-                </label>
-                <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
-                  <p className="text-lg font-bold text-slate-900 dark:text-white">
-                    {'currentStock' in selectedItemForInventory
-                      ? (inventoryFormData.currentStock + inventoryFormData.wasteQuantity)
-                      : (inventoryFormData.shopStock + inventoryFormData.freezerStock)} {selectedItemForInventory.unit}
-                  </p>
-                </div>
-              </div>
 
               {'currentStock' in selectedItemForInventory && (
                 <div>
@@ -2618,6 +2725,24 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">
+                  {t('totalStock')}
+                </label>
+                <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
+                  <p className="text-lg font-bold text-slate-900 dark:text-white">
+                    {'currentStock' in selectedItemForInventory
+                      ? (inventoryFormData.currentStock + inventoryFormData.wasteQuantity)
+                      : (inventoryFormData.shopStock + inventoryFormData.freezerStock + inventoryFormData.wasteQuantity)} {selectedItemForInventory.unit}
+                  </p>
+                </div>
+                {inventoryStockWarning && !('currentStock' in selectedItemForInventory) && (
+                  <p className="mt-2 text-xs text-red-500 dark:text-red-400">
+                    Cannot exceed total of <strong>{(selectedItemForInventory as any).stock || 0} {selectedItemForInventory.unit}</strong> — value was capped. Redistribute between shop and freezer only.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">
                   {t('totalCost')}
                 </label>
                 <div className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-lg border border-slate-200 dark:border-white/10">
@@ -2626,7 +2751,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       ((selectedItemForInventory as any).costPrice || 0) *
                       ('currentStock' in selectedItemForInventory
                         ? (inventoryFormData.currentStock + inventoryFormData.wasteQuantity)
-                        : (inventoryFormData.shopStock + inventoryFormData.freezerStock))
+                        : (inventoryFormData.shopStock + inventoryFormData.freezerStock + inventoryFormData.wasteQuantity))
                     ).toFixed(2)} {CURRENCY}
                   </p>
                 </div>
@@ -2648,6 +2773,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       const wasteChange = inventoryFormData.wasteQuantity - ((selectedItemForInventory as any).wasteQuantity || 0);
 
                       const endpoint = isMaterial ? `/api/db/rawMaterials/${itemId}` : `/api/db/products/${itemId}`;
+                      const computedStock = inventoryFormData.shopStock + inventoryFormData.freezerStock + inventoryFormData.wasteQuantity;
+                      const originalStockAtSave = (selectedItemForInventory as any).stock || 0;
+                      if (!isMaterial && Math.abs(computedStock - originalStockAtSave) > 0.001) {
+                        toast.error(`Total must stay at ${originalStockAtSave}. Current: ${computedStock} (Shop ${inventoryFormData.shopStock} + Frozen ${inventoryFormData.freezerStock} + Waste ${inventoryFormData.wasteQuantity}). Cannot save.`);
+                        return;
+                      }
                       const updateData = isMaterial
                         ? {
                             currentStock: inventoryFormData.currentStock,
@@ -2656,7 +2787,8 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         : {
                             shopStock: inventoryFormData.shopStock,
                             freezerStock: inventoryFormData.freezerStock,
-                            wasteQuantity: inventoryFormData.wasteQuantity
+                            wasteQuantity: inventoryFormData.wasteQuantity,
+                            stock: computedStock
                           };
 
                       const response = await authFetch(endpoint, {

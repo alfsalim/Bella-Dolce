@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -9,10 +9,6 @@ import {
   ShoppingCart, 
   Calendar,
   Download,
-  Filter,
-  ArrowUpRight,
-  ArrowDownRight,
-  PieChart as PieChartIcon,
   Clock,
   AlertCircle,
   CheckCircle2,
@@ -28,7 +24,6 @@ import {
 import { authFetch } from '../lib/api-client';
 import { 
   BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -45,19 +40,28 @@ import {
   startOfDay, 
   startOfWeek, 
   startOfMonth, 
-  isAfter, 
-  isBefore,
+  isAfter,
   isWithinInterval,
-  subDays 
 } from 'date-fns';
 import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase-compat';
 import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
 import { clsx } from 'clsx';
-import { CURRENCY, PAGE_SIZE } from '../constants';
+import { CURRENCY } from '../constants';
 import Pagination from '../components/Pagination';
 
+const REPORTS_PAGE_SIZE = 100;
+const LINE_ITEMS_PREVIEW = 3;
+
+function parseSaleItems(sale: Sale): (SaleItem & { name?: string })[] {
+  try {
+    return Array.isArray(sale.items) ? sale.items : JSON.parse((sale.items as unknown as string) || '[]');
+  } catch {
+    return [];
+  }
+}
+
 const Reports: React.FC = () => {
-  const { t, isRTL, tProduct, tCategory } = useLanguage();
+  const { t, tProduct, tCategory } = useLanguage();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'analytics' | 'sales' | 'activities'>('analytics');
 
@@ -69,10 +73,20 @@ const Reports: React.FC = () => {
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [activitySearch, setActivitySearch] = useState('');
+  const [selectedCashier, setSelectedCashier] = useState('all');
+  const [salesSubTab, setSalesSubTab] = useState<'transactions' | 'byProduct'>('transactions');
+  const [transactionPage, setTransactionPage] = useState(1);
+  const [productReportPage, setProductReportPage] = useState(1);
+  const [activityPage, setActivityPage] = useState(1);
+  const [productFilterIds, setProductFilterIds] = useState<string[]>([]);
   const [chartMode, setChartMode] = useState<'revenue' | 'orders'>('revenue');
+  const [isCumulative, setIsCumulative] = useState(false);
   const [timeFilter, setTimeFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
-  const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const todayYmd = format(new Date(), 'yyyy-MM-dd');
+  const [analyticsStart, setAnalyticsStart] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [analyticsEnd, setAnalyticsEnd] = useState<string>(todayYmd);
+  const [reportStart, setReportStart] = useState<string>(todayYmd);
+  const [reportEnd, setReportEnd] = useState<string>(todayYmd);
 
   useEffect(() => {
     const now = new Date();
@@ -84,8 +98,8 @@ const Reports: React.FC = () => {
       case 'year': start = new Date(now.getFullYear(), 0, 1); break;
       default: start = startOfMonth(now);
     }
-    setStartDate(format(start, 'yyyy-MM-dd'));
-    setEndDate(format(now, 'yyyy-MM-dd'));
+    setAnalyticsStart(format(start, 'yyyy-MM-dd'));
+    setAnalyticsEnd(format(now, 'yyyy-MM-dd'));
   }, [timeFilter]);
 
   useEffect(() => {
@@ -167,34 +181,114 @@ const Reports: React.FC = () => {
     return false;
   });
 
-  const filteredSales = filteredSalesByRole.filter(s => {
+  const filteredSalesAnalytics = filteredSalesByRole.filter(s => {
     const date = new Date(s.createdAt);
     return isWithinInterval(date, {
-      start: startOfDay(new Date(startDate)),
-      end: new Date(endDate + 'T23:59:59')
+      start: startOfDay(new Date(analyticsStart)),
+      end: new Date(analyticsEnd + 'T23:59:59')
     });
   });
 
   const filteredOrders = filteredOrdersByRole.filter(o => {
     const date = new Date(o.createdAt);
     return isWithinInterval(date, {
-      start: startOfDay(new Date(startDate)),
-      end: new Date(endDate + 'T23:59:59')
+      start: startOfDay(new Date(analyticsStart)),
+      end: new Date(analyticsEnd + 'T23:59:59')
     });
   });
 
-  const [selectedCashier, setSelectedCashier] = useState('all');
-  
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
+  const reportSalesByDate = filteredSalesByRole.filter(s => {
+    const date = new Date(s.createdAt);
+    return isWithinInterval(date, {
+      start: startOfDay(new Date(reportStart)),
+      end: new Date(reportEnd + 'T23:59:59')
+    });
+  });
 
-  const totalSalesCount = filteredSales.length;
-  const totalAmount = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const totalPages = Math.ceil(totalSalesCount / PAGE_SIZE) || 1;
-  const safeSalesPage = Math.min(currentPage, totalPages);
-  const paginatedSales = filteredSales.slice(
-    (safeSalesPage - 1) * PAGE_SIZE,
-    safeSalesPage * PAGE_SIZE
+  const transactionsListSales = reportSalesByDate.filter(s =>
+    selectedCashier === 'all' || s.cashierId === selectedCashier
+  );
+
+  const transactionTotalPages = Math.ceil(transactionsListSales.length / REPORTS_PAGE_SIZE) || 1;
+  const safeTransactionPage = Math.min(transactionPage, transactionTotalPages);
+  const paginatedTransactions = transactionsListSales.slice(
+    (safeTransactionPage - 1) * REPORTS_PAGE_SIZE,
+    safeTransactionPage * REPORTS_PAGE_SIZE
+  );
+
+  const totalTransactionCount = transactionsListSales.length;
+  const totalAmountTransactions = transactionsListSales.reduce((sum, s) => sum + s.totalAmount, 0);
+
+  const getLineItemLabel = (item: SaleItem & { name?: string }) => {
+    const p = products.find(x => x.id === item.productId);
+    if (p) return tProduct(p);
+    if (item.name) return tProduct(item.name);
+    return '—';
+  };
+
+  const productReportRows = useMemo(() => {
+    const map = new Map<string, { productId: string; quantity: number; revenue: number; saleCount: number }>();
+    for (const sale of reportSalesByDate) {
+      const items = parseSaleItems(sale);
+      for (const item of items) {
+        const rev = item.quantity * (item.price || 0);
+        const cur = map.get(item.productId) ?? { productId: item.productId, quantity: 0, revenue: 0, saleCount: 0 };
+        cur.quantity += item.quantity;
+        cur.revenue += rev;
+        map.set(item.productId, cur);
+      }
+      const seenInSale = new Set(items.map(i => i.productId));
+      for (const pid of seenInSale) {
+        const cur = map.get(pid)!;
+        cur.saleCount += 1;
+      }
+    }
+    let rows = Array.from(map.values());
+    if (productFilterIds.length > 0) {
+      const allow = new Set(productFilterIds);
+      rows = rows.filter(r => allow.has(r.productId));
+    }
+    rows.sort((a, b) => b.revenue - a.revenue);
+    return rows;
+  }, [reportSalesByDate, productFilterIds]);
+
+  const productReportTotalPages = Math.ceil(productReportRows.length / REPORTS_PAGE_SIZE) || 1;
+  const safeProductReportPage = Math.min(productReportPage, productReportTotalPages);
+  const paginatedProductReport = productReportRows.slice(
+    (safeProductReportPage - 1) * REPORTS_PAGE_SIZE,
+    safeProductReportPage * REPORTS_PAGE_SIZE
+  );
+
+  /** Sum of line revenue for rows currently shown (respects product multi-select on By product tab). */
+  const totalProductReportRevenue = productReportRows.reduce((sum, r) => sum + r.revenue, 0);
+
+  const displayPeriodTotal =
+    salesSubTab === 'transactions' ? totalAmountTransactions : totalProductReportRevenue;
+
+  const activityMatchesSearch = (a: ActivityLog) => {
+    if (!activitySearch) return true;
+    const q = activitySearch.toLowerCase();
+    return Boolean(
+      a.userName?.toLowerCase().includes(q) ||
+        a.action?.toLowerCase().includes(q) ||
+        a.details?.toLowerCase().includes(q)
+    );
+  };
+
+  const filteredActivities = activities.filter(a => {
+    if (!a.timestamp) return false;
+    const inRange = isWithinInterval(new Date(a.timestamp), {
+      start: startOfDay(new Date(reportStart)),
+      end: new Date(reportEnd + 'T23:59:59')
+    });
+    return inRange && activityMatchesSearch(a);
+  });
+
+  const activityTotalPages = Math.ceil(filteredActivities.length / REPORTS_PAGE_SIZE) || 1;
+  const safeActivityPage = Math.min(activityPage, activityTotalPages);
+  const paginatedActivities = filteredActivities.slice(
+    (safeActivityPage - 1) * REPORTS_PAGE_SIZE,
+    safeActivityPage * REPORTS_PAGE_SIZE
   );
 
   const getPaymentIcon = (method: string) => {
@@ -206,8 +300,8 @@ const Reports: React.FC = () => {
     }
   };
 
-  const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const totalSalesCountAll = filteredSales.length; // renamed to disambiguate
+  const totalRevenue = filteredSalesAnalytics.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalSalesCountAll = filteredSalesAnalytics.length;
   const avgOrderValue = totalSalesCountAll > 0 ? totalRevenue / totalSalesCountAll : 0;
 
   // Order Stats
@@ -250,7 +344,7 @@ const Reports: React.FC = () => {
 
   // Top Sellers based on actual sales
   const topSellers = products.map(p => {
-    const unitsSold = filteredSales.reduce((sum, s) => {
+    const unitsSold = filteredSalesAnalytics.reduce((sum, s) => {
       const saleItems: SaleItem[] = Array.isArray(s.items) ? s.items : JSON.parse((s.items as any) || '[]');
       const item = saleItems.find(i => i.productId === p.id);
       return sum + (item ? item.quantity : 0);
@@ -258,11 +352,9 @@ const Reports: React.FC = () => {
     return { ...p, unitsSold };
   }).sort((a, b) => b.unitsSold - a.unitsSold).slice(0, 5);
 
-  const [isCumulative, setIsCumulative] = useState(false);
-
   const getChartData = () => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = new Date(analyticsStart);
+    const end = new Date(analyticsEnd);
     const days = [];
     let current = new Date(start);
     
@@ -275,7 +367,7 @@ const Reports: React.FC = () => {
     let cumulativeOrders = 0;
 
     return days.map(date => {
-      const daySales = filteredSales.filter(s => startOfDay(new Date(s.createdAt)).getTime() === startOfDay(date).getTime());
+      const daySales = filteredSalesAnalytics.filter(s => startOfDay(new Date(s.createdAt)).getTime() === startOfDay(date).getTime());
       const dayOrders = filteredOrders.filter(o => startOfDay(new Date(o.createdAt)).getTime() === startOfDay(date).getTime());
       
       const revenue = daySales.reduce((sum, s) => sum + s.totalAmount, 0);
@@ -371,15 +463,15 @@ const Reports: React.FC = () => {
                 <input 
                   type="date" 
                   className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white" 
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  value={analyticsStart}
+                  onChange={(e) => setAnalyticsStart(e.target.value)}
                 />
                 <span className="text-slate-400 dark:text-zinc-500">-</span>
                 <input 
                   type="date" 
                   className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white" 
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  value={analyticsEnd}
+                  onChange={(e) => setAnalyticsEnd(e.target.value)}
                 />
               </div>
             </div>
@@ -721,38 +813,80 @@ const Reports: React.FC = () => {
       )}
       {activeTab === 'sales' && (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('cashier') || 'Cashier'}</label>
-              <div className="relative">
-                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <select 
-                  className="input pl-10 h-10 py-0 text-sm"
-                  value={selectedCashier}
-                  onChange={(e) => {
-                    setSelectedCashier(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                >
-                  <option value="all">{t('allCashiers') || 'All Cashiers'}</option>
-                  {cashiers.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+          <div className="flex flex-wrap gap-2 p-1 bg-slate-100 dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 w-fit">
+            <button
+              type="button"
+              onClick={() => {
+                setSalesSubTab('transactions');
+                setTransactionPage(1);
+              }}
+              className={clsx(
+                'px-5 py-2 rounded-xl text-sm font-bold transition-all',
+                salesSubTab === 'transactions'
+                  ? 'bg-white dark:bg-zinc-900 text-primary-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              )}
+            >
+              {t('transactions') || 'Transactions'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSalesSubTab('byProduct');
+                setProductReportPage(1);
+              }}
+              className={clsx(
+                'px-5 py-2 rounded-xl text-sm font-bold transition-all',
+                salesSubTab === 'byProduct'
+                  ? 'bg-white dark:bg-zinc-900 text-primary-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              )}
+            >
+              {t('reportByProduct')}
+            </button>
+          </div>
+
+          <div
+            className={clsx(
+              'grid grid-cols-1 gap-4',
+              salesSubTab === 'transactions' ? 'md:grid-cols-4' : 'md:grid-cols-3'
+            )}
+          >
+            {salesSubTab === 'transactions' && (
+              <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('cashier') || 'Cashier'}</label>
+                <div className="relative">
+                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <select
+                    className="input pl-10 h-10 py-0 text-sm"
+                    value={selectedCashier}
+                    onChange={(e) => {
+                      setSelectedCashier(e.target.value);
+                      setTransactionPage(1);
+                    }}
+                  >
+                    <option value="all">{t('allCashiers') || 'All Cashiers'}</option>
+                    {cashiers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('fromDate') || 'From Date'}</label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input 
-                  type="date" 
-                  className="input pl-10 h-10 py-0 text-sm" 
-                  value={startDate}
+                <input
+                  type="date"
+                  className="input pl-10 h-10 py-0 text-sm"
+                  value={reportStart}
                   onChange={(e) => {
-                    setStartDate(e.target.value);
-                    setCurrentPage(1);
+                    setReportStart(e.target.value);
+                    setTransactionPage(1);
+                    setProductReportPage(1);
+                    setActivityPage(1);
                   }}
                 />
               </div>
@@ -762,13 +896,15 @@ const Reports: React.FC = () => {
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('toDate') || 'To Date'}</label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input 
-                  type="date" 
-                  className="input pl-10 h-10 py-0 text-sm" 
-                  value={endDate}
+                <input
+                  type="date"
+                  className="input pl-10 h-10 py-0 text-sm"
+                  value={reportEnd}
                   onChange={(e) => {
-                    setEndDate(e.target.value);
-                    setCurrentPage(1);
+                    setReportEnd(e.target.value);
+                    setTransactionPage(1);
+                    setProductReportPage(1);
+                    setActivityPage(1);
                   }}
                 />
               </div>
@@ -776,11 +912,51 @@ const Reports: React.FC = () => {
 
             <div className="card p-4 bg-primary-600 border-none flex flex-col justify-center">
               <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">{t('totalPeriodSales') || 'Total Period Sales'}</p>
-              <h3 className="text-2xl font-display font-bold text-white">{totalAmount.toLocaleString()} {CURRENCY}</h3>
+              <h3 className="text-2xl font-display font-bold text-white">{displayPeriodTotal.toLocaleString()} {CURRENCY}</h3>
             </div>
           </div>
 
-          {totalSalesCount >= 500 && (
+          {salesSubTab === 'byProduct' && (
+            <div className="card p-4 border-slate-100 dark:border-white/10 space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('products')}</label>
+              <select
+                multiple
+                size={8}
+                value={productFilterIds}
+                onChange={(e) => {
+                  const next = Array.from(e.target.selectedOptions, o => o.value);
+                  setProductFilterIds(next);
+                  setProductReportPage(1);
+                }}
+                className="input w-full min-h-[160px] text-sm"
+              >
+                {[...products]
+                  .sort((a, b) =>
+                    tProduct(a).localeCompare(tProduct(b), undefined, { sensitivity: 'base' })
+                  )
+                  .map(p => (
+                    <option key={p.id} value={p.id}>
+                      {tProduct(p)}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-xs text-slate-400 dark:text-zinc-500">{t('productsFilterHint')}</p>
+              {productFilterIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductFilterIds([]);
+                    setProductReportPage(1);
+                  }}
+                  className="text-sm font-bold text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  {t('productsFilterAll')}
+                </button>
+              )}
+            </div>
+          )}
+
+          {reportSalesByDate.length >= 500 && (
             <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4 rounded-2xl flex items-center gap-4">
               <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
               <p className="text-sm text-amber-800 dark:text-amber-400 font-medium">
@@ -789,105 +965,235 @@ const Reports: React.FC = () => {
             </div>
           )}
 
-          <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
-            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('transactions') || 'Transactions'}</h2>
-              <span className="px-3 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-full text-xs font-bold uppercase tracking-wider">
-                {totalSalesCount} {t('records') || 'Records'}
-              </span>
-            </div>
+          {salesSubTab === 'transactions' && (
+            <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
+              <div className="p-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('transactions') || 'Transactions'}</h2>
+                <span className="px-3 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-full text-xs font-bold uppercase tracking-wider">
+                  {totalTransactionCount} {t('records') || 'Records'}
+                </span>
+              </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/5">
-                    <th className="px-8 py-4">{t('timestamp') || 'Timestamp'}</th>
-                    <th className="px-8 py-4">{t('cashier') || 'Cashier'}</th>
-                    <th className="px-8 py-4">{t('payment') || 'Payment'}</th>
-                    <th className="px-8 py-4">{t('products') || 'Products'}</th>
-                    <th className="px-8 py-4 text-right">{t('amount') || 'Amount'}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
-                        {t('loading') || 'Loading transactions...'}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/5">
+                      <th className="px-8 py-4">{t('timestamp') || 'Timestamp'}</th>
+                      <th className="px-8 py-4">{t('cashier') || 'Cashier'}</th>
+                      <th className="px-8 py-4">{t('payment') || 'Payment'}</th>
+                      <th className="px-8 py-4">{t('products') || 'Products'}</th>
+                      <th className="px-8 py-4 text-right">{t('amount') || 'Amount'}</th>
                     </tr>
-                  ) : paginatedSales.length > 0 ? (
-                    paginatedSales.map((sale) => {
-                      const items = Array.isArray(sale.items) ? sale.items : JSON.parse((sale.items as any) || '[]');
-                      return (
-                        <tr key={sale.id} className="group hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-all">
-                          <td className="px-8 py-5">
-                            <div className="flex flex-col">
-                              <span className="font-bold text-slate-900 dark:text-white">{format(new Date(sale.createdAt), 'MMM dd, yyyy')}</span>
-                              <span className="text-xs text-slate-400 font-medium">{format(new Date(sale.createdAt), 'HH:mm:ss')}</span>
-                            </div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold text-xs">
-                                {(sale.cashierName || 'U').charAt(0)}
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
+                          {t('loading') || 'Loading transactions...'}
+                        </td>
+                      </tr>
+                    ) : paginatedTransactions.length > 0 ? (
+                      paginatedTransactions.map((sale) => {
+                        const items = parseSaleItems(sale);
+                        const rest = items.length - LINE_ITEMS_PREVIEW;
+                        return (
+                          <tr key={sale.id} className="group hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-all">
+                            <td className="px-8 py-5">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-slate-900 dark:text-white">{format(new Date(sale.createdAt), 'MMM dd, yyyy')}</span>
+                                <span className="text-xs text-slate-400 font-medium">{format(new Date(sale.createdAt), 'HH:mm:ss')}</span>
                               </div>
-                              <span className="font-bold text-slate-700 dark:text-slate-300">{sale.cashierName || 'Unknown'}</span>
-                            </div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className={clsx(
-                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                              sale.paymentMethod === 'cash' ? "bg-emerald-100 text-emerald-600" :
-                              sale.paymentMethod === 'card' ? "bg-blue-100 text-blue-600" :
-                              "bg-purple-100 text-purple-600"
-                            )}>
-                              {getPaymentIcon(sale.paymentMethod)}
-                              {sale.paymentMethod}
-                            </div>
-                          </td>
-                          <td className="px-8 py-5">
-                            <div className="flex flex-col gap-1">
-                              {items.map((item: any, idx: number) => (
-                                <span key={idx} className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                                  {item.quantity}x {tProduct(item.name || item.productId)}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="px-8 py-5 text-right font-display font-bold text-lg text-slate-900 dark:text-white">
-                            {sale.totalAmount.toLocaleString()} {CURRENCY}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
-                        {t('noSalesFound') || 'No sales found for the selected criteria.'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold text-xs">
+                                  {(sale.cashierName || 'U').charAt(0)}
+                                </div>
+                                <span className="font-bold text-slate-700 dark:text-slate-300">{sale.cashierName || 'Unknown'}</span>
+                              </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <div
+                                className={clsx(
+                                  'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider',
+                                  sale.paymentMethod === 'cash'
+                                    ? 'bg-emerald-100 text-emerald-600'
+                                    : sale.paymentMethod === 'card'
+                                      ? 'bg-blue-100 text-blue-600'
+                                      : 'bg-purple-100 text-purple-600'
+                                )}
+                              >
+                                {getPaymentIcon(sale.paymentMethod)}
+                                {sale.paymentMethod}
+                              </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <div className="flex flex-col gap-1">
+                                {items.slice(0, LINE_ITEMS_PREVIEW).map((item, idx) => (
+                                  <span key={idx} className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                    {item.quantity}x {getLineItemLabel(item)}
+                                  </span>
+                                ))}
+                                {rest > 0 && (
+                                  <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+                                    +{rest} {t('additionalLineItems')}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-8 py-5 text-right font-display font-bold text-lg text-slate-900 dark:text-white">
+                              {sale.totalAmount.toLocaleString()} {CURRENCY}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
+                          {t('noSalesFound') || 'No sales found for the selected criteria.'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-            {/* Pagination */}
-            <div className="p-6 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/[0.01]">
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                {t('showing') || 'Showing'} <span className="text-slate-900 dark:text-white">{totalSalesCount === 0 ? 0 : (safeSalesPage - 1) * PAGE_SIZE + 1}</span> to <span className="text-slate-900 dark:text-white">{Math.min(safeSalesPage * PAGE_SIZE, totalSalesCount)}</span> {t('of') || 'of'} <span className="text-slate-900 dark:text-white">{totalSalesCount}</span> {t('results') || 'results'}
-              </p>
-              <Pagination
-                currentPage={safeSalesPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-              />
+              <div className="p-6 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/[0.01]">
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                  {t('showing') || 'Showing'}{' '}
+                  <span className="text-slate-900 dark:text-white">
+                    {totalTransactionCount === 0 ? 0 : (safeTransactionPage - 1) * REPORTS_PAGE_SIZE + 1}
+                  </span>{' '}
+                  to{' '}
+                  <span className="text-slate-900 dark:text-white">
+                    {Math.min(safeTransactionPage * REPORTS_PAGE_SIZE, totalTransactionCount)}
+                  </span>{' '}
+                  {t('of') || 'of'}{' '}
+                  <span className="text-slate-900 dark:text-white">{totalTransactionCount}</span>{' '}
+                  {t('results') || 'results'}
+                </p>
+                <Pagination
+                  currentPage={safeTransactionPage}
+                  totalPages={transactionTotalPages}
+                  onPageChange={setTransactionPage}
+                />
+              </div>
             </div>
-          </div>
+          )}
+
+          {salesSubTab === 'byProduct' && (
+            <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
+              <div className="p-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('reportByProduct')}</h2>
+                <span className="px-3 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-full text-xs font-bold uppercase tracking-wider">
+                  {productReportRows.length} {t('products') || 'Products'}
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/5">
+                      <th className="px-8 py-4">{t('products') || 'Product'}</th>
+                      <th className="px-8 py-4">{t('quantity') || 'Quantity'}</th>
+                      <th className="px-8 py-4">{t('revenue')}</th>
+                      <th className="px-8 py-4 text-right">{t('salesContainingProduct')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={4} className="px-8 py-12 text-center text-slate-400 italic">
+                          {t('loading') || 'Loading...'}
+                        </td>
+                      </tr>
+                    ) : paginatedProductReport.length > 0 ? (
+                      paginatedProductReport.map(row => {
+                        const p = products.find(x => x.id === row.productId);
+                        return (
+                          <tr key={row.productId} className="group hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-all">
+                            <td className="px-8 py-5 font-bold text-slate-900 dark:text-white">
+                              {p ? tProduct(p) : getLineItemLabel({ productId: row.productId, quantity: 0, price: 0 })}
+                            </td>
+                            <td className="px-8 py-5 text-slate-700 dark:text-slate-300">{row.quantity}</td>
+                            <td className="px-8 py-5 text-slate-700 dark:text-slate-300">
+                              {row.revenue.toLocaleString()} {CURRENCY}
+                            </td>
+                            <td className="px-8 py-5 text-right font-bold text-slate-900 dark:text-white">{row.saleCount}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="px-8 py-12 text-center text-slate-400 italic">
+                          {t('noSalesFound') || 'No sales found for the selected criteria.'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/[0.01]">
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                  {t('showing') || 'Showing'}{' '}
+                  <span className="text-slate-900 dark:text-white">
+                    {productReportRows.length === 0 ? 0 : (safeProductReportPage - 1) * REPORTS_PAGE_SIZE + 1}
+                  </span>{' '}
+                  to{' '}
+                  <span className="text-slate-900 dark:text-white">
+                    {Math.min(safeProductReportPage * REPORTS_PAGE_SIZE, productReportRows.length)}
+                  </span>{' '}
+                  {t('of') || 'of'}{' '}
+                  <span className="text-slate-900 dark:text-white">{productReportRows.length}</span>{' '}
+                  {t('results') || 'results'}
+                </p>
+                <Pagination
+                  currentPage={safeProductReportPage}
+                  totalPages={productReportTotalPages}
+                  onPageChange={setProductReportPage}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
       {activeTab === 'activities' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('fromDate')}</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input
+                  type="date"
+                  className="input pl-10 h-10 py-0 text-sm"
+                  value={reportStart}
+                  onChange={(e) => {
+                    setReportStart(e.target.value);
+                    setActivityPage(1);
+                  }}
+                />
+              </div>
+            </div>
+            <div className="card p-4 border-slate-100 dark:border-white/10 flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('toDate')}</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input
+                  type="date"
+                  className="input pl-10 h-10 py-0 text-sm"
+                  value={reportEnd}
+                  onChange={(e) => {
+                    setReportEnd(e.target.value);
+                    setActivityPage(1);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 border border-slate-100 dark:border-white/10">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -896,7 +1202,10 @@ const Reports: React.FC = () => {
                 className="input pl-10 w-full"
                 placeholder={t('search') || 'Search activities...'}
                 value={activitySearch}
-                onChange={(e) => setActivitySearch(e.target.value)}
+                onChange={(e) => {
+                  setActivitySearch(e.target.value);
+                  setActivityPage(1);
+                }}
               />
             </div>
           </div>
@@ -907,48 +1216,62 @@ const Reports: React.FC = () => {
                 {t('activities') || 'User Activities'}
               </h2>
               <span className="text-xs font-bold text-slate-400">
-                {activities.filter(a =>
-                  !activitySearch ||
-                  a.userName?.toLowerCase().includes(activitySearch.toLowerCase()) ||
-                  a.action?.toLowerCase().includes(activitySearch.toLowerCase()) ||
-                  a.details?.toLowerCase().includes(activitySearch.toLowerCase())
-                ).length} {t('total') || 'total'}
+                {filteredActivities.length} {t('total') || 'total'}
               </span>
             </div>
-            <div className="divide-y divide-slate-100 dark:divide-white/5 max-h-[600px] overflow-y-auto">
-              {activities
-                .filter(a =>
-                  !activitySearch ||
-                  a.userName?.toLowerCase().includes(activitySearch.toLowerCase()) ||
-                  a.action?.toLowerCase().includes(activitySearch.toLowerCase()) ||
-                  a.details?.toLowerCase().includes(activitySearch.toLowerCase())
-                )
-                .map((log) => (
+            <div className="divide-y divide-slate-100 dark:divide-white/5">
+              {paginatedActivities.map((log) => (
                 <div key={log.id} className="p-6 hover:bg-slate-50 dark:hover:bg-black/40 transition-all">
                   <div className="flex items-start gap-4">
                     <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black flex items-center justify-center text-zinc-500">
                       <Activity className="w-5 h-5" />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="font-bold text-slate-900 dark:text-white">{log.userName}</p>
-                        <p className="text-xs text-zinc-500 font-medium">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1 gap-2">
+                        <p className="font-bold text-slate-900 dark:text-white truncate">{log.userName}</p>
+                        <p className="text-xs text-zinc-500 font-medium shrink-0">
                           {log.timestamp ? format(new Date(log.timestamp), 'MMM dd, HH:mm') : 'N/A'}
                         </p>
                       </div>
-                      <p className="text-sm text-zinc-400">
+                      <p className="text-sm text-zinc-400 break-words">
                         <span className="font-bold text-amber-500">{log.action}</span>: {log.details}
                       </p>
                     </div>
                   </div>
                 </div>
               ))}
+              {filteredActivities.length === 0 && activities.length > 0 && (
+                <div className="p-12 text-center">
+                  <Activity className="w-12 h-12 text-slate-400 dark:text-zinc-600 mx-auto mb-4" />
+                  <p className="text-zinc-500 font-medium">{t('searchNoResults') || 'No matching activities'}</p>
+                </div>
+              )}
               {activities.length === 0 && (
                 <div className="p-12 text-center">
                   <Activity className="w-12 h-12 text-slate-400 dark:text-zinc-600 mx-auto mb-4" />
                   <p className="text-zinc-500 font-medium">{t('noActivities') || 'No activity logs found'}</p>
                 </div>
               )}
+            </div>
+            <div className="p-6 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/[0.01]">
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                {t('showing') || 'Showing'}{' '}
+                <span className="text-slate-900 dark:text-white">
+                  {filteredActivities.length === 0 ? 0 : (safeActivityPage - 1) * REPORTS_PAGE_SIZE + 1}
+                </span>{' '}
+                to{' '}
+                <span className="text-slate-900 dark:text-white">
+                  {Math.min(safeActivityPage * REPORTS_PAGE_SIZE, filteredActivities.length)}
+                </span>{' '}
+                {t('of') || 'of'}{' '}
+                <span className="text-slate-900 dark:text-white">{filteredActivities.length}</span>{' '}
+                {t('results') || 'results'}
+              </p>
+              <Pagination
+                currentPage={safeActivityPage}
+                totalPages={activityTotalPages}
+                onPageChange={setActivityPage}
+              />
             </div>
           </div>
         </div>

@@ -14,10 +14,10 @@ import {
   X,
   User
 } from 'lucide-react';
-import { db, collection, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/firebase-compat';
 import { Product, SaleItem, Customer } from '../types';
 import { clsx } from 'clsx';
-import { CATEGORIES, CURRENCY } from '../constants';
+import { SELLABLE_CATEGORIES, CURRENCY } from '../constants';
 import { authFetch } from '../lib/api-client';
 
 import { logActivity } from '../lib/logger';
@@ -52,9 +52,10 @@ const POS: React.FC = () => {
   }, []);
 
   const filteredProducts = products.filter(p => {
-    const isFrozen = p.status === 'frozen';
-    if (isFrozen) return false;
-    const matchesCategory = activeCategory === 'All' || (p.category && p.category.toLowerCase()) === (activeCategory.toLowerCase());
+    if (p.status === 'frozen') return false;
+    if ((p as any).disabled) return false;
+    if (!SELLABLE_CATEGORIES.includes(p.category?.toLowerCase() as any)) return false;
+    const matchesCategory = activeCategory === 'All' || p.category?.toLowerCase() === activeCategory.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCategory && matchesSearch;
   });
@@ -82,7 +83,7 @@ const POS: React.FC = () => {
     setCart(prev => prev.map(item => {
       if (item.productId === productId) {
         const product = products.find(p => p.id === productId);
-        const maxStock = product?.stock || 0;
+        const maxStock = product?.shopStock || 0;
         const newQty = Math.max(1, Math.min(maxStock, item.quantity + delta));
         return { ...item, quantity: newQty };
       }
@@ -114,6 +115,24 @@ const POS: React.FC = () => {
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Checkout failed');
+      }
+
+      // Deduct shopStock from Firestore for each sold item
+      // stock = shopStock + freezerStock + wasteQuantity (invariant must hold)
+      const saleItems = [...cart];
+      for (const item of saleItems) {
+        try {
+          const productRef = doc(db, 'products', item.productId);
+          const productSnap = await getDoc(productRef);
+          if (productSnap.exists()) {
+            const data = productSnap.data();
+            const newShopStock = Math.max(0, (data.shopStock || 0) - item.quantity);
+            const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
+            await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
+          }
+        } catch (err) {
+          console.error(`Error updating Firestore stock for product ${item.productId}:`, err);
+        }
       }
 
       if (profile) {
@@ -163,7 +182,7 @@ const POS: React.FC = () => {
           >
             {t('allItems')}
           </button>
-          {CATEGORIES.map(cat => (
+          {SELLABLE_CATEGORIES.map(cat => (
             <button 
               key={cat}
               onClick={() => setActiveCategory(cat)}

@@ -776,20 +776,24 @@ const Production: React.FC = () => {
         if (product) {
           const productRef = doc(db, 'products', product.id);
           const dist = distribution || { shop: batch.plannedQty, frozen: 0, waste: 0 };
-          const totalToAdd = dist.shop + dist.frozen;
-          const newTotalStock = (product.stock || 0) + totalToAdd;
+          // stock = shopStock + freezerStock + wasteQuantity (invariant)
+          // Production adds to all three; waste goes to wasteQuantity, not lost
           const newShopStock = (product.shopStock || 0) + dist.shop;
           const newFrozenStock = (product.freezerStock || 0) + dist.frozen;
+          const newWasteQuantity = (product.wasteQuantity || 0) + dist.waste;
+          const newTotalStock = newShopStock + newFrozenStock + newWasteQuantity;
 
-          // Determine status: frozen only if ALL stock is in freezer
+          // Determine status: frozen only if ALL sellable stock is in freezer
           const productStatus = newShopStock === 0 && newFrozenStock > 0 ? 'frozen' : 'none';
 
           const updateFields: any = {
             stock: newTotalStock,
             shopStock: newShopStock,
             freezerStock: newFrozenStock,
+            wasteQuantity: newWasteQuantity,
             status: productStatus
           };
+
 
           await updateDoc(productRef, updateFields);
 
