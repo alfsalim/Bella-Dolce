@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
+import BrandLogo from '../components/BrandLogo';
 
 const B2BRegistration: React.FC = () => {
   const { t, isRTL } = useLanguage();
@@ -61,13 +62,8 @@ const B2BRegistration: React.FC = () => {
         <div>
           <div className="mb-12">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl overflow-hidden">
-                <img 
-                  src="/logo.jpg" 
-                  alt="Bella Dolce" 
-                  className="w-full h-full object-contain" 
-                  referrerPolicy="no-referrer" 
-                />
+              <div className="w-16 h-16 bg-logo-light-canvas rounded-2xl flex items-center justify-center shadow-xl overflow-hidden">
+                <BrandLogo imgClassName="w-full h-full object-contain p-1" />
               </div>
               <h1 className="font-display font-extrabold text-2xl tracking-tighter">Bella Dolce</h1>
             </div>

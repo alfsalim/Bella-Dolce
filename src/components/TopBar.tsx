@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
 import { Link, useNavigate } from 'react-router-dom';
+import BrandLogo from './BrandLogo';
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -29,18 +30,15 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, isPublic }) => {
               <Menu className="w-6 h-6" />
             </button>
           )}
-          
-          <Link to="/" className="flex items-center group">
-            <div className="w-40 h-10 flex items-center justify-center overflow-hidden transition-all group-hover:scale-105">
-              <img
-                src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200"
-                alt="Bella Dolce"
-                className="w-full h-full object-contain dark:invert"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-          </Link>
-          
+
+          {isPublic && (
+            <Link to="/" className="flex items-center group shrink-0">
+              <div className="w-40 h-10 flex items-center justify-center overflow-hidden transition-all group-hover:scale-105">
+                <BrandLogo imgClassName="w-full h-full object-contain" />
+              </div>
+            </Link>
+          )}
+
           <div className="relative max-w-md w-full hidden sm:block ml-4">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
           <input 

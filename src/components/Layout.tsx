@@ -14,7 +14,7 @@ const Layout: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-900">
         <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -25,7 +25,7 @@ const Layout: React.FC = () => {
   }
 
   return (
-    <div className={clsx("min-h-screen bg-slate-50 dark:bg-black flex overflow-x-hidden", isRTL ? "flex-row-reverse" : "flex-row")}>
+    <div className={clsx("min-h-screen bg-slate-50 dark:bg-zinc-900 flex overflow-x-hidden", isRTL ? "flex-row-reverse" : "flex-row")}>
       <div className="print:hidden">
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       </div>

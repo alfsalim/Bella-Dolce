@@ -18,6 +18,10 @@
   --color-primary-800: #92400e;
   --color-primary-900: #78350f;
   --color-primary-950: #451a03;
+  /* Sampled from public/logo-light.jpg (testing: seamless logo canvas) */
+  --color-logo-light-canvas: #faf3eb;
+  /* Sampled from public/logo.jpg (border pixels; seamless dark logo canvas) */
+  --color-logo-dark-canvas: #040404;
 }
 
 /* Force class-based dark mode in Tailwind v4 */
@@ -29,7 +33,7 @@
   }
   
   .dark body {
-    @apply bg-black text-white;
+    @apply bg-zinc-900 text-white;
   }
   
   [dir="rtl"] body {
@@ -55,7 +59,7 @@
   }
   
   .dark .glass {
-    @apply bg-black/80 border-[#3d2b1f];
+    @apply bg-zinc-900/80 border-[#3d2b1f];
   }
 
   .glass-dark {

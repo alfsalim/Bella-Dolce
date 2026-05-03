@@ -23,6 +23,7 @@ import { APP_VERSION } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 
 import BilingualLabel from './BilingualLabel';
+import BrandLogo from './BrandLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -70,21 +71,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       </AnimatePresence>
 
       <aside className={clsx(
-        "w-64 h-screen bg-white dark:bg-zinc-900 text-slate-500 dark:text-slate-400 flex flex-col fixed top-0 z-50 transition-all duration-300 border-r border-slate-100 dark:border-white/10",
+        "w-64 h-screen bg-logo-light-canvas dark:bg-logo-dark-canvas text-slate-500 dark:text-slate-400 flex flex-col fixed top-0 z-50 transition-all duration-300 border-r border-black/[0.06] dark:border-white/10",
         isRTL ? "right-0" : "left-0",
         isOpen ? "translate-x-0" : (isRTL ? "translate-x-full lg:translate-x-0" : "-translate-x-full lg:translate-x-0")
       )}>
         <Link 
           to="/" 
           onClick={onClose}
-          className="p-6 flex items-center gap-3 border-b border-slate-50 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all"
+          className="p-6 flex items-center gap-3 border-b border-black/[0.06] dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.06] transition-all"
         >
-          <img
-            src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&q=80&w=200"
-            alt="Bella Dolce"
-            className="w-12 h-12 rounded-xl object-contain bg-white dark:invert"
-            referrerPolicy="no-referrer"
-          />
+          <BrandLogo imgClassName="w-12 h-12 rounded-xl object-contain dark:bg-transparent" />
           <span className="font-display font-bold text-xl text-slate-900 dark:text-white tracking-tight">
             Bella Dolce
           </span>
@@ -100,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
                 isActive 
                   ? "bg-primary-600 text-white shadow-lg shadow-primary-600/20" 
-                  : "hover:bg-slate-50 dark:hover:bg-zinc-800 hover:text-slate-900 dark:hover:text-white"
+                  : "hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white"
               )}
             >
               {({ isActive }) => (
@@ -113,9 +109,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           ))}
         </nav>
 
-      <div className="p-4 mt-auto border-t border-slate-50 dark:border-white/10">
+      <div className="p-4 mt-auto border-t border-black/[0.06] dark:border-white/10">
         <div className="flex items-center gap-3 px-4 py-3 mb-2">
-          <div className="w-10 h-10 bg-primary-50 dark:bg-zinc-800 rounded-full flex items-center justify-center text-primary-600 font-bold border border-primary-100 dark:border-white/10">
+          <div className="w-10 h-10 bg-primary-50 dark:bg-white/[0.08] rounded-full flex items-center justify-center text-primary-600 font-bold border border-primary-100 dark:border-white/10">
             {profile?.name?.charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
