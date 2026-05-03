@@ -5,6 +5,7 @@ import { Eye, EyeOff, Loader2, ArrowRight, ShieldOff, Globe } from 'lucide-react
 import { Link, Navigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import BrandLogo, { BRAND_LOGO_CHIP_CLASS, BRAND_LOGO_MARK_IMG_CLASS, BrandWordmark } from '../components/BrandLogo';
+import { APP_VERSION } from '../constants';
 import { getDefaultStaffLoginPath, isStaffRole } from '../lib/staff-nav';
 
 const Login: React.FC = () => {
@@ -86,7 +87,7 @@ const Login: React.FC = () => {
           title={t('language')}
         >
           <Globe className="w-4 h-4 shrink-0" aria-hidden />
-          <span>{language}</span>
+          <span className="text-sm font-semibold">{language === 'fr' ? 'عربي' : 'FR'}</span>
         </button>
       </div>
 
@@ -105,7 +106,16 @@ const Login: React.FC = () => {
         <div className="w-full max-w-3xl overflow-hidden rounded-3xl shadow-2xl bg-white dark:bg-[#0a0a0a] border border-slate-100 dark:border-[#2a1e17]">
         <div className="p-10 md:p-16 flex flex-col justify-center bg-white dark:bg-[#0a0a0a]">
           <div className="mb-10 text-center">
-            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug md:whitespace-nowrap">
+            <h2
+              className={clsx(
+                'leading-snug md:whitespace-nowrap',
+                isRTL
+                  ? 'font-arabic text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight'
+                  : isRegistering
+                    ? 'font-sans text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight'
+                    : 'font-script text-4xl md:text-5xl bg-clip-text text-transparent [background-image:linear-gradient(160deg,#8C6A2F_0%,#CFAE5B_45%,#F5E6A5_75%,#CFAE5B_100%)] [filter:drop-shadow(0_1px_3px_rgba(42,32,16,0.5))]'
+              )}
+            >
               {isRegistering ? t('loginTitleJoin') : t('welcome')}
             </h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
@@ -123,7 +133,7 @@ const Login: React.FC = () => {
             {isRegistering && (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ms-1">
-                  {t('fullName')} <span className="text-red-500 ms-0.5">*</span>
+                  {t('fullName')} <span className="text-red-500 ms-0.5 text-xs font-bold align-super" aria-hidden>*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -140,7 +150,7 @@ const Login: React.FC = () => {
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ms-1">
-                {t('username')} <span className="text-red-500 ms-0.5">*</span>
+                {t('username')} <span className="text-red-500 ms-0.5 text-xs font-bold align-super" aria-hidden>*</span>
               </label>
               <div className="relative">
                 <input
@@ -156,7 +166,7 @@ const Login: React.FC = () => {
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ms-1">
-                {t('password')} <span className="text-red-500 ms-0.5">*</span>
+                {t('password')} <span className="text-red-500 ms-0.5 text-xs font-bold align-super" aria-hidden>*</span>
               </label>
               <div className="relative">
                 <input
@@ -226,6 +236,10 @@ const Login: React.FC = () => {
               )}
             </div>
           </form>
+
+          <div className="mt-8 text-center px-4 text-[10px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-widest">
+            Version {APP_VERSION}
+          </div>
         </div>
         </div>
       </div>

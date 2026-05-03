@@ -3,7 +3,7 @@ import { Search, Globe, Menu, User, LayoutDashboard, Settings as SettingsIcon, L
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import BrandLogo, { BRAND_LOGO_CHIP_CLASS, BRAND_LOGO_MARK_IMG_CLASS } from './BrandLogo';
 
 interface TopBarProps {
@@ -27,8 +27,6 @@ const TopBar: React.FC<TopBarProps> = ({
 
   const canAccess = (path: string) =>
     !!permissions && (permissions.includes('*') || permissions.includes(path));
-  const { pathname } = useLocation();
-  const hideSearchOnLandingArabic = isPublic && pathname === '/' && language === 'ar';
 
   return (
     <header className={clsx(
@@ -48,31 +46,11 @@ const TopBar: React.FC<TopBarProps> = ({
           )}
 
           {isPublic && (
-            <>
-              <Link to="/" className="flex items-center group shrink-0" aria-label="Bella Dolce">
-                <div className={clsx(BRAND_LOGO_CHIP_CLASS, 'transition-transform group-hover:scale-105')}>
-                  <BrandLogo imgClassName={BRAND_LOGO_MARK_IMG_CLASS} />
-                </div>
-              </Link>
-              {!hideSearchOnLandingArabic && (
-                <div className="relative max-w-md w-full min-w-0 flex-1 hidden sm:block">
-                  <Search
-                    className={clsx(
-                      'absolute top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none z-10',
-                      isRTL ? 'right-4' : 'left-4'
-                    )}
-                  />
-                  <input
-                    type="text"
-                    placeholder={t('search')}
-                    className={clsx(
-                      'w-full py-2.5 bg-slate-100/50 dark:bg-zinc-900/50 border-none rounded-2xl focus:ring-2 focus:ring-primary-500/20 transition-all text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600',
-                      isRTL ? 'pr-12 pl-4' : 'pl-12 pr-4'
-                    )}
-                  />
-                </div>
-              )}
-            </>
+            <Link to="/" className="flex items-center group shrink-0" aria-label="Bella Dolce">
+              <div className={clsx(BRAND_LOGO_CHIP_CLASS, 'transition-transform group-hover:scale-105')}>
+                <BrandLogo imgClassName={BRAND_LOGO_MARK_IMG_CLASS} />
+              </div>
+            </Link>
           )}
 
           {!isPublic && (
@@ -101,7 +79,7 @@ const TopBar: React.FC<TopBarProps> = ({
           className="btn-secondary gap-2"
         >
           <Globe className="w-4 h-4" />
-          <span className="text-sm font-semibold uppercase">{language}</span>
+          <span className="text-sm font-semibold">{language === 'fr' ? 'عربي' : 'FR'}</span>
         </button>
 
         {user && canAccess('/dashboard') && (

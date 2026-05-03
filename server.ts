@@ -448,33 +448,89 @@ async function startServer() {
   });
 
   app.post("/api/auth/register", async (req, res) => {
-    const { username, password, name, email, role } = req.body;
-    console.log(`Register attempt for email: ${email}`);
+    const { username, password, name, email, role, phone, companyRegistrationNumber } = req.body;
+    const effectiveRole =
+      role != null && String(role).trim() !== "" ? String(role).trim() : "cashier";
+    console.log(`Register attempt for username: ${username} role: ${effectiveRole}`);
     try {
       const prisma = getPrisma();
+
+      const uname = typeof username === "string" ? username.trim() : "";
+      const displayName = typeof name === "string" ? name : "";
+      if (!uname || !password || !displayName.trim()) {
+        return res.status(400).json({ error: "missing_fields" });
+      }
+
+      const derivedEmail =
+        typeof email === "string" && email.trim()
+          ? email.trim().toLowerCase()
+          : `${uname.toLowerCase()}@bakery.local`;
+
+      const existingLogin = await prisma.user.findFirst({
+        where: {
+          OR: [{ username: uname }, { email: derivedEmail }],
+        },
+      });
+      if (existingLogin) {
+        return res.status(409).json({ error: "username_exists" });
+      }
+
+      const normalizeCompany = (s: string) =>
+        s.trim().replace(/\s+/g, " ");
+      const companyNorm = normalizeCompany(displayName);
+
+      if (effectiveRole === "customer_business" && companyNorm.length > 0) {
+        const b2bUsers = await prisma.user.findMany({
+          where: { role: "customer_business" },
+          select: { name: true },
+        });
+        const taken = b2bUsers.some(
+          (u) =>
+            normalizeCompany(u.name).toLowerCase() === companyNorm.toLowerCase()
+        );
+        if (taken) {
+          return res.status(409).json({ error: "b2b_company_exists" });
+        }
+      }
+
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+      const phoneNorm =
+        typeof phone === "string" && phone.trim() ? phone.trim() : null;
+      const companyRegNorm =
+        typeof companyRegistrationNumber === "string" &&
+        companyRegistrationNumber.trim()
+          ? companyRegistrationNumber.trim()
+          : null;
       const user = await prisma.user.create({
         data: {
-          username,
+          username: uname,
           password: hashedPassword,
-          name,
-          email,
-          role: role || 'cashier',
-          status: 'active'
-        }
+          name: companyNorm,
+          email: derivedEmail,
+          role: effectiveRole,
+          status: "active",
+          phone: phoneNorm,
+          companyRegistrationNumber: companyRegNorm,
+        },
       });
-      console.log(`Registration successful for: ${email}`);
-      const roleForJwt = user.role != null && String(user.role).trim() !== '' ? String(user.role).trim() : 'customer_customers';
+      console.log(`Registration successful for: ${derivedEmail}`);
+      const roleForJwt =
+        user.role != null && String(user.role).trim() !== ""
+          ? String(user.role).trim()
+          : "customer_customers";
       const token = jwt.sign(
         { id: user.id, username: user.username, role: roleForJwt },
         JWT_SECRET,
-        { expiresIn: '8h' }
+        { expiresIn: "8h" }
       );
 
       const allowedPaths = await resolveAllowedPaths(roleForJwt);
       res.json({ user: sanitizeUser(user), token, allowedPaths });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Register route error:", error);
+      if (error?.code === "P2002") {
+        return res.status(409).json({ error: "username_exists" });
+      }
       res.status(500).json({ error: (error as Error).message });
     }
   });

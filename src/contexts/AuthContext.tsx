@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authFetch, readApiErrorMessage, parseJsonResponse } from '../lib/api-client';
-import { UserProfile, Role } from '../types';
+import { UserProfile, Role, RegisterOptions } from '../types';
 
 interface AuthContextType {
   user: any | null;
@@ -8,7 +8,13 @@ interface AuthContextType {
   permissions: string[] | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, name: string, role?: Role) => Promise<void>;
+  register: (
+    username: string,
+    password: string,
+    name: string,
+    role?: Role,
+    options?: RegisterOptions
+  ) => Promise<void>;
   logout: () => void;
 }
 
@@ -160,13 +166,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (username: string, password: string, name: string, role: Role = 'customer_customers') => {
+  const register = async (
+    username: string,
+    password: string,
+    name: string,
+    role: Role = 'customer_customers',
+    options?: RegisterOptions
+  ) => {
     try {
       const email = `${username.toLowerCase()}@bakery.local`;
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, name, email, role }),
+        body: JSON.stringify({
+          username,
+          password,
+          name,
+          email,
+          role,
+          phone: options?.phone,
+          companyRegistrationNumber: options?.companyRegistrationNumber,
+        }),
       });
 
       if (!res.ok) {

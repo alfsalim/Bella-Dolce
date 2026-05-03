@@ -1,9 +1,9 @@
 import React from 'react';
 import { clsx } from 'clsx';
 
-/** Theme logos + canvas fills in `index.css` (`--color-logo-light-canvas`, `--color-logo-dark-canvas`), sampled from the JPEGs. */
-export const LOGO_DARK_THEME_SRC = '/images/logo.jpg';
-export const LOGO_LIGHT_THEME_SRC = '/images/logo-light.jpg';
+/** Theme logos + canvas fills in `index.css` (`--color-logo-light-canvas`, `--color-logo-dark-canvas`), sampled from the source images. */
+export const LOGO_DARK_THEME_SRC = '/images/logo-white-light.png';
+export const LOGO_LIGHT_THEME_SRC = '/images/logo-white-light.png';
 
 /** Same mark sizing everywhere: admin sidebar, public TopBar, landing hero */
 export const BRAND_LOGO_MARK_IMG_CLASS =

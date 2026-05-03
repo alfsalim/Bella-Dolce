@@ -1576,7 +1576,7 @@ const Production: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                  {t('waste')} <span className="text-amber-500 text-xs font-normal">(optional)</span>
+                  {t('waste')}
                 </label>
                 <div className="flex items-center gap-3">
                   <input

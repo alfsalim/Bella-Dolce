@@ -1,33 +1,28 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { 
-  ChefHat, 
-  Headphones, 
-  PenTool, 
-  RefreshCw, 
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  PenTool,
   ChevronRight,
   Building2,
-  Mail,
   Phone,
   MapPin,
   User as UserIcon,
-  Lock
+  Globe,
+  Hash,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
-import BrandLogo from '../components/BrandLogo';
+import BrandLogo, { BRAND_LOGO_CHIP_CLASS, BRAND_LOGO_MARK_IMG_CLASS, BrandWordmark } from '../components/BrandLogo';
 
 const B2BRegistration: React.FC = () => {
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, language, setLanguage } = useLanguage();
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  
-  // Form state
+
   const [businessName, setBusinessName] = useState('');
-  const [email, setEmail] = useState('');
+  const [companyRegistrationNumber, setCompanyRegistrationNumber] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [username, setUsername] = useState('');
@@ -35,233 +30,253 @@ const B2BRegistration: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const heading = (extra: string) =>
+    clsx(extra, isRTL ? 'font-arabic' : 'font-sans');
+
+  const contractDate = new Date().toLocaleDateString(language === 'ar' ? 'ar-DZ' : 'fr-DZ', {
+    dateStyle: 'long',
+  });
+
+  const fieldIcon = 'absolute start-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5 pointer-events-none';
+  const inputWithIcon =
+    'w-full bg-slate-50 dark:bg-black border border-slate-200 dark:border-slate-700 rounded-xl ps-12 pe-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600';
+  const inputPlain =
+    'w-full bg-slate-50 dark:bg-black border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all';
+  const labelClass = 'block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ms-1 mb-2';
+
+  const mapRegisterError = (msg: string) => {
+    if (msg === 'b2b_company_exists') return t('b2bRegisterCompanyExists');
+    if (msg === 'username_exists') return t('registerUsernameTaken');
+    return msg || t('b2bRegisterFailed');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error(t('b2bRegisterPasswordMismatch'));
       return;
     }
 
     setIsLoading(true);
     try {
-      // Register with role customer_business
-      await register(username, password, businessName, 'customer_business');
-      toast.success('B2B Registration successful!');
+      await register(username, password, businessName, 'customer_business', {
+        phone: phone.trim() || undefined,
+        companyRegistrationNumber: companyRegistrationNumber.trim() || undefined,
+      });
+      toast.success(t('b2bRegisterSuccess'));
       navigate('/dashboard');
-    } catch (error: any) {
-      toast.error(error.message || 'Registration failed');
+    } catch (error: unknown) {
+      const msg =
+        error && typeof error === 'object' && 'message' in error && typeof (error as Error).message === 'string'
+          ? (error as Error).message
+          : '';
+      toast.error(mapRegisterError(msg));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-black">
-      {/* Brand Sidebar / Context Area */}
-      <section className="w-full md:w-1/3 bg-amber-600 p-8 md:p-12 flex flex-col justify-between text-white">
-        <div>
-          <div className="mb-12">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-16 h-16 bg-logo-light-canvas rounded-2xl flex items-center justify-center shadow-xl overflow-hidden">
-                <BrandLogo imgClassName="w-full h-full object-contain p-1" />
-              </div>
-              <h1 className="font-display font-extrabold text-2xl tracking-tighter">Bella Dolce</h1>
-            </div>
-            <p className="text-amber-100 font-medium text-sm">L'Atelier Numérique des Artisans</p>
+    <main className="relative min-h-screen py-10 px-6 bg-slate-50 dark:bg-black flex flex-col items-center">
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary-600/5 rounded-full blur-[120px]" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/5 rounded-full blur-[120px]" />
+
+      <div className="absolute top-6 end-6 z-10">
+        <button
+          type="button"
+          onClick={() => setLanguage(language === 'fr' ? 'ar' : 'fr')}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#2a1e17] bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-sm text-slate-800 dark:text-slate-200 text-sm font-semibold shadow-sm hover:bg-slate-50 dark:hover:bg-[#1a1512] transition-all"
+          aria-label={t('language')}
+          title={t('language')}
+        >
+          <Globe className="w-4 h-4 shrink-0" aria-hidden />
+          <span className="text-sm font-semibold">{language === 'fr' ? 'عربي' : 'FR'}</span>
+        </button>
+      </div>
+
+      <div className="w-full max-w-5xl flex flex-col items-center">
+        <Link
+          to="/"
+          className="flex flex-col items-center gap-3 mb-8 group"
+          aria-label={t('loginBackHome')}
+        >
+          <div className={clsx(BRAND_LOGO_CHIP_CLASS, 'transition-transform group-hover:scale-105')}>
+            <BrandLogo imgClassName={BRAND_LOGO_MARK_IMG_CLASS} />
           </div>
+          <BrandWordmark className="h-9 sm:h-10" />
+        </Link>
 
-          <div className="space-y-8">
-            <div className={clsx(
-              "relative pl-8 border-l-2 transition-all",
-              step >= 1 ? "border-white" : "border-white/20"
-            )}>
-              <span className={clsx(
-                "absolute -left-[9px] top-0 w-4 h-4 rounded-full ring-4 ring-amber-600 transition-all",
-                step >= 1 ? "bg-white" : "bg-amber-400"
-              )}></span>
-              <h3 className="font-display font-bold leading-tight">Détails de l'entreprise</h3>
-              <p className="text-amber-100 text-sm mt-1">Identifiez votre établissement pour commencer.</p>
-            </div>
-            <div className={clsx(
-              "relative pl-8 border-l-2 transition-all",
-              step >= 2 ? "border-white" : "border-white/20"
-            )}>
-              <span className={clsx(
-                "absolute -left-[9px] top-0 w-4 h-4 rounded-full ring-4 ring-amber-600 transition-all",
-                step >= 2 ? "bg-white" : "bg-amber-400"
-              )}></span>
-              <h3 className="font-display font-bold leading-tight">Sécurisation</h3>
-              <p className="text-amber-100 text-sm mt-1">Configurez vos accès professionnels.</p>
-            </div>
-            <div className={clsx(
-              "relative pl-8 transition-all",
-              step >= 3 ? "border-white" : "border-white/20"
-            )}>
-              <span className={clsx(
-                "absolute -left-[9px] top-0 w-4 h-4 rounded-full ring-4 ring-amber-600 transition-all",
-                step >= 3 ? "bg-white" : "bg-amber-400"
-              )}></span>
-              <h3 className="font-display font-bold leading-tight">Partenariat Artisanal</h3>
-              <p className="text-amber-100 text-sm mt-1">Signature du contrat de distribution.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-12 hidden md:block">
-          <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/10">
-            <p className="text-xs text-amber-200 font-bold uppercase tracking-widest mb-4">Besoin d'aide ?</p>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                <Headphones className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-bold">Support B2B</p>
-                <p className="text-xs text-amber-200">Lundi - Samedi, 8h - 19h</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Form Content Canvas */}
-      <section className="flex-1 bg-white dark:bg-black p-8 md:p-20 overflow-y-auto">
-        <div className="max-w-2xl mx-auto">
-          <header className="mb-10 flex justify-between items-start">
-            <div>
-              <h2 className="font-display font-extrabold text-3xl text-slate-900 dark:text-white mb-2 tracking-tight">Devenir Partenaire</h2>
-              <p className="text-slate-500 dark:text-zinc-400 text-lg">Rejoignez le réseau Bella Dolce et accédez à nos tarifs de gros exclusifs.</p>
-            </div>
-            <a href="/login" className="text-sm font-bold text-amber-500 hover:underline">Déjà partenaire ? Se connecter</a>
-          </header>
-
-          <form className="space-y-8" onSubmit={handleSubmit}>
-            {/* Step 1: Business Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-full">
-                <label className="block text-sm font-bold text-slate-500 dark:text-zinc-400 mb-2">Nom de l'entreprise / Raison Sociale</label>
-                <div className="relative">
-                  <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
-                  <input 
-                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl pl-12 pr-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" 
-                    placeholder="ex: Boulangerie de la Paix" 
-                    type="text"
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-500 dark:text-zinc-400 mb-2">Nom d'utilisateur</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
-                  <input 
-                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl pl-12 pr-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" 
-                    placeholder="ex: p_dupont" 
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-500 dark:text-zinc-400 mb-2">Téléphone</label>
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
-                  <input 
-                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl pl-12 pr-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" 
-                    placeholder="+213..." 
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="col-span-full">
-                <label className="block text-sm font-bold text-slate-500 dark:text-zinc-400 mb-2">Adresse de livraison principale</label>
-                <div className="relative">
-                  <MapPin className="absolute left-4 top-4 text-slate-400 dark:text-zinc-500 w-5 h-5" />
-                  <textarea 
-                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl pl-12 pr-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600" 
-                    placeholder="Numéro, rue, code postal et ville" 
-                    rows={3}
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                  ></textarea>
-                </div>
-              </div>
-            </div>
-
-            {/* Step 2: Security */}
-            <div className="pt-8 mt-8 border-t border-slate-100 dark:border-white/10">
-              <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-6">Sécurité du compte</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-bold text-slate-500 dark:text-zinc-400 mb-2">Mot de passe</label>
-                  <input 
-                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all" 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-500 dark:text-zinc-400 mb-2">Confirmer le mot de passe</label>
-                  <input 
-                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all" 
-                    type="password" 
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Step 3: Digital Contract Preview */}
-            <div className="pt-8 mt-8 border-t border-slate-100 dark:border-white/10">
-              <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                <PenTool className="w-6 h-6 text-amber-500" />
-                Accord de Partenariat Artisanal
-              </h3>
-              <div className="bg-slate-50 dark:bg-zinc-900 rounded-2xl p-6 h-64 overflow-y-scroll border border-slate-100 dark:border-white/10 mb-6 text-sm text-slate-500 dark:text-zinc-400 leading-relaxed no-scrollbar">
-                <h4 className="font-bold text-slate-900 dark:text-white mb-2">Conditions Générales de Distribution B2B</h4>
-                <p className="mb-4">Le présent contrat (ci-après l' "Accord") régit les relations commerciales entre Bella Dolce et le Partenaire susmentionné. En signant ce document, le Partenaire s'engage à respecter les standards de qualité et de conservation des produits artisanaux livrés.</p>
-                <p className="mb-4">1. Commandes : Les commandes doivent être passées au plus tard 24h avant la livraison souhaitée via le portail professionnel.</p>
-                <p className="mb-4">2. Paiement : Sauf accord particulier, les factures sont dues à réception. Des pénalités de retard pourront être appliquées conformément à la législation en vigueur.</p>
-                <p className="mb-4">3. Qualité : Bella Dolce garantit des produits frais du jour. Toute réclamation doit être effectuée dans les 2 heures suivant la livraison.</p>
-                <p className="italic">Document généré numériquement le {new Date().toLocaleDateString()}.</p>
-              </div>
-              <div className="bg-slate-50 dark:bg-zinc-900 rounded-2xl p-6 border-2 border-dashed border-slate-200 dark:border-white/10 relative">
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-4">Signature Numérique</label>
-                <div className="w-full h-32 rounded-xl bg-white dark:bg-black flex items-center justify-center text-slate-300 dark:text-zinc-700 border border-slate-100 dark:border-white/5">
-                  <span className="text-sm">Signez ici à l'aide de votre souris ou tablette</span>
-                </div>
-                <button className="absolute bottom-10 right-10 text-xs font-bold text-red-500 dark:text-red-400 flex items-center gap-1 hover:underline" type="button">
-                  <RefreshCw className="w-3 h-3" /> Effacer
-                </button>
-              </div>
-            </div>
-
-            {/* Final Action */}
-            <div className="flex flex-col sm:flex-row items-center gap-6 pt-10">
-              <button 
-                className="w-full sm:w-auto px-10 py-4 bg-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" 
-                type="submit"
-                disabled={isLoading}
+        <div className="w-full max-w-3xl overflow-hidden rounded-3xl shadow-2xl bg-white dark:bg-[#0a0a0a] border border-slate-100 dark:border-[#2a1e17]">
+          <div className="p-8 md:p-14 flex flex-col bg-white dark:bg-[#0a0a0a]">
+            <div className="mb-10 text-center">
+              <h1
+                className={clsx(
+                  'text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug',
+                  isRTL ? 'font-arabic' : 'font-sans'
+                )}
               >
-                {isLoading ? 'Inscription en cours...' : "Finaliser l'inscription"}
-                <ChevronRight className="w-5 h-5" />
-              </button>
-              <p className="text-xs text-slate-400 dark:text-zinc-500 max-w-[200px] leading-tight">
-                En cliquant, vous acceptez nos <span className="text-amber-500 cursor-pointer hover:underline">Conditions d'Utilisation</span>.
+                {t('b2bRegisterPageTitle')}
+              </h1>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 max-w-xl mx-auto">
+                {t('b2bRegisterPageSubtitle')}
               </p>
+              <Link
+                to="/login"
+                className="inline-block mt-4 text-sm font-bold text-primary-600 hover:underline"
+              >
+                {t('b2bRegisterLoginLink')}
+              </Link>
             </div>
-          </form>
+
+            <form className="space-y-8" onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="col-span-full">
+                  <label className={labelClass}>
+                    {t('b2bRegisterBusinessName')}{' '}
+                    <span className="text-red-500 ms-0.5 text-xs font-bold align-super" aria-hidden>*</span>
+                  </label>
+                  <div className="relative">
+                    <Building2 className={fieldIcon} aria-hidden />
+                    <input
+                      className={inputWithIcon}
+                      placeholder={t('b2bRegisterBusinessPlaceholder')}
+                      type="text"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="col-span-full">
+                  <label className={labelClass}>{t('b2bRegisterCompanyRegNumber')}</label>
+                  <div className="relative">
+                    <Hash className={fieldIcon} aria-hidden />
+                    <input
+                      className={inputWithIcon}
+                      placeholder={t('b2bRegisterCompanyRegPlaceholder')}
+                      type="text"
+                      value={companyRegistrationNumber}
+                      onChange={(e) => setCompanyRegistrationNumber(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>
+                    {t('username')}{' '}
+                    <span className="text-red-500 ms-0.5 text-xs font-bold align-super" aria-hidden>*</span>
+                  </label>
+                  <div className="relative">
+                    <UserIcon className={fieldIcon} aria-hidden />
+                    <input
+                      className={inputWithIcon}
+                      placeholder={t('b2bRegisterUsernamePlaceholder')}
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>{t('phone')}</label>
+                  <div className="relative">
+                    <Phone className={fieldIcon} aria-hidden />
+                    <input
+                      className={inputWithIcon}
+                      placeholder={t('b2bRegisterPhonePlaceholder')}
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="col-span-full">
+                  <label className={labelClass}>{t('b2bRegisterAddress')}</label>
+                  <div className="relative">
+                    <MapPin className="absolute start-4 top-4 text-slate-400 dark:text-zinc-500 w-5 h-5 pointer-events-none" aria-hidden />
+                    <textarea
+                      className="w-full bg-slate-50 dark:bg-black border border-slate-200 dark:border-slate-700 rounded-xl ps-12 pe-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600 min-h-[5.5rem]"
+                      placeholder={t('b2bRegisterAddressPlaceholder')}
+                      rows={3}
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-100 dark:border-[#2a1e17]">
+                <h2 className={heading('text-lg font-bold text-slate-900 dark:text-white mb-6')}>
+                  {t('b2bRegisterAccountSecurity')}
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className={labelClass}>
+                      {t('password')}{' '}
+                      <span className="text-red-500 ms-0.5 text-xs font-bold align-super" aria-hidden>*</span>
+                    </label>
+                    <input
+                      className={inputPlain}
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>
+                      {t('b2bRegisterConfirmPassword')}{' '}
+                      <span className="text-red-500 ms-0.5 text-xs font-bold align-super" aria-hidden>*</span>
+                    </label>
+                    <input
+                      className={inputPlain}
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-100 dark:border-[#2a1e17]">
+                <h2 className={heading('text-lg font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 flex-wrap')}>
+                  <PenTool className="w-5 h-5 text-primary-600 shrink-0" aria-hidden />
+                  {t('b2bRegisterPartnershipTitle')}
+                </h2>
+                <div className="bg-slate-50 dark:bg-black rounded-2xl p-6 border border-slate-100 dark:border-[#2a1e17] text-sm text-slate-600 dark:text-zinc-400 leading-relaxed">
+                  <h3 className={clsx('font-bold text-slate-900 dark:text-white mb-2', isRTL ? 'font-arabic' : 'font-sans')}>
+                    {t('b2bRegisterContractTitle')}
+                  </h3>
+                  <p className={clsx('mb-4', isRTL ? 'font-arabic' : 'font-sans')}>{t('b2bRegisterContractIntro')}</p>
+                  <p className={clsx('mb-4', isRTL ? 'font-arabic' : 'font-sans')}>{t('b2bRegisterContractOrders')}</p>
+                  <p className={clsx('mb-4', isRTL ? 'font-arabic' : 'font-sans')}>{t('b2bRegisterContractPayment')}</p>
+                  <p className={clsx('mb-4', isRTL ? 'font-arabic' : 'font-sans')}>{t('b2bRegisterContractQuality')}</p>
+                  <p className={clsx('italic', isRTL ? 'font-arabic' : 'font-sans')}>
+                    {t('b2bRegisterContractGenerated')} {contractDate}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-6 pt-6">
+                <button
+                  className="w-full sm:w-auto px-10 py-4 bg-primary-600 text-white font-bold rounded-2xl shadow-lg shadow-primary-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 text-sm"
+                  type="submit"
+                  disabled={isLoading}
+                >
+                  {isLoading ? t('b2bRegisterSubmitting') : t('b2bRegisterSubmit')}
+                  <ChevronRight className={clsx('w-5 h-5 shrink-0', isRTL && 'rotate-180')} aria-hidden />
+                </button>
+                <p className={clsx('text-xs text-slate-500 dark:text-zinc-500 flex-1 leading-relaxed text-center sm:text-start', isRTL ? 'font-arabic' : 'font-sans')}>
+                  {t('b2bRegisterLegalPrefix')}{' '}
+                  <span className="text-primary-600 cursor-pointer hover:underline font-semibold">{t('b2bRegisterTermsLink')}</span>.
+                </p>
+              </div>
+            </form>
+          </div>
         </div>
-      </section>
+      </div>
     </main>
   );
 };

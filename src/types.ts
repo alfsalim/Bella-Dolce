@@ -1,5 +1,10 @@
 export type Role = 'admin' | 'manager' | 'cashier' | 'baker' | 'delivery_guy' | 'inventory' | 'customer_business' | 'customer_customers';
 
+export interface RegisterOptions {
+  phone?: string;
+  companyRegistrationNumber?: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -7,6 +12,7 @@ export interface UserProfile {
   username: string;
   password?: string;
   phone?: string;
+  companyRegistrationNumber?: string;
   role: Role;
   createdAt: string;
   status?: 'active' | 'inactive' | 'pending';
