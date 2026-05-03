@@ -6,6 +6,7 @@ import { Truck, Search, MapPin, Clock, CheckCircle, User, MessageSquare, MoreVer
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import Pagination from '../components/Pagination';
+import { PAGE_SIZE } from '../constants';
 
 const DeliveryManagement: React.FC = () => {
   const { t, isRTL } = useLanguage();
@@ -13,7 +14,7 @@ const DeliveryManagement: React.FC = () => {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(25);
+  const pageSize = PAGE_SIZE;
   const [deliveryGuys, setDeliveryGuys] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'pending' | 'assigned' | 'delivered'>('pending');

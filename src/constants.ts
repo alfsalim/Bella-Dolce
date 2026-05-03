@@ -482,7 +482,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     staffDirectory: "دليل الموظفين",
     financialOverview: "نظرة مالية",
     salesTrends: "اتجاهات المبيعات",
-    welcome: "مرحباً",
+    welcome: "السلام عليكم و رحمة الله و بركاته",
     login: "تسجيل الدخول",
     loginWithGoogle: "الدخول بجوجل",
     description: "الوصف",

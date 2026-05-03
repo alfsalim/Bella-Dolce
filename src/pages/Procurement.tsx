@@ -16,6 +16,8 @@ import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import Suppliers from './Suppliers';
 import { authFetch } from '../lib/api-client';
+import { PAGE_SIZE } from '../constants';
+import Pagination from '../components/Pagination';
 
 interface Purchase {
   id: string;
@@ -53,6 +55,7 @@ const Procurement: React.FC = () => {
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showMissingOnly, setShowMissingOnly] = useState(false);
+  const [purchasesPage, setPurchasesPage] = useState(1);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
@@ -76,6 +79,10 @@ const Procurement: React.FC = () => {
     fetchMaterials();
     fetchSuppliers();
   }, []);
+
+  useEffect(() => {
+    setPurchasesPage(1);
+  }, [searchTerm, showMissingOnly]);
 
   const fetchPurchases = async () => {
     try {
@@ -353,6 +360,13 @@ const Procurement: React.FC = () => {
     return matchesSearch && (!showMissingOnly || isMissing);
   });
 
+  const purchasesTotalPages = Math.ceil(filteredPurchases.length / PAGE_SIZE) || 1;
+  const safePurchasesPage = Math.min(purchasesPage, purchasesTotalPages);
+  const paginatedPurchases = filteredPurchases.slice(
+    (safePurchasesPage - 1) * PAGE_SIZE,
+    safePurchasesPage * PAGE_SIZE
+  );
+
   if (loading && activeTab === 'purchases') {
     return <div className="flex items-center justify-center h-96">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -469,7 +483,7 @@ const Procurement: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPurchases.map((purchase) => {
+                    {paginatedPurchases.map((purchase) => {
                       const missingSupplier = !purchase.supplierId && !purchase.supplierName;
                       return (
                       <tr key={purchase.id} className={clsx(
@@ -548,6 +562,11 @@ const Procurement: React.FC = () => {
                   <p className="text-slate-500">No purchases found</p>
                 </div>
               )}
+              <Pagination
+                currentPage={safePurchasesPage}
+                totalPages={Math.ceil(filteredPurchases.length / PAGE_SIZE)}
+                onPageChange={setPurchasesPage}
+              />
             </div>
           </motion.div>
         ) : (

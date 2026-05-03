@@ -18,11 +18,14 @@ import { financeService } from '../../services/financeService';
 import { Account, JournalEntry } from '../../types';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
+import { PAGE_SIZE } from '../../constants';
+import Pagination from '../../components/Pagination';
 
 const GeneralLedger: React.FC = () => {
   const { formatCurrency, isRTL } = useLanguage();
   const [activeSubTab, setActiveSubTab] = useState('accounts');
   const [searchTerm, setSearchTerm] = useState('');
+  const [accountsPage, setAccountsPage] = useState(1);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,9 +39,20 @@ const GeneralLedger: React.FC = () => {
     fetchAccounts();
   }, []);
 
+  useEffect(() => {
+    setAccountsPage(1);
+  }, [searchTerm]);
+
   const filteredAccounts = PCN_ACCOUNTS.filter(acc => 
     acc.number.includes(searchTerm) || 
     acc.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const accountsTotalPages = Math.ceil(filteredAccounts.length / PAGE_SIZE) || 1;
+  const safeAccountsPage = Math.min(accountsPage, accountsTotalPages);
+  const paginatedAccounts = filteredAccounts.slice(
+    (safeAccountsPage - 1) * PAGE_SIZE,
+    safeAccountsPage * PAGE_SIZE
   );
 
   return (
@@ -136,7 +150,7 @@ const GeneralLedger: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                  {filteredAccounts.map((account) => (
+                  {paginatedAccounts.map((account) => (
                     <tr 
                       key={account.number}
                       className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer group"
@@ -170,6 +184,11 @@ const GeneralLedger: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              currentPage={safeAccountsPage}
+              totalPages={Math.ceil(filteredAccounts.length / PAGE_SIZE)}
+              onPageChange={setAccountsPage}
+            />
           </div>
         </div>
       )}

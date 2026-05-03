@@ -13,6 +13,8 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { authFetch } from '../lib/api-client';
+import { PAGE_SIZE } from '../constants';
+import Pagination from '../components/Pagination';
 
 interface Purchase {
   id: string;
@@ -68,6 +70,7 @@ const PurchaseManagement: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [purchasesPage, setPurchasesPage] = useState(1);
 
   const [formData, setFormData] = useState({
     materialId: '',
@@ -85,26 +88,6 @@ const PurchaseManagement: React.FC = () => {
     date.setMonth(date.getMonth() + 3);
     return date.toISOString().split('T')[0];
   };
-
-  // Check admin access
-  if (profile && profile.role !== 'admin') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 mb-6">
-          <AlertCircle className="w-10 h-10" />
-        </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h1>
-        <p className="text-slate-500 max-w-md">Only administrators can access purchase management.</p>
-      </div>
-    );
-  }
-
-  // Fetch purchases, materials, and suppliers
-  useEffect(() => {
-    fetchPurchases();
-    fetchMaterials();
-    fetchSuppliers();
-  }, []);
 
   const fetchPurchases = async () => {
     try {
@@ -169,6 +152,17 @@ const PurchaseManagement: React.FC = () => {
       console.error('Error fetching suppliers:', error);
     }
   };
+
+  // Fetch purchases, materials, and suppliers
+  useEffect(() => {
+    fetchPurchases();
+    fetchMaterials();
+    fetchSuppliers();
+  }, []);
+
+  useEffect(() => {
+    setPurchasesPage(1);
+  }, [searchTerm]);
 
   const updateInventory = async (
     materialId: string,
@@ -517,6 +511,25 @@ const PurchaseManagement: React.FC = () => {
     (p.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const purchasesTotalPages = Math.ceil(filteredPurchases.length / PAGE_SIZE) || 1;
+  const safePurchasesPage = Math.min(purchasesPage, purchasesTotalPages);
+  const paginatedPurchases = filteredPurchases.slice(
+    (safePurchasesPage - 1) * PAGE_SIZE,
+    safePurchasesPage * PAGE_SIZE
+  );
+
+  if (profile && profile.role !== 'admin') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+        <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 mb-6">
+          <AlertCircle className="w-10 h-10" />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h1>
+        <p className="text-slate-500 max-w-md">Only administrators can access purchase management.</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center h-96">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -573,7 +586,7 @@ const PurchaseManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredPurchases.map((purchase) => (
+              {paginatedPurchases.map((purchase) => (
                 <tr key={purchase.id} className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
                   <td className="px-6 py-4 text-sm font-semibold text-slate-900 dark:text-white">{purchase.materialName}</td>
                   <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{purchase.supplierName}</td>
@@ -639,6 +652,11 @@ const PurchaseManagement: React.FC = () => {
             <p className="text-slate-500">No purchases found</p>
           </div>
         )}
+        <Pagination
+          currentPage={safePurchasesPage}
+          totalPages={Math.ceil(filteredPurchases.length / PAGE_SIZE)}
+          onPageChange={setPurchasesPage}
+        />
       </div>
 
       {/* Modal */}

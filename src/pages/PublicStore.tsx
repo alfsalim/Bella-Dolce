@@ -32,7 +32,7 @@ import { logActivity } from '../lib/logger';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { Product, Promotion } from '../types';
-import { CURRENCY } from '../constants';
+import { CURRENCY, PAGE_SIZE } from '../constants';
 import Pagination from '../components/Pagination';
 import { BrandWordmark } from '../components/BrandLogo';
 
@@ -47,7 +47,7 @@ const PublicStore: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const pageSize = 25;
+  const pageSize = PAGE_SIZE;
   const { t, tCategory, tProduct, isRTL } = useLanguage();
 
   useEffect(() => {

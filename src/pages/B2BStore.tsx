@@ -36,7 +36,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { Product } from '../types';
-import { CURRENCY } from '../constants';
+import { CURRENCY, PAGE_SIZE } from '../constants';
 import Pagination from '../components/Pagination';
 
 interface CartItem extends Product {
@@ -51,7 +51,7 @@ const B2BStore: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const pageSize = 25;
+  const pageSize = PAGE_SIZE;
   const { t, tProduct, tCategory } = useLanguage();
 
   const B2B_DISCOUNT = 0.20; // 20% discount for B2B

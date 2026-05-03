@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Eye, EyeOff, Loader2, ArrowRight, ShieldOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, ShieldOff, Globe } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import BrandLogo, { BRAND_LOGO_CHIP_CLASS, BRAND_LOGO_MARK_IMG_CLASS, BrandWordmark } from '../components/BrandLogo';
@@ -9,7 +9,7 @@ import { getDefaultStaffLoginPath, isStaffRole } from '../lib/staff-nav';
 
 const Login: React.FC = () => {
   const { login, register, logout, user, profile, permissions, loading } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, language, setLanguage } = useLanguage();
   const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -72,10 +72,23 @@ const Login: React.FC = () => {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden bg-slate-50 dark:bg-black">
+    <main className="relative min-h-screen flex items-center justify-center p-6 overflow-hidden bg-slate-50 dark:bg-black">
       {/* Background Elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary-600/5 rounded-full blur-[120px]"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/5 rounded-full blur-[120px]"></div>
+
+      <div className="absolute top-6 end-6 z-10">
+        <button
+          type="button"
+          onClick={() => setLanguage(language === 'fr' ? 'ar' : 'fr')}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#2a1e17] bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-sm text-slate-800 dark:text-slate-200 text-sm font-semibold uppercase shadow-sm hover:bg-slate-50 dark:hover:bg-[#1a1512] transition-all"
+          aria-label={t('language')}
+          title={t('language')}
+        >
+          <Globe className="w-4 h-4 shrink-0" aria-hidden />
+          <span>{language}</span>
+        </button>
+      </div>
 
       <div className="w-full max-w-5xl flex flex-col items-center">
         <Link
@@ -89,10 +102,10 @@ const Login: React.FC = () => {
           <BrandWordmark className="h-9 sm:h-10" />
         </Link>
 
-        <div className="w-full max-w-lg overflow-hidden rounded-3xl shadow-2xl bg-white dark:bg-[#0a0a0a] border border-slate-100 dark:border-[#2a1e17]">
-        <div className="p-8 md:p-14 flex flex-col justify-center bg-white dark:bg-[#0a0a0a]">
-          <div className="mb-10">
-            <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white">
+        <div className="w-full max-w-3xl overflow-hidden rounded-3xl shadow-2xl bg-white dark:bg-[#0a0a0a] border border-slate-100 dark:border-[#2a1e17]">
+        <div className="p-10 md:p-16 flex flex-col justify-center bg-white dark:bg-[#0a0a0a]">
+          <div className="mb-10 text-center">
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight leading-snug md:whitespace-nowrap">
               {isRegistering ? t('loginTitleJoin') : t('welcome')}
             </h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">

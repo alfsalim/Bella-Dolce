@@ -20,8 +20,6 @@ import {
   Smartphone,
   Banknote,
   CreditCard,
-  ChevronLeft,
-  ChevronRight,
   AlertTriangle,
   User as UserIcon,
   Search,
@@ -55,7 +53,8 @@ import {
 import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase-compat';
 import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
 import { clsx } from 'clsx';
-import { CURRENCY } from '../constants';
+import { CURRENCY, PAGE_SIZE } from '../constants';
+import Pagination from '../components/Pagination';
 
 const Reports: React.FC = () => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
@@ -188,12 +187,15 @@ const Reports: React.FC = () => {
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
 
   const totalSalesCount = filteredSales.length;
   const totalAmount = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const totalPages = Math.ceil(totalSalesCount / itemsPerPage);
-  const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(totalSalesCount / PAGE_SIZE) || 1;
+  const safeSalesPage = Math.min(currentPage, totalPages);
+  const paginatedSales = filteredSales.slice(
+    (safeSalesPage - 1) * PAGE_SIZE,
+    safeSalesPage * PAGE_SIZE
+  );
 
   const getPaymentIcon = (method: string) => {
     switch (method) {
@@ -873,44 +875,13 @@ const Reports: React.FC = () => {
             {/* Pagination */}
             <div className="p-6 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/[0.01]">
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                {t('showing') || 'Showing'} <span className="text-slate-900 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-slate-900 dark:text-white">{Math.min(currentPage * itemsPerPage, totalSalesCount)}</span> {t('of') || 'of'} <span className="text-slate-900 dark:text-white">{totalSalesCount}</span> {t('results') || 'results'}
+                {t('showing') || 'Showing'} <span className="text-slate-900 dark:text-white">{totalSalesCount === 0 ? 0 : (safeSalesPage - 1) * PAGE_SIZE + 1}</span> to <span className="text-slate-900 dark:text-white">{Math.min(safeSalesPage * PAGE_SIZE, totalSalesCount)}</span> {t('of') || 'of'} <span className="text-slate-900 dark:text-white">{totalSalesCount}</span> {t('results') || 'results'}
               </p>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-white/10 hover:bg-white dark:hover:bg-white/5 disabled:opacity-30 transition-all"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <div className="flex items-center gap-1">
-                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                    const pageNum = i + 1;
-                    return (
-                      <button 
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={clsx(
-                          "w-10 h-10 rounded-xl text-sm font-bold transition-all",
-                          currentPage === pageNum 
-                            ? "bg-primary-600 text-white shadow-lg shadow-primary-600/20" 
-                            : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-slate-400"
-                        )}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                  {totalPages > 5 && <span className="px-2 text-slate-400 font-bold">...</span>}
-                </div>
-                <button 
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 dark:border-white/10 hover:bg-white dark:hover:bg-white/5 disabled:opacity-30 transition-all"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
+              <Pagination
+                currentPage={safeSalesPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
             </div>
           </div>
         </div>

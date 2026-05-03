@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -15,16 +15,13 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
-import { SupplierInvoice, InvoiceStatus } from '../../types';
+import { SupplierInvoice } from '../../types';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
+import { PAGE_SIZE } from '../../constants';
+import Pagination from '../../components/Pagination';
 
-const Expenses: React.FC = () => {
-  const { formatCurrency, isRTL } = useLanguage();
-  const [activeSubTab, setActiveSubTab] = useState('invoices');
-
-  // Mock data for supplier invoices
-  const invoices: SupplierInvoice[] = [
+const MOCK_SUPPLIER_INVOICES: SupplierInvoice[] = [
     {
       id: 'inv-1',
       supplierId: 'sup-1',
@@ -56,6 +53,33 @@ const Expenses: React.FC = () => {
       createdAt: new Date().toISOString()
     }
   ];
+
+const Expenses: React.FC = () => {
+  const { formatCurrency, isRTL } = useLanguage();
+  const [activeSubTab, setActiveSubTab] = useState('invoices');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoicePage, setInvoicePage] = useState(1);
+
+  useEffect(() => {
+    setInvoicePage(1);
+  }, [invoiceSearch]);
+
+  const filteredInvoices = useMemo(
+    () =>
+      MOCK_SUPPLIER_INVOICES.filter(
+        inv =>
+          inv.supplierName.toLowerCase().includes(invoiceSearch.toLowerCase()) ||
+          inv.invoiceNumber.toLowerCase().includes(invoiceSearch.toLowerCase())
+      ),
+    [invoiceSearch]
+  );
+
+  const invoiceTotalPages = Math.ceil(filteredInvoices.length / PAGE_SIZE) || 1;
+  const safeInvoicePage = Math.min(invoicePage, invoiceTotalPages);
+  const paginatedInvoices = filteredInvoices.slice(
+    (safeInvoicePage - 1) * PAGE_SIZE,
+    safeInvoicePage * PAGE_SIZE
+  );
 
   return (
     <div className="space-y-6">
@@ -99,6 +123,8 @@ const Expenses: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search invoices..."
+                value={invoiceSearch}
+                onChange={(e) => setInvoiceSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
               />
             </div>
@@ -133,7 +159,7 @@ const Expenses: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                  {invoices.map((invoice) => (
+                  {paginatedInvoices.map((invoice) => (
                     <tr 
                       key={invoice.id}
                       className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer group"
@@ -177,6 +203,11 @@ const Expenses: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              currentPage={safeInvoicePage}
+              totalPages={Math.ceil(filteredInvoices.length / PAGE_SIZE)}
+              onPageChange={setInvoicePage}
+            />
           </div>
         </div>
       )}

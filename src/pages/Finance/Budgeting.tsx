@@ -22,19 +22,28 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
+import { PAGE_SIZE } from '../../constants';
+import Pagination from '../../components/Pagination';
 
-const Budgeting: React.FC = () => {
-  const { formatCurrency, isRTL } = useLanguage();
-  const [activeSubTab, setActiveSubTab] = useState('overview');
-
-  // Mock data for Budget
-  const budgetItems = [
+const BUDGET_MOCK_ITEMS = [
     { name: 'Matières Premières', budget: 1200000, actual: 1150000, variance: 50000, color: 'emerald' },
     { name: 'Main d\'œuvre', budget: 850000, actual: 865000, variance: -15000, color: 'rose' },
     { name: 'Énergie & Eau', budget: 120000, actual: 145000, variance: -25000, color: 'rose' },
     { name: 'Marketing & Pub', budget: 50000, actual: 42000, variance: 8000, color: 'emerald' },
     { name: 'Maintenance', budget: 80000, actual: 75000, variance: 5000, color: 'emerald' }
   ];
+
+const Budgeting: React.FC = () => {
+  const { formatCurrency, isRTL } = useLanguage();
+  const [activeSubTab, setActiveSubTab] = useState('overview');
+  const [budgetPage, setBudgetPage] = useState(1);
+
+  const budgetTotalPages = Math.ceil(BUDGET_MOCK_ITEMS.length / PAGE_SIZE) || 1;
+  const safeBudgetPage = Math.min(budgetPage, budgetTotalPages);
+  const paginatedBudgetItems = BUDGET_MOCK_ITEMS.slice(
+    (safeBudgetPage - 1) * PAGE_SIZE,
+    safeBudgetPage * PAGE_SIZE
+  );
 
   return (
     <div className="space-y-6">
@@ -83,7 +92,7 @@ const Budgeting: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            {budgetItems.map((item) => {
+            {paginatedBudgetItems.map((item) => {
               const percentage = (item.actual / item.budget) * 100;
               return (
                 <div 
@@ -140,6 +149,11 @@ const Budgeting: React.FC = () => {
               );
             })}
           </div>
+          <Pagination
+            currentPage={safeBudgetPage}
+            totalPages={Math.ceil(BUDGET_MOCK_ITEMS.length / PAGE_SIZE)}
+            onPageChange={setBudgetPage}
+          />
         </div>
       )}
 

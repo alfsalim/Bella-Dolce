@@ -24,6 +24,8 @@ import { FinancialEmployee, PayrollStatus, UserProfile } from '../../types';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
+import { PAGE_SIZE } from '../../constants';
+import Pagination from '../../components/Pagination';
 
 const Payroll: React.FC = () => {
   const { formatCurrency, isRTL } = useLanguage();
@@ -32,6 +34,7 @@ const Payroll: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [employeePage, setEmployeePage] = useState(1);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -84,6 +87,17 @@ const Payroll: React.FC = () => {
       emp.matricule.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [employees, searchQuery]);
+
+  useEffect(() => {
+    setEmployeePage(1);
+  }, [searchQuery]);
+
+  const empTotalPages = Math.ceil(filteredEmployees.length / PAGE_SIZE) || 1;
+  const safeEmpPage = Math.min(employeePage, empTotalPages);
+  const paginatedEmployees = filteredEmployees.slice(
+    (safeEmpPage - 1) * PAGE_SIZE,
+    safeEmpPage * PAGE_SIZE
+  );
 
   const availableUsers = useMemo(() => {
     const employeeIds = new Set(employees.map(emp => emp.id));
@@ -195,6 +209,8 @@ const Payroll: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search employees..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
               />
             </div>
@@ -214,8 +230,9 @@ const Payroll: React.FC = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
           ) : (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredEmployees.map((emp) => {
+              {paginatedEmployees.map((emp) => {
                 const payroll = financeService.calculatePayroll(emp.baseSalary, emp.transportAllowance, emp.otherAllowances);
                 return (
                   <div 
@@ -276,6 +293,12 @@ const Payroll: React.FC = () => {
                 );
               })}
             </div>
+            <Pagination
+              currentPage={safeEmpPage}
+              totalPages={Math.ceil(filteredEmployees.length / PAGE_SIZE)}
+              onPageChange={setEmployeePage}
+            />
+            </>
           )}
         </div>
       )}
