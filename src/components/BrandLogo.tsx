@@ -2,8 +2,8 @@ import React from 'react';
 import { clsx } from 'clsx';
 
 /** Theme logos + canvas fills in `index.css` (`--color-logo-light-canvas`, `--color-logo-dark-canvas`), sampled from the JPEGs. */
-export const LOGO_DARK_THEME_SRC = '/logo.jpg';
-export const LOGO_LIGHT_THEME_SRC = '/logo-light.jpg';
+export const LOGO_DARK_THEME_SRC = '/images/logo.jpg';
+export const LOGO_LIGHT_THEME_SRC = '/images/logo-light.jpg';
 
 /** Same mark sizing everywhere: admin sidebar, public TopBar, landing hero */
 export const BRAND_LOGO_MARK_IMG_CLASS =
@@ -13,8 +13,8 @@ export const BRAND_LOGO_MARK_IMG_CLASS =
 export const BRAND_LOGO_CHIP_CLASS =
   'rounded-xl bg-logo-light-canvas dark:bg-logo-dark-canvas p-2 border border-black/[0.06] dark:border-white/10 shadow-sm';
 
-export const BRAND_WORDMARK_SRC = '/bella-dolce-wordmark.svg';
-export const BRAND_WORDMARK_WHITE_BG_SRC = '/bella-dolce-wordmark-on-white.svg';
+export const BRAND_WORDMARK_SRC = '/images/bella-dolce-wordmark.svg';
+export const BRAND_WORDMARK_WHITE_BG_SRC = '/images/bella-dolce-wordmark-on-white.svg';
 
 /** Gold script wordmark (SVG paths from Great Vibes via `npm run wordmark`). */
 export function BrandWordmark({ className }: { className?: string }) {
