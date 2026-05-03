@@ -8,12 +8,14 @@ import {
   Edit2,
   Trash2,
   Building2,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import Suppliers from './Suppliers';
+import { authFetch } from '../lib/api-client';
 
 interface Purchase {
   id: string;
@@ -50,6 +52,7 @@ const Procurement: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showMissingOnly, setShowMissingOnly] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
@@ -68,18 +71,6 @@ const Procurement: React.FC = () => {
     return date.toISOString().split('T')[0];
   };
 
-  if (profile && profile.role !== 'admin') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 mb-6">
-          <AlertCircle className="w-10 h-10" />
-        </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h1>
-        <p className="text-slate-500 max-w-md">Only administrators can access procurement management.</p>
-      </div>
-    );
-  }
-
   useEffect(() => {
     fetchPurchases();
     fetchMaterials();
@@ -89,7 +80,7 @@ const Procurement: React.FC = () => {
   const fetchPurchases = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch('/api/db/purchases', {
+      const response = await authFetch('/api/db/purchases', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch purchases');
@@ -106,7 +97,7 @@ const Procurement: React.FC = () => {
   const fetchMaterials = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch('/api/db/rawMaterials', {
+      const response = await authFetch('/api/db/rawMaterials', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch materials');
@@ -120,7 +111,7 @@ const Procurement: React.FC = () => {
   const fetchSuppliers = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch('/api/db/suppliers', {
+      const response = await authFetch('/api/db/suppliers', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch suppliers');
@@ -148,7 +139,7 @@ const Procurement: React.FC = () => {
         : (material.currentStock || 0) - quantityChange;
 
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch(`/api/db/rawMaterials/${materialId}`, {
+      const response = await authFetch(`/api/db/rawMaterials/${materialId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -200,7 +191,7 @@ const Procurement: React.FC = () => {
           reader.onload = async () => {
             try {
               const base64 = (reader.result as string).split(',')[1];
-              const uploadRes = await fetch('/api/upload/invoice', {
+              const uploadRes = await authFetch('/api/upload/invoice', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -225,7 +216,7 @@ const Procurement: React.FC = () => {
         const quantityDifference = formData.quantity - editingPurchase.quantity;
         const supplier = suppliers.find(s => s.id === formData.supplierId);
 
-        const response = await fetch(`/api/db/purchases/${editingPurchase.id}`, {
+        const response = await authFetch(`/api/db/purchases/${editingPurchase.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -270,7 +261,7 @@ const Procurement: React.FC = () => {
           createdBy: profile?.id
         };
 
-        const response = await fetch('/api/db/purchases', {
+        const response = await authFetch('/api/db/purchases', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -309,7 +300,7 @@ const Procurement: React.FC = () => {
     const token = localStorage.getItem('bakery_token');
 
     try {
-      const response = await fetch(`/api/db/purchases/${purchase.id}`, {
+      const response = await authFetch(`/api/db/purchases/${purchase.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -352,10 +343,15 @@ const Procurement: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const filteredPurchases = purchases.filter(p =>
-    (p.materialName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const missingSupplierCount = purchases.filter(p => !p.supplierId && !p.supplierName).length;
+
+  const filteredPurchases = purchases.filter(p => {
+    const matchesSearch =
+      (p.materialName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()));
+    const isMissing = !p.supplierId && !p.supplierName;
+    return matchesSearch && (!showMissingOnly || isMissing);
+  });
 
   if (loading && activeTab === 'purchases') {
     return <div className="flex items-center justify-center h-96">
@@ -408,6 +404,29 @@ const Procurement: React.FC = () => {
             exit={{ opacity: 0, y: -10 }}
             className="space-y-6"
           >
+            {/* Missing supplier warning banner */}
+            {missingSupplierCount > 0 && (
+              <div className="flex items-center justify-between gap-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-5 py-4">
+                <div className="flex items-center gap-3 text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="w-5 h-5 shrink-0" />
+                  <span className="text-sm font-semibold">
+                    {missingSupplierCount} purchase{missingSupplierCount > 1 ? 's' : ''} {missingSupplierCount > 1 ? 'are' : 'is'} missing a supplier — click the edit button on highlighted rows to assign one.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowMissingOnly(prev => !prev)}
+                  className={clsx(
+                    'text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shrink-0',
+                    showMissingOnly
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-amber-100 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-700/50'
+                  )}
+                >
+                  {showMissingOnly ? 'Show all' : 'Show incomplete only'}
+                </button>
+              </div>
+            )}
+
             {/* Search and Add Button */}
             <div className="flex flex-col sm:flex-row justify-between gap-4">
               <div className="relative flex-1 max-w-md">
@@ -450,10 +469,24 @@ const Procurement: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPurchases.map((purchase) => (
-                      <tr key={purchase.id} className="border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
+                    {filteredPurchases.map((purchase) => {
+                      const missingSupplier = !purchase.supplierId && !purchase.supplierName;
+                      return (
+                      <tr key={purchase.id} className={clsx(
+                        "border-b border-slate-100 dark:border-white/5 transition-colors",
+                        missingSupplier
+                          ? "bg-amber-50/60 dark:bg-amber-900/10 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                          : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"
+                      )}>
                         <td className="px-6 py-4 text-sm font-semibold text-slate-900 dark:text-white">{purchase.materialName}</td>
-                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{purchase.supplierName}</td>
+                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          {missingSupplier ? (
+                            <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              No supplier
+                            </span>
+                          ) : purchase.supplierName}
+                        </td>
                         <td className="px-6 py-4 text-sm text-right font-medium text-slate-900 dark:text-white">
                           {purchase.quantity} {purchase.unit}
                         </td>
@@ -484,10 +517,15 @@ const Procurement: React.FC = () => {
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => handleEdit(purchase)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
-                              title="Edit"
+                              className={clsx(
+                                "p-2 rounded-lg transition-all",
+                                missingSupplier
+                                  ? "text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                                  : "text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                              )}
+                              title={missingSupplier ? "Assign supplier" : "Edit"}
                             >
-                              <Edit2 className="w-4 h-4" />
+                              {missingSupplier ? <AlertTriangle className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                             </button>
                             <button
                               onClick={() => handleDelete(purchase)}
@@ -499,7 +537,8 @@ const Procurement: React.FC = () => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

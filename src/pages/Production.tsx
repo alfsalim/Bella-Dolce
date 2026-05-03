@@ -720,7 +720,7 @@ const Production: React.FC = () => {
             const material = rawMaterials.find(m => m.id === ing.materialId);
             if (!material || material.currentStock < ing.quantity) {
               insufficient.push({
-                name: material ? tProduct(material.name) : t('unknownMaterial'),
+                name: material ? tProduct(material) : t('unknownMaterial'),
                 short: ing.quantity - (material?.currentStock || 0),
                 unit: material?.unit || ''
               });
@@ -912,7 +912,13 @@ const Production: React.FC = () => {
     // Exclude raw materials from product search
     if (product?.category === 'raw_material') return false;
     
-    const matchesSearch = tProduct(product?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (() => {
+      if (!product) return false;
+      const q = searchTerm.toLowerCase().trim();
+      if (!q) return true;
+      const blob = [product.name, product.nameAr].filter(Boolean).join(' ').toLowerCase();
+      return blob.includes(q);
+    })();
     return matchesSearch;
   });
 
@@ -1018,7 +1024,7 @@ const Production: React.FC = () => {
                             <ChefHat className="w-6 h-6" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-slate-900 dark:text-white">{tProduct(product?.name || 'Unknown Product')}</h3>
+                            <h3 className="font-bold text-slate-900 dark:text-white">{product ? tProduct(product) : 'Unknown Product'}</h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">{tCategory(product?.category || '')}</p>
                           </div>
                         </div>
@@ -1110,7 +1116,7 @@ const Production: React.FC = () => {
                   <tbody className="divide-y divide-slate-50 dark:divide-white/10">
                     {filteredBatches.map((batch) => {
                       const product = products.find(p => p.id === batch.productId);
-                      const productName = product ? tProduct(product.name) : 'Unknown';
+                      const productName = product ? tProduct(product) : 'Unknown';
                       return (
                         <tr key={batch.id} className="group hover:bg-primary-50/[0.02] dark:hover:bg-primary-900/[0.05] transition-all">
                           <td className="px-4 py-4">
@@ -1263,7 +1269,7 @@ const Production: React.FC = () => {
                     <option value="">{t('selectProduct')}</option>
                     {products
                       .filter(p => p.itemType === 'product')
-                      .map(p => <option key={p.id} value={p.id}>{tProduct(p.name)}</option>)}
+                      .map(p => <option key={p.id} value={p.id}>{tProduct(p)}</option>)}
                   </select>
                 </div>
 
@@ -1422,7 +1428,7 @@ const Production: React.FC = () => {
                                     .sort((a, b) => a.name.localeCompare(b.name))
                                     .map(m => (
                                     <option key={m.id} value={m.id}>
-                                      {tProduct(m.name)} {m.brand ? `(${m.brand})` : ''} - {m.currentStock} {t(m.unit) || m.unit}
+                                      {tProduct(m)} {m.brand ? `(${m.brand})` : ''} - {m.currentStock} {t(m.unit) || m.unit}
                                     </option>
                                   ))}
                               </select>

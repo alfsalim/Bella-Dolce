@@ -10,7 +10,7 @@
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "wordmark": "node scripts/generate-bella-dolce-wordmark.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -47,6 +47,8 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
+    "opentype.js": "^1.3.5",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

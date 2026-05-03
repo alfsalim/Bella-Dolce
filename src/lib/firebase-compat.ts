@@ -80,13 +80,13 @@ export function onSnapshot(
   onNext: (snapshot: any) => void,
   onError?: (error: any) => void
 ) {
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+
   const fetchData = async () => {
     try {
-      // Check if this is a single document reference (has id) or a query
       const isSingleDoc = queryOrRef.id && !queryOrRef.params;
 
       if (isSingleDoc) {
-        // Single document reference
         const docData = await getDocFromApi(queryOrRef.collectionName, queryOrRef.id);
         const snapshot = {
           exists: () => !!docData,
@@ -95,7 +95,6 @@ export function onSnapshot(
         };
         onNext(snapshot);
       } else {
-        // Collection query
         const data = await getDocsFromApi(queryOrRef.path || queryOrRef.collectionName, queryOrRef.params);
         const snapshot = {
           docs: data.docs,
@@ -111,7 +110,15 @@ export function onSnapshot(
         };
         onNext(snapshot);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Stop polling on permission errors — retrying will never succeed.
+      const msg: string = error?.message ?? '';
+      if (/Forbidden|insufficient role|401|403/i.test(msg)) {
+        if (intervalId !== null) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      }
       if (onError) {
         onError(error);
       } else {
@@ -121,8 +128,13 @@ export function onSnapshot(
   };
 
   fetchData();
-  const interval = setInterval(fetchData, 3000); // Poll every 3 seconds
-  return () => clearInterval(interval);
+  intervalId = setInterval(fetchData, 3000);
+  return () => {
+    if (intervalId !== null) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
 }
 
 // Calendar day YYYY-MM-DD → UTC midnight ISO (Prisma DateTime)

@@ -27,6 +27,7 @@ import {
   Search,
   Activity
 } from 'lucide-react';
+import { authFetch } from '../lib/api-client';
 import { 
   BarChart, 
   Bar, 
@@ -92,7 +93,7 @@ const Reports: React.FC = () => {
     const fetchCashiers = async () => {
       try {
         const token = localStorage.getItem('bakery_token');
-        const res = await fetch('/api/cashiers', {
+        const res = await authFetch('/api/cashiers', {
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
@@ -112,7 +113,7 @@ const Reports: React.FC = () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('bakery_token');
-        const res = await fetch('/api/sales', {
+        const res = await authFetch('/api/sales', {
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
@@ -240,7 +241,7 @@ const Reports: React.FC = () => {
 
   // Inventory Consumption (Simplified)
   const inventoryConsumption = materials.map(m => ({
-    name: m.name,
+    material: m,
     consumption: Math.max(0, m.minStock * 2 - m.currentStock),
     stock: m.currentStock
   })).sort((a, b) => b.consumption - a.consumption).slice(0, 5);
@@ -680,7 +681,7 @@ const Reports: React.FC = () => {
             {inventoryConsumption.map((item, idx) => (
               <div key={idx} className="space-y-2">
                 <div className="flex justify-between text-sm font-bold">
-                   <span className="text-slate-700 dark:text-zinc-300">{tProduct(item.name)}</span>
+                   <span className="text-slate-700 dark:text-zinc-300">{tProduct(item.material)}</span>
                    <span className="text-amber-600 dark:text-amber-500">{item.consumption.toFixed(1)} {t('units')}</span>
                 </div>
                 <div className="w-full h-2 bg-slate-100 dark:bg-black rounded-full overflow-hidden border border-slate-200 dark:border-white/5">
@@ -703,7 +704,7 @@ const Reports: React.FC = () => {
                   #{i+1}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">{tProduct(product.name)}</h4>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">{tProduct(product)}</h4>
                   <p className="text-xs text-slate-500 dark:text-zinc-500 font-medium">{tCategory(product.category)}</p>
                 </div>
                 <div className="text-right">

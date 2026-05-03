@@ -52,7 +52,7 @@ const B2BStore: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 25;
-  const { t } = useLanguage();
+  const { t, tProduct, tCategory } = useLanguage();
 
   const B2B_DISCOUNT = 0.20; // 20% discount for B2B
   const MIN_ORDER_QTY = 10;
@@ -144,7 +144,7 @@ const B2BStore: React.FC = () => {
   };
 
   const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    [p.name, p.nameAr].filter(Boolean).join(' ').toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -198,15 +198,15 @@ const B2BStore: React.FC = () => {
                 <div className="w-24 h-24 bg-slate-50 dark:bg-black rounded-xl overflow-hidden shrink-0 border border-slate-100 dark:border-white/5">
                   <img 
                     src={product.imageUrl || `https://picsum.photos/seed/${product.name}/200/200`} 
-                    alt={product.name}
+                    alt={tProduct(product)}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
                 </div>
                 <div className="flex-1 flex flex-col justify-between py-1">
                   <div>
-                    <h3 className="font-bold text-slate-900 dark:text-white">{product.name}</h3>
-                    <p className="text-xs text-slate-400 dark:text-zinc-500 font-bold uppercase tracking-widest">{product.category}</p>
+                    <h3 className="font-bold text-slate-900 dark:text-white">{tProduct(product)}</h3>
+                    <p className="text-xs text-slate-400 dark:text-zinc-500 font-bold uppercase tracking-widest">{tCategory(product.category)}</p>
                   </div>
                   <div className="flex items-center justify-between mt-2">
                     <div>

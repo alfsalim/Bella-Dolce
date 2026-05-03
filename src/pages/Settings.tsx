@@ -17,6 +17,7 @@ import { logActivity } from '../lib/logger';
 import { compressImage } from '../lib/utils';
 import { PAGE_SIZE } from '../constants';
 import Pagination from '../components/Pagination';
+import { authFetch } from '../lib/api-client';
 
 const Settings: React.FC = () => {
   const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual } = useLanguage();
@@ -72,7 +73,7 @@ const Settings: React.FC = () => {
     const token = localStorage.getItem('bakery_token');
     const headers: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
     try {
-      const res = await fetch('/api/db/settings/backup_config', {
+      const res = await authFetch('/api/db/settings/backup_config', {
         method: 'PUT',
         headers,
         body: JSON.stringify({ id: 'backup_config', ...backupConfig }),
@@ -89,14 +90,14 @@ const Settings: React.FC = () => {
     const token = localStorage.getItem('bakery_token');
     const authHeaders: HeadersInit = { Authorization: `Bearer ${token}` };
     try {
-      const r = await fetch('/api/backup/trigger', {
+      const r = await authFetch('/api/backup/trigger', {
         method: 'POST',
         headers: authHeaders,
       });
       if (!r.ok) throw new Error();
       const data = await r.json();
       toast.success(`${t('backupSuccess')}: ${data.filename}`);
-      const list = await fetch('/api/backup/list', { headers: authHeaders });
+      const list = await authFetch('/api/backup/list', { headers: authHeaders });
       if (list.ok) {
         const raw = await list.json();
         setBackups(Array.isArray(raw) ? raw : []);
@@ -114,7 +115,7 @@ const Settings: React.FC = () => {
     setIsRestoring(filename);
     const token = localStorage.getItem('bakery_token');
     try {
-      const r = await fetch(`/api/backup/restore/${encodeURIComponent(filename)}`, {
+      const r = await authFetch(`/api/backup/restore/${encodeURIComponent(filename)}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -134,7 +135,7 @@ const Settings: React.FC = () => {
     if (activeTab !== 'data' || !isAdmin) return;
     const token = localStorage.getItem('bakery_token');
     const headers: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
-    fetch('/api/db/settings/backup_config', { headers })
+    void authFetch('/api/db/settings/backup_config', { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((doc) => {
         if (!doc) return;
@@ -151,6 +152,9 @@ const Settings: React.FC = () => {
             /* keep default */
           }
         }
+      })
+      .catch(() => {
+        /* 401 handled by authFetch */
       });
     const loadBackups = async () => {
       if (!token) {
@@ -159,7 +163,7 @@ const Settings: React.FC = () => {
         return;
       }
       try {
-        const r = await fetch('/api/backup/list', { headers: { Authorization: `Bearer ${token}` } });
+        const r = await authFetch('/api/backup/list', { headers: { Authorization: `Bearer ${token}` } });
         if (r.status === 403) {
           setBackupListError(t('backupAccessDenied'));
           setBackups([]);
@@ -394,13 +398,13 @@ const Settings: React.FC = () => {
     { path: '/dashboard', label: 'dashboard' },
     { path: '/production', label: 'production' },
     { path: '/inventory', label: 'inventory' },
-    { path: '/product-management', label: 'productManagement' },
+    { path: '/procurement', label: 'procurementAndSuppliers' },
+    { path: '/customers', label: 'customers' },
+    { path: '/product-management', label: 'recipesAndProducts' },
     { path: '/pos', label: 'pos' },
-    { path: '/business', label: 'businessStore' },
-    { path: '/customers', label: 'publicStore' },
+    { path: '/b2b', label: 'businessStore' },
     { path: '/orders', label: 'orders' },
-    { path: '/delivery', label: 'delivery' },
-    { path: '/users', label: 'users' },
+    { path: '/finance', label: 'finance' },
     { path: '/reports', label: 'reports' },
     { path: '/settings', label: 'settings' },
   ];

@@ -30,8 +30,13 @@ import { Toaster } from 'react-hot-toast';
 
 const App: React.FC = () => {
   useEffect(() => {
-    seedDatabase();
-    
+    // Only admin may seed — other roles lack permission to read rolePermissions.
+    const storedUser = localStorage.getItem('bakery_user');
+    const role = storedUser ? (JSON.parse(storedUser) as { role?: string }).role : undefined;
+    if (role === 'admin') {
+      seedDatabase();
+    }
+
     // Initialize Dark Mode
     const isDark = localStorage.getItem('darkMode') === 'true';
     if (isDark) {

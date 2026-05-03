@@ -137,36 +137,74 @@ function parseWhereQuery(raw: unknown): unknown | undefined {
 }
 
 // Role-based collection access control
-const COLLECTION_ROLES: Record<string, string[]> = {
-  users:               ['admin'],
-  rolePermissions:     ['admin'],
-  system:              ['admin'],
-  activityLogs:        ['admin', 'manager'],
-  accounts:            ['admin', 'manager'],
-  journalEntries:      ['admin', 'manager'],
-  journalLines:        ['admin', 'manager'],
-  payrollRuns:         ['admin', 'manager'],
-  payslips:            ['admin', 'manager'],
-  cashReconciliations: ['admin', 'manager'],
-  budgets:             ['admin', 'manager'],
-  riskSnapshots:       ['admin', 'manager'],
-  supplierInvoices:    ['admin', 'manager'],
-  customerInvoices:    ['admin', 'manager'],
-  fixedAssets:         ['admin', 'manager'],
-  financialEmployees:  ['admin', 'manager'],
-  suppliers:           ['admin', 'manager'],
-  deliveries:          ['admin', 'manager'],
-  promotions:          ['admin', 'manager'],
-  settings:            ['admin', 'manager'],
-  products:            ['admin', 'manager', 'cashier', 'baker'],
-  rawMaterials:        ['admin', 'manager', 'baker'],
-  recipes:             ['admin', 'manager', 'baker'],
-  batches:             ['admin', 'manager', 'baker'],
-  stockMovements:      ['admin', 'manager', 'baker'],
-  sales:               ['admin', 'manager', 'cashier'],
-  customers:           ['admin', 'manager', 'cashier'],
-  orders:              ['admin', 'manager', 'cashier'],
+/**
+ * Maps each DB collection to the app route that grants access to it.
+ * Access is controlled entirely by the rolePermissions table in the DB —
+ * no role names are hardcoded here. Admin always bypasses this check.
+ */
+const COLLECTION_ROUTE_MAP: Record<string, string> = {
+  // Admin-only (no regular-user route)
+  users:               '/settings',
+  rolePermissions:     '/settings',
+  system:              '/settings',
+  // Dashboard
+  activityLogs:        '/dashboard',
+  // Finance
+  accounts:            '/finance',
+  journalEntries:      '/finance',
+  journalLines:        '/finance',
+  payrollRuns:         '/finance',
+  payslips:            '/finance',
+  cashReconciliations: '/finance',
+  budgets:             '/finance',
+  riskSnapshots:       '/finance',
+  supplierInvoices:    '/finance',
+  customerInvoices:    '/finance',
+  fixedAssets:         '/finance',
+  financialEmployees:  '/finance',
+  // Procurement
+  suppliers:           '/procurement',
+  purchases:           '/procurement',
+  // Orders / Deliveries
+  deliveries:          '/orders',
+  orders:              '/orders',
+  // Settings / Promotions
+  promotions:          '/settings',
+  settings:            '/settings',
+  // Product management
+  products:            '/product-management',
+  // Inventory
+  rawMaterials:        '/inventory',
+  stockMovements:      '/inventory',
+  // Production
+  recipes:             '/production',
+  batches:             '/production',
+  // POS / Customers
+  sales:               '/pos',
+  customers:           '/customers',
 };
+
+// Collections that are always admin-only regardless of rolePermissions
+const ADMIN_ONLY_COLLECTIONS = new Set(['users', 'rolePermissions', 'system']);
+
+// In-memory cache for role → allowedPaths (avoids a DB hit on every API call)
+const _permCache = new Map<string, { paths: string[]; at: number }>();
+const PERM_CACHE_TTL = 60_000; // 1 minute
+
+async function getCachedAllowedPaths(role: string): Promise<string[]> {
+  if (role === 'admin') return ['*'];
+  const hit = _permCache.get(role);
+  if (hit && Date.now() - hit.at < PERM_CACHE_TTL) return hit.paths;
+  const paths = await resolveAllowedPaths(role);
+  _permCache.set(role, { paths, at: Date.now() });
+  return paths;
+}
+
+/** Call this whenever an admin saves role permissions so the cache refreshes immediately. */
+function invalidatePermissionsCache(role?: string) {
+  if (role) _permCache.delete(role);
+  else _permCache.clear();
+}
 
 async function getBackupConfig(): Promise<{ enabled: boolean; time: string }> {
   try {
@@ -220,6 +258,34 @@ function listBackups() {
     .sort((a, b) => b.filename.localeCompare(a.filename));
 }
 
+function parseAllowedPathsRaw(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((x): x is string => typeof x === 'string');
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw);
+      return Array.isArray(p) ? p.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** Load allowedPaths for a role from SQLite (SQLite-safe, no insensitive mode). */
+async function resolveAllowedPaths(role: string): Promise<string[]> {
+  if (role === 'admin') return ['*'];
+  try {
+    const prisma = getPrisma();
+    // Try exact match first, then lowercase
+    const row = await prisma.rolePermission.findUnique({ where: { id: role } })
+      ?? await prisma.rolePermission.findUnique({ where: { id: role.toLowerCase() } });
+    if (!row) return [];
+    return parseAllowedPathsRaw(row.allowedPaths);
+  } catch {
+    return [];
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || String(config.PORT), 10);
@@ -247,21 +313,92 @@ async function startServer() {
   function requireCollectionAccess(req: any, res: any, next: any) {
     const { collection } = req.params;
     const method = req.method;
-    
-    // Skip role check for public routes (access is already gated by requireAuth usage in routes)
+
+    // Public collections bypass all role checks
     if (method === 'GET' && PUBLIC_GET_COLLECTIONS.includes(collection)) return next();
     if (method === 'POST' && PUBLIC_POST_COLLECTIONS.includes(collection)) return next();
     if (method === 'PUT' && PUBLIC_PUT_COLLECTIONS.includes(collection)) return next();
 
-    const userRole: string = req.user?.role || '';
-    if (collection === "settings" && req.params.id === "backup_config" && userRole !== "admin") {
-      return res.status(403).json({ error: "Forbidden: admin only" });
+    const userRole: string = (req.user?.role ?? '').trim();
+
+    // Admin bypasses everything
+    if (userRole === 'admin') return next();
+
+    // backup_config is admin-only even within settings
+    if (collection === 'settings' && req.params.id === 'backup_config') {
+      return res.status(403).json({ error: 'Forbidden: admin only' });
     }
-    const allowed = COLLECTION_ROLES[collection];
-    if (!allowed) return next();
-    if (userRole === 'admin' || allowed.includes(userRole)) return next();
-    return res.status(403).json({ error: 'Forbidden: insufficient role' });
+
+    // Any authenticated user can read their own rolePermissions row
+    if (
+      method === 'GET' &&
+      collection === 'rolePermissions' &&
+      req.params.id &&
+      String(req.params.id).trim().toLowerCase() === userRole.toLowerCase()
+    ) {
+      return next();
+    }
+
+    // Admin-only collections — no regular user access
+    if (ADMIN_ONLY_COLLECTIONS.has(collection)) {
+      return res.status(403).json({ error: 'Forbidden: admin only' });
+    }
+
+    // For all other collections, check against the DB rolePermissions asynchronously
+    const routeRequired = COLLECTION_ROUTE_MAP[collection];
+    if (!routeRequired) return next(); // Unknown collection — allow (safe default for new collections)
+
+    getCachedAllowedPaths(userRole).then((allowedPaths) => {
+      if (allowedPaths.includes('*') || allowedPaths.includes(routeRequired)) {
+        return next();
+      }
+      return res.status(403).json({ error: 'Forbidden: insufficient role' });
+    }).catch(() => res.status(403).json({ error: 'Forbidden: could not verify permissions' }));
   }
+
+  /** Load allowed paths for the JWT role only — avoids /api/db/rolePermissions GET (admin-only list guard). */
+  app.get('/api/auth/role-permissions', requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const roleRaw = req.user?.role;
+      const role = typeof roleRaw === 'string' ? roleRaw.trim() : '';
+      if (!role) {
+        return res.status(400).json({ error: 'Invalid token: missing role' });
+      }
+      if (role === 'admin') {
+        return res.json({ id: role, allowedPaths: ['*'] });
+      }
+      const prisma = getPrisma();
+      let row = await prisma.rolePermission.findUnique({ where: { id: role } });
+      if (!row) {
+        row = await prisma.rolePermission.findUnique({ where: { id: role.toLowerCase() } });
+      }
+      if (!row) {
+        const rows = await prisma.rolePermission.findMany({ select: { id: true, allowedPaths: true } });
+        const hit = rows.find((r) => r.id.toLowerCase() === role.toLowerCase());
+        row = hit
+          ? await prisma.rolePermission.findUnique({ where: { id: hit.id } })
+          : null;
+      }
+      if (!row) {
+        return res.json({ id: role, allowedPaths: [] });
+      }
+      let allowedPaths: unknown = row.allowedPaths;
+      if (typeof allowedPaths === 'string') {
+        try {
+          allowedPaths = JSON.parse(allowedPaths);
+        } catch {
+          allowedPaths = [];
+        }
+      }
+      const paths = Array.isArray(allowedPaths)
+        ? allowedPaths.filter((x): x is string => typeof x === 'string')
+        : [];
+      return res.json({ id: row.id, allowedPaths: paths });
+    } catch (error: any) {
+      console.error('role-permissions error:', error);
+      return res.status(500).json({ error: error?.message || 'Failed to load permissions' });
+    }
+  });
 
   // Auth routes
   app.post("/api/auth/login", async (req, res) => {
@@ -294,12 +431,16 @@ async function startServer() {
       }
 
       console.log(`Login successful for user: ${username}`);
+      const roleForJwt = user.role != null && String(user.role).trim() !== '' ? String(user.role).trim() : 'customer_customers';
       const token = jwt.sign(
-        { id: user.id, username: user.username, role: user.role },
+        { id: user.id, username: user.username, role: roleForJwt },
         JWT_SECRET,
         { expiresIn: '8h' }
       );
-      res.json({ user: sanitizeUser(user), token });
+
+      // Embed allowedPaths so the client needs zero extra requests after login.
+      const allowedPaths = await resolveAllowedPaths(roleForJwt);
+      res.json({ user: sanitizeUser(user), token, allowedPaths });
     } catch (error) {
       console.error("Login route error:", error);
       res.status(500).json({ error: (error as Error).message });
@@ -323,7 +464,15 @@ async function startServer() {
         }
       });
       console.log(`Registration successful for: ${email}`);
-      res.json({ user: sanitizeUser(user) });
+      const roleForJwt = user.role != null && String(user.role).trim() !== '' ? String(user.role).trim() : 'customer_customers';
+      const token = jwt.sign(
+        { id: user.id, username: user.username, role: roleForJwt },
+        JWT_SECRET,
+        { expiresIn: '8h' }
+      );
+
+      const allowedPaths = await resolveAllowedPaths(roleForJwt);
+      res.json({ user: sanitizeUser(user), token, allowedPaths });
     } catch (error) {
       console.error("Register route error:", error);
       res.status(500).json({ error: (error as Error).message });
@@ -677,6 +826,9 @@ async function startServer() {
       }
       const result = unwrapDataIfNeeded(collection, data);
 
+      // Bust the permissions cache when an admin updates a rolePermission row
+      if (collection === 'rolePermissions') invalidatePermissionsCache(id);
+
       // For purchases, return original data merged with saved data
       if (collection === 'purchases') {
         res.json({ ...originalData, ...result, id: result.id });
@@ -1013,6 +1165,28 @@ async function startServer() {
           }
         });
         console.log("Default admin ensured: admin / password");
+      }
+
+      // Seed role permissions only for roles that have NO row yet.
+      // Existing rows are owned by the admin and are never overwritten here.
+      const DEFAULT_ROLE_PERMISSIONS: { id: string; allowedPaths: string[] }[] = [
+        { id: 'admin',              allowedPaths: ['*'] },
+        { id: 'manager',            allowedPaths: ['/dashboard','/production','/inventory','/procurement','/customers','/product-management','/pos','/b2b','/orders','/finance','/reports','/settings'] },
+        { id: 'cashier',            allowedPaths: ['/pos','/orders'] },
+        { id: 'baker',              allowedPaths: ['/production','/inventory'] },
+        { id: 'inventory',          allowedPaths: ['/inventory','/product-management'] },
+        { id: 'delivery_guy',       allowedPaths: ['/orders'] },
+        { id: 'customer_business',  allowedPaths: ['/b2b'] },
+        { id: 'customer_customers', allowedPaths: ['/pos'] },
+      ];
+      for (const rp of DEFAULT_ROLE_PERMISSIONS) {
+        const existing = await prisma.rolePermission.findUnique({ where: { id: rp.id } });
+        if (!existing) {
+          await prisma.rolePermission.create({
+            data: { id: rp.id, allowedPaths: JSON.stringify(rp.allowedPaths) }
+          });
+          console.log(`Seeded role permissions: ${rp.id} → ${rp.allowedPaths.join(', ')}`);
+        }
       }
 
       // Ensure categories exist

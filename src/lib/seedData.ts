@@ -3,13 +3,29 @@ import { Product, RawMaterial, Supplier, Customer, ProductionBatch, Sale, RolePe
 
 export const DEFAULT_PERMISSIONS: RolePermission[] = [
   { id: 'admin', allowedPaths: ['*'] },
-  { id: 'manager', allowedPaths: ['/dashboard', '/production', '/inventory', '/suppliers', '/product-management', '/orders', '/delivery', '/reports', '/sales-report', '/interview-questions', '/settings'] },
-  { id: 'cashier', allowedPaths: ['/dashboard', '/pos', '/orders', '/sales-report', '/interview-questions'] },
-  { id: 'baker', allowedPaths: ['/dashboard', '/production', '/inventory', '/interview-questions'] },
-  { id: 'inventory', allowedPaths: ['/dashboard', '/inventory', '/product-management', '/interview-questions'] },
-  { id: 'delivery_guy', allowedPaths: ['/dashboard', '/delivery', '/interview-questions'] },
-  { id: 'customer_business', allowedPaths: ['/dashboard', '/business', '/interview-questions'] },
-  { id: 'customer_customers', allowedPaths: ['/dashboard', '/pos', '/interview-questions'] },
+  {
+    id: 'manager',
+    allowedPaths: [
+      '/dashboard',
+      '/production',
+      '/inventory',
+      '/procurement',
+      '/customers',
+      '/product-management',
+      '/pos',
+      '/b2b',
+      '/orders',
+      '/finance',
+      '/reports',
+      '/settings',
+    ],
+  },
+  { id: 'cashier', allowedPaths: ['/dashboard', '/pos', '/orders'] },
+  { id: 'baker', allowedPaths: ['/dashboard', '/production', '/inventory'] },
+  { id: 'inventory', allowedPaths: ['/dashboard', '/inventory', '/product-management'] },
+  { id: 'delivery_guy', allowedPaths: ['/dashboard', '/orders'] },
+  { id: 'customer_business', allowedPaths: ['/dashboard', '/b2b'] },
+  { id: 'customer_customers', allowedPaths: ['/dashboard', '/pos'] },
 ];
 
 const PRODUCTS: Partial<Product>[] = [

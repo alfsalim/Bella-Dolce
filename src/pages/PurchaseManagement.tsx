@@ -12,6 +12,7 @@ import {
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
+import { authFetch } from '../lib/api-client';
 
 interface Purchase {
   id: string;
@@ -108,7 +109,7 @@ const PurchaseManagement: React.FC = () => {
   const fetchPurchases = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch('/api/db/purchases', {
+      const response = await authFetch('/api/db/purchases', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch purchases');
@@ -126,7 +127,7 @@ const PurchaseManagement: React.FC = () => {
   const fetchMaterials = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch('/api/db/rawMaterials', {
+      const response = await authFetch('/api/db/rawMaterials', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch materials');
@@ -141,7 +142,7 @@ const PurchaseManagement: React.FC = () => {
   const reconcileInventoryWithProduction = async (): Promise<void> => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const res = await fetch('/api/admin/reconcile-raw-inventory', {
+      const res = await authFetch('/api/admin/reconcile-raw-inventory', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -158,7 +159,7 @@ const PurchaseManagement: React.FC = () => {
   const fetchSuppliers = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch('/api/db/suppliers', {
+      const response = await authFetch('/api/db/suppliers', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch suppliers');
@@ -178,7 +179,7 @@ const PurchaseManagement: React.FC = () => {
       const token = localStorage.getItem('bakery_token');
 
       // Fetch fresh material data instead of using stale state
-      const freshResponse = await fetch(`/api/db/rawMaterials/${materialId}`, {
+      const freshResponse = await authFetch(`/api/db/rawMaterials/${materialId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!freshResponse.ok) {
@@ -192,7 +193,7 @@ const PurchaseManagement: React.FC = () => {
         ? currentStock + quantityChange
         : currentStock - quantityChange;
 
-      const response = await fetch(`/api/db/rawMaterials/${materialId}`, {
+      const response = await authFetch(`/api/db/rawMaterials/${materialId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -254,7 +255,7 @@ const PurchaseManagement: React.FC = () => {
           reader.onload = async () => {
             try {
               const base64 = (reader.result as string).split(',')[1];
-              const uploadRes = await fetch('/api/upload/invoice', {
+              const uploadRes = await authFetch('/api/upload/invoice', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -280,7 +281,7 @@ const PurchaseManagement: React.FC = () => {
         const quantityDifference = quantity - editingPurchase.quantity;
 
         const supplier = suppliers.find(s => s.id === formData.supplierId);
-        const response = await fetch(`/api/db/purchases/${editingPurchase.id}`, {
+        const response = await authFetch(`/api/db/purchases/${editingPurchase.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -332,7 +333,7 @@ const PurchaseManagement: React.FC = () => {
           createdBy: profile?.id
         };
 
-        const response = await fetch('/api/db/purchases', {
+        const response = await authFetch('/api/db/purchases', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -352,7 +353,7 @@ const PurchaseManagement: React.FC = () => {
             const newStock = previousStock + quantity;
 
             // Create stock movement record
-            await fetch('/api/db/stockMovements', {
+            await authFetch('/api/db/stockMovements', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -405,7 +406,7 @@ const PurchaseManagement: React.FC = () => {
       const newStock = (material.currentStock || 0) + purchase.quantity;
       const token = localStorage.getItem('bakery_token');
 
-      const response = await fetch(`/api/db/rawMaterials/${purchase.materialId}`, {
+      const response = await authFetch(`/api/db/rawMaterials/${purchase.materialId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -425,7 +426,7 @@ const PurchaseManagement: React.FC = () => {
 
       // Create stock movement record
       try {
-        const movementResponse = await fetch('/api/db/stockMovements', {
+        const movementResponse = await authFetch('/api/db/stockMovements', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -469,7 +470,7 @@ const PurchaseManagement: React.FC = () => {
 
     try {
       // Delete purchase
-      const response = await fetch(`/api/db/purchases/${purchase.id}`, {
+      const response = await authFetch(`/api/db/purchases/${purchase.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

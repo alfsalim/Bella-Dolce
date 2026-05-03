@@ -50,6 +50,7 @@ const ProductManagement: React.FC = () => {
 
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
+    nameAr: '',
     category: '',
     sellingPrice: 0,
     costPrice: 0,
@@ -260,6 +261,7 @@ const ProductManagement: React.FC = () => {
             if (prodSnap.exists()) {
               await setDoc(doc(db, 'products', currentEditingId), {
                 name: formData.name,
+                nameAr: formData.nameAr,
                 category: formData.category,
                 unit: formData.unit,
                 imageUrl: formData.imageUrl,
@@ -298,6 +300,7 @@ const ProductManagement: React.FC = () => {
       setEditingMaterial(null);
       setFormData({
         name: '',
+        nameAr: '',
         category: '',
         sellingPrice: 0,
         costPrice: 0,
@@ -653,7 +656,7 @@ const ProductManagement: React.FC = () => {
                     )}
                   </div>
                   <div className="p-6">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">{tProduct(item.name)}</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">{tProduct(item)}</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{tCategory(item.category)}</p>
                     
                     <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
@@ -690,7 +693,7 @@ const ProductManagement: React.FC = () => {
                               const packProduct = products.find(p => p.id === pItem.productId);
                               return (
                                 <div key={idx} className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 italic">
-                                  <span>• {packProduct ? tProduct(packProduct.name) : t('product')}</span>
+                                  <span>• {packProduct ? tProduct(packProduct) : t('product')}</span>
                                   <span>x{pItem.quantity}</span>
                                 </div>
                               );
@@ -700,7 +703,7 @@ const ProductManagement: React.FC = () => {
                               const mat = materials.find(m => m.id === ing.materialId);
                               return (
                                 <div key={idx} className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 italic">
-                                  <span>• {mat ? tProduct(mat.name) : t('material')}</span>
+                                  <span>• {mat ? tProduct(mat) : t('material')}</span>
                                   <span>{ing.quantity} {mat?.unit || 'g'}</span>
                                 </div>
                               );
@@ -765,7 +768,7 @@ const ProductManagement: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 dark:text-white">{tProduct(item.name)}</span>
+                            <span className="font-bold text-slate-900 dark:text-white">{tProduct(item)}</span>
                             {item.disabled && (
                               <span className="text-[8px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1 py-0.5 rounded uppercase font-bold tracking-wider">
                                 {t('disabled') || 'Disabled'}
@@ -821,6 +824,7 @@ const ProductManagement: React.FC = () => {
                                     setFormData({
                                       ...product,
                                       name: product.name || '',
+                                      nameAr: product.nameAr || '',
                                       category: product.category || '',
                                       sellingPrice: product.sellingPrice || 0,
                                       costPrice: product.costPrice || 0,
@@ -837,6 +841,7 @@ const ProductManagement: React.FC = () => {
                                     setFormData({
                                       ...material,
                                       name: material.name || '',
+                                      nameAr: material.nameAr || '',
                                       category: material.category || '',
                                       stock: material.currentStock || 0,
                                       minStock: material.minStock || 0,
@@ -896,7 +901,7 @@ const ProductManagement: React.FC = () => {
             
             <form onSubmit={handleSave} className="p-8 space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('type') || 'Type'}</label>
                   <select 
                     className="input"
@@ -925,6 +930,18 @@ const ProductManagement: React.FC = () => {
                     value={formData.name || ''}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('nameAr')}</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={formData.nameAr || ''}
+                    onChange={(e) => setFormData({ ...formData, nameAr: e.target.value || undefined })}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{t('nameArHint')}</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('category')} <span className="text-red-500">*</span></label>
@@ -1089,7 +1106,7 @@ const ProductManagement: React.FC = () => {
                           >
                             <option value="">{t('selectProduct')}</option>
                             {products.filter(p => p.id !== editingProduct?.id && !p.isPack).map(p => (
-                              <option key={p.id} value={p.id}>{tProduct(p.name)}</option>
+                              <option key={p.id} value={p.id}>{tProduct(p)}</option>
                             ))}
                           </select>
                         </div>
@@ -1142,7 +1159,7 @@ const ProductManagement: React.FC = () => {
                           >
                             <option value="">{t('selectMaterial')}</option>
                             {materials.map(m => (
-                              <option key={m.id} value={m.id}>{tProduct(m.name)} {m.brand ? `- ${m.brand}` : ''} ({m.unit})</option>
+                              <option key={m.id} value={m.id}>{tProduct(m)} {m.brand ? `- ${m.brand}` : ''} ({m.unit})</option>
                             ))}
                           </select>
                         </div>
@@ -1311,7 +1328,7 @@ const ProductManagement: React.FC = () => {
                   <span className="px-3 py-1 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full text-[10px] font-bold uppercase tracking-wider border border-primary-100 dark:border-primary-900/30 mb-2 inline-block">
                     {tCategory(selectedProductForDetails.category)}
                   </span>
-                  <h2 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(selectedProductForDetails.name)}</h2>
+                  <h2 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(selectedProductForDetails)}</h2>
                 </div>
                 <div className="text-right">
                   <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">{t('price')}</p>
@@ -1354,7 +1371,7 @@ const ProductManagement: React.FC = () => {
                         const packProduct = products.find(p => p.id === item.productId);
                         return (
                           <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-white/10">
-                            <span className="font-bold text-slate-700 dark:text-slate-300">{packProduct ? tProduct(packProduct.name) : t('product')}</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-300">{packProduct ? tProduct(packProduct) : t('product')}</span>
                             <span className="text-primary-600 dark:text-primary-400 font-bold">x{item.quantity}</span>
                           </div>
                         );
@@ -1364,7 +1381,7 @@ const ProductManagement: React.FC = () => {
                         const material = materials.find(m => m.id === ing.materialId);
                         return (
                           <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-white/10">
-                            <span className="font-bold text-slate-700 dark:text-slate-300">{material ? tProduct(material.name) : t('material')}</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-300">{material ? tProduct(material) : t('material')}</span>
                             <span className="text-primary-600 dark:text-primary-400 font-bold">{ing.quantity} {material?.unit || 'g'}</span>
                           </div>
                         );

@@ -351,7 +351,7 @@ const Orders: React.FC = () => {
                     return (
                       <tr key={idx}>
                         <td className="py-4">
-                          <p className="font-bold text-slate-900 dark:text-white print:text-black">{tProduct(product?.name || 'Unknown')}</p>
+                          <p className="font-bold text-slate-900 dark:text-white print:text-black">{product ? tProduct(product) : 'Unknown'}</p>
                         </td>
                         <td className="py-4 text-center font-bold text-slate-700 dark:text-slate-300 print:text-slate-700">x{item.quantity}</td>
                         <td className="py-4 text-right font-bold text-slate-700 dark:text-slate-300 print:text-slate-700">{item.price.toLocaleString()} {CURRENCY}</td>
@@ -569,7 +569,7 @@ const Orders: React.FC = () => {
                               />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{tProduct(product?.name || 'Unknown')}</p>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{product ? tProduct(product) : 'Unknown'}</p>
                               <p className="text-xs text-slate-500 dark:text-slate-400">x{item.quantity}</p>
                             </div>
                           </div>

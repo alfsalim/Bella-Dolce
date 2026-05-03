@@ -114,6 +114,7 @@ const ProductEdit: React.FC = () => {
       if (product.category === 'raw_material') {
         await setDoc(doc(db, 'rawMaterials', id), {
           name: product.name,
+          nameAr: product.nameAr,
           category: 'raw_material',
           unit: 'units',
           currentStock: product.stock,
@@ -185,7 +186,7 @@ const ProductEdit: React.FC = () => {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(product.name)}</h1>
+            <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(product)}</h1>
             <p className="text-slate-500 dark:text-zinc-500 font-medium">Modifier les détails du produit et la recette artisanale</p>
           </div>
         </div>
@@ -225,7 +226,7 @@ const ProductEdit: React.FC = () => {
               {t('generalInfo')}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-2">
+              <div>
                 <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('name')} <span className="text-red-500">*</span></label>
                 <input 
                   type="text" 
@@ -233,6 +234,19 @@ const ProductEdit: React.FC = () => {
                   value={product.name || ''}
                   onChange={(e) => setProduct({...product, name: e.target.value})}
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('nameAr')}</label>
+                <input 
+                  type="text" 
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700" 
+                  value={product.nameAr || ''}
+                  onChange={(e) => setProduct({...product, nameAr: e.target.value || undefined})}
+                  placeholder=""
+                />
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-xs text-slate-500 dark:text-zinc-500">{t('nameArHint')}</p>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('category')} <span className="text-red-500">*</span></label>
@@ -333,7 +347,7 @@ const ProductEdit: React.FC = () => {
                           onChange={(e) => updateIngredient(idx, 'materialId', e.target.value)}
                         >
                           <option value="">{t('selectIngredient')}</option>
-                          {materials.map(m => <option key={m.id} value={m.id}>{tProduct(m.name)} ({m.unit})</option>)}
+                          {materials.map(m => <option key={m.id} value={m.id}>{tProduct(m)} ({m.unit})</option>)}
                         </select>
                       </div>
                       <div className="w-24">
@@ -426,7 +440,7 @@ const ProductEdit: React.FC = () => {
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-100 dark:border-white/10 p-8">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">{t('artisanalTip')}</h3>
             <p className="text-slate-500 dark:text-zinc-400 text-sm mb-6 leading-relaxed">
-              Maintenir une température constante pendant la préparation de {tProduct(product.name)} est essentiel pour obtenir la texture artisanale parfaite.
+              Maintenir une température constante pendant la préparation de {tProduct(product)} est essentiel pour obtenir la texture artisanale parfaite.
             </p>
             <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-black rounded-2xl border border-slate-100 dark:border-white/5">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-500/20">

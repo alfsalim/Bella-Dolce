@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { ChefHat, ShieldCheck, TrendingUp, Package, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
+import { Eye, EyeOff, Loader2, ArrowRight, ShieldOff } from 'lucide-react';
+import { Link, Navigate } from 'react-router-dom';
+import { clsx } from 'clsx';
+import BrandLogo, { BRAND_LOGO_CHIP_CLASS, BRAND_LOGO_MARK_IMG_CLASS, BrandWordmark } from '../components/BrandLogo';
+import { getDefaultStaffLoginPath, isStaffRole } from '../lib/staff-nav';
 
 const Login: React.FC = () => {
-  const { login, register, user, profile, loading } = useAuth();
-  const { t } = useLanguage();
+  const { login, register, logout, user, profile, permissions, loading } = useAuth();
+  const { t, isRTL } = useLanguage();
   const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +29,11 @@ const Login: React.FC = () => {
         await login(username, password);
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      let msg = typeof err?.message === 'string' ? err.message : '';
+      if (!msg) setError(t('authErrorGeneric'));
+      else if (msg === 'Unauthorized') setError(t('authErrorSessionExpired'));
+      else if (/Forbidden|insufficient role/i.test(msg)) setError(t('authErrorInsufficientRole'));
+      else setError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -34,8 +41,32 @@ const Login: React.FC = () => {
 
   if (loading) return null;
   if (user) {
-    if (profile?.role === 'admin') {
-      return <Navigate to="/dashboard" replace />;
+    if (isStaffRole(profile?.role)) {
+      // Wait until permissions are resolved before redirecting.
+      if (permissions === null) {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black">
+            <Loader2 className="w-10 h-10 text-primary-600 animate-spin" aria-hidden />
+          </div>
+        );
+      }
+      const dest = getDefaultStaffLoginPath(permissions);
+      if (!dest) {
+        // User is authenticated but has no permitted pages — show a clear error.
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center gap-6 bg-slate-50 dark:bg-black p-8 text-center">
+            <ShieldOff className="w-14 h-14 text-red-400" />
+            <div>
+              <p className="text-lg font-bold text-slate-800 dark:text-white">{t('authErrorInsufficientRole')}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{profile?.role}</p>
+            </div>
+            <button onClick={logout} className="btn-primary">
+              {t('logout')}
+            </button>
+          </div>
+        );
+      }
+      return <Navigate to={dest} replace />;
     }
     return <Navigate to="/" replace />;
   }
@@ -46,68 +77,26 @@ const Login: React.FC = () => {
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary-600/5 rounded-full blur-[120px]"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/5 rounded-full blur-[120px]"></div>
 
-      <div className="w-full max-w-5xl grid md:grid-cols-2 gap-0 overflow-hidden rounded-3xl shadow-2xl bg-white dark:bg-[#0a0a0a] border border-slate-100 dark:border-[#2a1e17]">
-        {/* Brand Column */}
-        <div className="hidden md:flex flex-col justify-between p-12 bg-gradient-to-br from-primary-600 to-primary-700 relative overflow-hidden">
-          {/* Subtle dot pattern overlay */}
-          <div className="absolute inset-0 opacity-10" style={{
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.5) 1px, transparent 1px)',
-            backgroundSize: '20px 20px'
-          }}></div>
-
-          <div className="relative z-10">
-            <div className="flex items-center gap-4 mb-8">
-              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <ChefHat className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-4xl font-display font-bold text-white">Bella Dolce</h1>
-                <p className="text-primary-100 text-sm font-medium">Système de Gestion</p>
-              </div>
-            </div>
-            <p className="text-primary-50 text-sm max-w-xs opacity-90">Gestion intégrée pour votre boulangerie artisanale</p>
+      <div className="w-full max-w-5xl flex flex-col items-center">
+        <Link
+          to="/"
+          className="flex flex-col items-center gap-3 mb-8 group"
+          aria-label={t('loginBackHome')}
+        >
+          <div className={clsx(BRAND_LOGO_CHIP_CLASS, 'transition-transform group-hover:scale-105')}>
+            <BrandLogo imgClassName={BRAND_LOGO_MARK_IMG_CLASS} />
           </div>
+          <BrandWordmark className="h-9 sm:h-10" />
+        </Link>
 
-          {/* Features */}
-          <div className="relative z-10 space-y-4">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="w-5 h-5 text-primary-100 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium text-sm">Sécurité Renforcée</p>
-                <p className="text-primary-100 text-xs">Accès contrôlé par rôle</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <TrendingUp className="w-5 h-5 text-primary-100 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium text-sm">Analyses Temps Réel</p>
-                <p className="text-primary-100 text-xs">Ventes, inventaire, production</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <Package className="w-5 h-5 text-primary-100 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium text-sm">Gestion Intelligente</p>
-                <p className="text-primary-100 text-xs">Inventaire et production</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative z-10 pt-4 border-t border-white/20">
-            <p className="text-primary-50 text-xs opacity-75">© Bella Dolce 2024 • v1.0</p>
-          </div>
-        </div>
-
-        {/* Form Column */}
-        <div className="p-8 md:p-16 flex flex-col justify-center bg-white dark:bg-[#0a0a0a]">
+        <div className="w-full max-w-lg overflow-hidden rounded-3xl shadow-2xl bg-white dark:bg-[#0a0a0a] border border-slate-100 dark:border-[#2a1e17]">
+        <div className="p-8 md:p-14 flex flex-col justify-center bg-white dark:bg-[#0a0a0a]">
           <div className="mb-10">
             <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white">
-              {isRegistering ? 'Rejoignez-nous' : 'Bienvenue'}
+              {isRegistering ? t('loginTitleJoin') : t('welcome')}
             </h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
-              {isRegistering
-                ? 'Créez votre compte pour accéder au système.'
-                : 'Accédez à votre espace de gestion'}
+              {isRegistering ? t('loginSubtitleRegister') : t('loginSubtitleLogin')}
             </p>
           </div>
 
@@ -120,13 +109,13 @@ const Login: React.FC = () => {
           <form className="space-y-6" onSubmit={handleSubmit}>
             {isRegistering && (
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ml-1">
-                  Nom Complet <span className="text-red-500 ml-0.5">*</span>
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ms-1">
+                  {t('fullName')} <span className="text-red-500 ms-0.5">*</span>
                 </label>
                 <div className="relative">
                   <input
                     className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all text-sm text-slate-900 dark:text-white placeholder-slate-400"
-                    placeholder="Jean Dupont"
+                    placeholder={t('loginPlaceholderFullName')}
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -137,8 +126,8 @@ const Login: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ml-1">
-                Nom d'utilisateur <span className="text-red-500 ml-0.5">*</span>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ms-1">
+                {t('username')} <span className="text-red-500 ms-0.5">*</span>
               </label>
               <div className="relative">
                 <input
@@ -153,12 +142,12 @@ const Login: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ml-1">
-                Mot de passe <span className="text-red-500 ml-0.5">*</span>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest ms-1">
+                {t('password')} <span className="text-red-500 ms-0.5">*</span>
               </label>
               <div className="relative">
                 <input
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all text-sm text-slate-900 dark:text-white placeholder-slate-400 pr-12"
+                  className="w-full ps-4 pe-12 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all text-sm text-slate-900 dark:text-white placeholder-slate-400"
                   placeholder="••••••••"
                   type={showPassword ? "text" : "password"}
                   value={password}
@@ -168,7 +157,7 @@ const Login: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                  className="absolute end-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="w-5 h-5" />
@@ -187,41 +176,44 @@ const Login: React.FC = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  Connexion en cours...
+                  {t('loginSubmitting')}
                 </>
               ) : (
                 <>
-                  {isRegistering ? 'S\'inscrire' : t('login')}
+                  {isRegistering ? t('loginRegister') : t('login')}
                 </>
               )}
             </button>
 
             <div className="text-center space-y-4">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                {isRegistering ? 'Vous avez déjà un compte ?' : "Vous n'avez pas de compte ?"}{' '}
+                {isRegistering ? t('loginHasAccount') : t('loginNoAccount')}{' '}
                 <button
                   type="button"
                   onClick={() => setIsRegistering(!isRegistering)}
                   className="text-primary-600 font-bold hover:underline"
                 >
-                  {isRegistering ? 'Connectez-vous' : 'Inscrivez-vous'}
+                  {isRegistering ? t('loginToSignIn') : t('loginToSignUp')}
                 </button>
               </p>
 
               {!isRegistering && (
                 <div className="pt-4 border-t border-slate-100 dark:border-[#2a1e17]">
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-widest font-bold">Client Professionnel ?</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-widest font-bold">
+                    {t('loginB2bPrompt')}
+                  </p>
                   <a
                     href="/b2b-register"
                     className="inline-flex items-center gap-2 text-primary-600 font-bold text-sm hover:underline"
                   >
-                    Accès B2B
-                    <ArrowRight className="w-4 h-4" />
+                    {t('loginB2bAccess')}
+                    <ArrowRight className={clsx('w-4 h-4', isRTL && 'rotate-180')} />
                   </a>
                 </div>
               )}
             </div>
           </form>
+        </div>
         </div>
       </div>
     </main>

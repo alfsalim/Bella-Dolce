@@ -9,7 +9,7 @@ const PublicLayout: React.FC = () => {
   const { isRTL } = useLanguage();
 
   return (
-    <div className={clsx("min-h-screen bg-white flex flex-col overflow-x-hidden", isRTL ? "text-right" : "text-left")}>
+    <div className={clsx("min-h-screen bg-logo-light-canvas dark:bg-zinc-900 flex flex-col overflow-x-hidden", isRTL ? "text-right" : "text-left")}>
       <TopBar onMenuClick={() => {}} isPublic />
       <main className="flex-1">
         <AnimatePresence mode="wait">

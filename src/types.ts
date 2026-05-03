@@ -15,6 +15,8 @@ export interface UserProfile {
 export interface Product {
   id: string;
   name: string;
+  /** Optional Arabic display name when UI language is Arabic. Falls back to PRODUCT_NAMES map, then `name`. */
+  nameAr?: string;
   category: string;
   sellingPrice: number;
   costPrice: number;
@@ -58,6 +60,8 @@ export interface StockMovement {
 export interface RawMaterial {
   id: string;
   name: string;
+  /** Optional Arabic display name when UI language is Arabic. Falls back to PRODUCT_NAMES map, then `name`. */
+  nameAr?: string;
   category: string;
   unit: string;
   currentStock: number;

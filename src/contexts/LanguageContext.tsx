@@ -2,12 +2,19 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Language } from '../types';
 import { TRANSLATIONS, PRODUCT_NAMES, CATEGORY_NAMES, FINANCIAL_TRANSLATIONS } from '../constants';
 
+/** Primary catalog name, optional Arabic override stored on product/material documents. */
+export type ProductDisplayInput =
+  | string
+  | null
+  | undefined
+  | { name?: string | null; nameAr?: string | null };
+
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
   tf: (key: string) => string;
-  tProduct: (name: string) => string;
+  tProduct: (input: ProductDisplayInput) => string;
   tCategory: (category: string) => string;
   formatCurrency: (amount: number) => string;
   isRTL: boolean;
@@ -38,8 +45,23 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return FINANCIAL_TRANSLATIONS[language][key] || key;
   };
 
-  const tProduct = (name: string) => {
-    return PRODUCT_NAMES[language]?.[name] || name;
+  const tProduct = (input: ProductDisplayInput): string => {
+    if (input == null) return '';
+    if (typeof input === 'string') {
+      const name = input;
+      if (language === 'ar') return PRODUCT_NAMES.ar?.[name] ?? name;
+      return PRODUCT_NAMES.fr?.[name] ?? name;
+    }
+    const name = input.name ?? '';
+    const nameAr = input.nameAr;
+    if (language === 'ar') {
+      const ar = nameAr?.trim();
+      if (ar) return ar;
+      if (name) return PRODUCT_NAMES.ar?.[name] ?? name;
+      return '';
+    }
+    if (name) return PRODUCT_NAMES.fr?.[name] ?? name;
+    return '';
   };
 
   const tCategory = (category: string) => {

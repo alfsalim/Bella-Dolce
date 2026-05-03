@@ -18,6 +18,7 @@ import { db, collection, onSnapshot, handleFirestoreError, OperationType } from 
 import { Product, SaleItem, Customer } from '../types';
 import { clsx } from 'clsx';
 import { CATEGORIES, CURRENCY } from '../constants';
+import { authFetch } from '../lib/api-client';
 
 import { logActivity } from '../lib/logger';
 
@@ -96,7 +97,7 @@ const POS: React.FC = () => {
 
     try {
       const token = localStorage.getItem('bakery_token');
-      const res = await fetch('/api/sale', {
+      const res = await authFetch('/api/sale', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -202,7 +203,7 @@ const POS: React.FC = () => {
                 </div>
               <div className="p-4 flex flex-col flex-1 justify-between">
                 <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-base mb-2 line-clamp-2" title={tProduct(product.name)}>{tProduct(product.name)}</h3>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base mb-2 line-clamp-2" title={tProduct(product)}>{tProduct(product)}</h3>
                   <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
                 </div>
                 <div className="flex items-center justify-between mt-4 gap-2">
@@ -243,7 +244,7 @@ const POS: React.FC = () => {
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{tProduct(product?.name || '')}</h4>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{product ? tProduct(product) : ''}</h4>
                     <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">{(item.price * item.quantity).toLocaleString()} {CURRENCY}</p>
                   </div>
                   <div className="flex items-center gap-1.5 bg-white dark:bg-black rounded-lg p-2 border border-slate-200 dark:border-[#2a1e17]">

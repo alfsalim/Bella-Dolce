@@ -64,8 +64,8 @@ const Dashboard: React.FC = () => {
       unsubscribes.push(unsubscribeLogs);
     }
 
-    // Only subscribe to batches if staff or admin/manager
-    if (['admin', 'manager', 'baker', 'cashier'].includes(profile.role)) {
+    // Only subscribe to batches for roles that have server-side access
+    if (['admin', 'manager', 'baker'].includes(profile.role)) {
       const qBatches = query(collection(db, 'batches'), orderBy('startDate', 'desc'));
       const unsubscribeBatches = onSnapshot(qBatches, (snapshot) => {
         setBatches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductionBatch)));
@@ -274,7 +274,7 @@ const Dashboard: React.FC = () => {
               <div key={batch.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-white/5 hover:border-amber-500/20 transition-all group">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-amber-500 uppercase tracking-widest">
-                    {tProduct(products.find(p => p.id === batch.productId)?.name || 'Product')}
+                    {tProduct(products.find(p => p.id === batch.productId) ?? { name: 'Product' })}
                   </span>
                   <div className={clsx(
                     "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
@@ -345,7 +345,7 @@ const Dashboard: React.FC = () => {
                     <Package className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">{tProduct(product.name)}</h4>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">{tProduct(product)}</h4>
                     <p className="text-xs text-red-400 font-semibold">{product.stock} {t('units')} {t('left')}</p>
                   </div>
                 </div>

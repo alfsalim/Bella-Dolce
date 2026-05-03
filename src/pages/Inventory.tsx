@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, limit, handleFirestoreError, OperationType, getCountFromServer, where, getDoc, getDocs, Timestamp } from '../lib/firebase-compat';
+import { authFetch } from '../lib/api-client';
 import { Product, RawMaterial, StockMovement, Recipe } from '../types';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
@@ -420,7 +421,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const fetchSuppliers = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch('/api/db/suppliers', {
+      const response = await authFetch('/api/db/suppliers', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -435,7 +436,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const getLastPurchaseForMaterial = async (materialId: string) => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await fetch(`/api/db/purchases?materialId=${materialId}`, {
+      const response = await authFetch(`/api/db/purchases?materialId=${materialId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -481,7 +482,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     const token = localStorage.getItem('bakery_token');
     try {
       const supplier = suppliers.find(s => s.id === purchaseFormData.supplierId);
-      const response = await fetch('/api/db/purchases', {
+      const response = await authFetch('/api/db/purchases', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -508,7 +509,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
 
       // Add to inventory
       const newStock = (selectedMaterialForPurchase.currentStock || 0) + purchaseFormData.quantity;
-      const updateResponse = await fetch(`/api/db/rawMaterials/${selectedMaterialForPurchase.id}`, {
+      const updateResponse = await authFetch(`/api/db/rawMaterials/${selectedMaterialForPurchase.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1076,7 +1077,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <h3 className="font-bold text-slate-900 dark:text-white text-lg">{tProduct(product.name)}</h3>
+                      <h3 className="font-bold text-slate-900 dark:text-white text-lg">{tProduct(product)}</h3>
                       <p className="text-sm font-bold text-primary-600 dark:text-primary-400">{product.sellingPrice.toLocaleString()} {CURRENCY}</p>
                     </div>
                     <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-900 text-slate-400 transition-all">
@@ -1163,7 +1164,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           const packProduct = products.find(p => p.id === item.productId);
                           return (
                             <div key={idx} className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 italic">
-                              <span>• {packProduct ? tProduct(packProduct.name) : t('product')}</span>
+                              <span>• {packProduct ? tProduct(packProduct) : t('product')}</span>
                               <span>x{item.quantity}</span>
                             </div>
                           );
@@ -1173,7 +1174,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           const material = materials.find(m => m.id === ing.materialId);
                           return (
                             <div key={idx} className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 italic">
-                              <span>• {material ? tProduct(material.name) : t('material')}</span>
+                              <span>• {material ? tProduct(material) : t('material')}</span>
                               <span>{ing.quantity} {material?.unit || 'g'}</span>
                             </div>
                           );
@@ -1261,7 +1262,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                               referrerPolicy="no-referrer"
                             />
                           </div>
-                          <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap">{tProduct(product.name)}</span>
+                          <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap">{tProduct(product)}</span>
                         </div>
                       </td>
                       <td className="px-8 py-5">
@@ -1497,7 +1498,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">{material.brand || 'Artisanal'}</p>
-                        <h3 className="font-bold text-slate-900 dark:text-white">{tProduct(material.name)}</h3>
+                        <h3 className="font-bold text-slate-900 dark:text-white">{tProduct(material)}</h3>
                       </div>
                       <div className="text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -1587,7 +1588,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         )}
                       </div>
                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap">{tProduct(material.name)}</span>
+                        <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap">{tProduct(material)}</span>
                         {material.brand && (
                           <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{material.brand}</span>
                         )}
@@ -1724,7 +1725,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       <span className="px-3 py-1 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full text-[10px] font-bold uppercase tracking-wider border border-primary-100 dark:border-primary-900/30 mb-2 inline-block">
                         {tCategory(selectedProduct.category)}
                       </span>
-                      <h2 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(selectedProduct.name)}</h2>
+                      <h2 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(selectedProduct)}</h2>
                     </>
                   )}
                 </div>
@@ -1956,7 +1957,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           >
                             <option value="">{t('selectProduct')}</option>
                             {products.filter(p => p.id !== selectedProduct.id).map(p => (
-                              <option key={p.id} value={p.id}>{tProduct(p.name)}</option>
+                              <option key={p.id} value={p.id}>{tProduct(p)}</option>
                             ))}
                           </select>
                           <input 
@@ -1994,7 +1995,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                           >
                             <option value="">{t('selectMaterial')}</option>
                             {materials.map(m => (
-                              <option key={m.id} value={m.id}>{tProduct(m.name)}</option>
+                              <option key={m.id} value={m.id}>{tProduct(m)}</option>
                             ))}
                           </select>
                           <input 
@@ -2025,7 +2026,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         const packProduct = products.find(p => p.id === item.productId);
                         return (
                           <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-white/10">
-                            <span className="font-bold text-slate-700 dark:text-slate-300">{packProduct ? tProduct(packProduct.name) : t('product')}</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-300">{packProduct ? tProduct(packProduct) : t('product')}</span>
                             <span className="text-primary-600 dark:text-primary-400 font-bold">x{item.quantity}</span>
                           </div>
                         );
@@ -2035,7 +2036,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         const material = materials.find(m => m.id === ing.materialId);
                         return (
                           <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-white/10">
-                            <span className="font-bold text-slate-700 dark:text-slate-300">{material ? tProduct(material.name) : t('material')}</span>
+                            <span className="font-bold text-slate-700 dark:text-slate-300">{material ? tProduct(material) : t('material')}</span>
                             <span className="text-primary-600 dark:text-primary-400 font-bold">{ing.quantity} {material?.unit || 'g'}</span>
                           </div>
                         );
@@ -2658,7 +2659,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             wasteQuantity: inventoryFormData.wasteQuantity
                           };
 
-                      const response = await fetch(endpoint, {
+                      const response = await authFetch(endpoint, {
                         method: 'PUT',
                         headers: {
                           'Content-Type': 'application/json',

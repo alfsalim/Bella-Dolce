@@ -1,29 +1,16 @@
 import React from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  ChefHat, 
-  Package, 
-  ShoppingCart, 
-  Users, 
-  BarChart3, 
-  Settings,
-  LogOut,
-  Home,
-  Store,
-  ClipboardList,
-  Wallet,
-  Truck
-} from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
 import { APP_VERSION } from '../constants';
+import { getFilteredNavItems } from '../lib/staff-nav';
 
 import { motion, AnimatePresence } from 'motion/react';
 
 import BilingualLabel from './BilingualLabel';
-import BrandLogo from './BrandLogo';
+import BrandLogo, { BRAND_LOGO_MARK_IMG_CLASS, BrandWordmark } from './BrandLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -31,29 +18,10 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { t, isRTL } = useLanguage();
-  const { logout, profile, permissions } = useAuth();
+  const { isRTL } = useLanguage();
+  const { logout, permissions } = useAuth();
 
-  const navItems = [
-    { icon: LayoutDashboard, tKey: 'dashboard', path: '/dashboard' },
-    { icon: ChefHat, tKey: 'production', path: '/production' },
-    { icon: Package, tKey: 'inventory', path: '/inventory' },
-    { icon: Truck, tKey: 'procurementAndSuppliers', path: '/procurement' },
-    { icon: Users, tKey: 'customers', path: '/customers' },
-    { icon: ChefHat, tKey: 'recipesAndProducts', path: '/product-management' },
-    { icon: ShoppingCart, tKey: 'pos', path: '/pos' },
-    { icon: ShoppingCart, tKey: 'businessStore', path: '/b2b' },
-    { icon: ClipboardList, tKey: 'orders', path: '/orders' },
-    { icon: Wallet, tKey: 'finance', path: '/finance' },
-    { icon: BarChart3, tKey: 'reports', path: '/reports' },
-    { icon: Settings, tKey: 'settings', path: '/settings' },
-  ];
-
-  const filteredNavItems = navItems.filter(item => {
-    if (!permissions) return false;
-    if (permissions.includes('*')) return true;
-    return permissions.includes(item.path);
-  });
+  const filteredNavItems = getFilteredNavItems(permissions);
 
   return (
     <>
@@ -78,12 +46,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         <Link 
           to="/" 
           onClick={onClose}
-          className="p-6 flex items-center gap-3 border-b border-black/[0.06] dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.06] transition-all"
+          className="p-6 flex flex-col items-center gap-2 border-b border-black/[0.06] dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.06] transition-all"
         >
-          <BrandLogo imgClassName="w-12 h-12 rounded-xl object-contain dark:bg-transparent" />
-          <span className="font-display font-bold text-xl text-slate-900 dark:text-white tracking-tight">
-            Bella Dolce
-          </span>
+          <BrandLogo imgClassName={BRAND_LOGO_MARK_IMG_CLASS} />
+          <BrandWordmark />
         </Link>
 
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
@@ -110,15 +76,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         </nav>
 
       <div className="p-4 mt-auto border-t border-black/[0.06] dark:border-white/10">
-        <div className="flex items-center gap-3 px-4 py-3 mb-2">
-          <div className="w-10 h-10 bg-primary-50 dark:bg-white/[0.08] rounded-full flex items-center justify-center text-primary-600 font-bold border border-primary-100 dark:border-white/10">
-            {profile?.name?.charAt(0)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{profile?.name}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 truncate capitalize">{profile?.role}</p>
-          </div>
-        </div>
         <button 
           onClick={logout}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"

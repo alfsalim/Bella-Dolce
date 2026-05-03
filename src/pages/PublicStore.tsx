@@ -13,9 +13,7 @@ import {
   OperationType 
 } from '../lib/firebase-compat';
 import { 
-  ChefHat, 
   ShoppingBag, 
-  Search, 
   Filter, 
   Plus, 
   Minus, 
@@ -29,13 +27,14 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCart } from '../contexts/CartContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { logActivity } from '../lib/logger';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { Product, Promotion } from '../types';
 import { CURRENCY } from '../constants';
 import Pagination from '../components/Pagination';
+import { BrandWordmark } from '../components/BrandLogo';
 
 const PublicStore: React.FC = () => {
   console.log('PublicStore rendering');
@@ -44,13 +43,12 @@ const PublicStore: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 25;
-  const { t } = useLanguage();
+  const { t, tCategory, tProduct, isRTL } = useLanguage();
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -99,50 +97,56 @@ const PublicStore: React.FC = () => {
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    return matchesCategory;
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-black font-sans text-slate-900 dark:text-white transition-colors duration-300">
+    <div className="min-h-screen font-sans text-slate-900 dark:text-white transition-colors duration-300">
       {/* Hero Section */}
-      <header className="pt-20 pb-20 px-6 max-w-7xl mx-auto grid md:grid-cols-2 gap-12 items-center">
-        <div className="space-y-8">
+      <header className="pt-20 pb-20 px-6 max-w-7xl mx-auto grid md:grid-cols-2 gap-12 md:min-h-[calc(100svh-5rem)] md:items-center">
+        <div className="flex flex-col justify-center space-y-8">
+          <Link
+            to="/"
+            className="inline-flex w-full justify-center md:justify-start group"
+            aria-label="Bella Dolce"
+          >
+            <BrandWordmark className="h-10 sm:h-12 max-w-[min(100%,18rem)] mx-auto md:mx-0" />
+          </Link>
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 text-amber-500 rounded-full text-xs font-bold uppercase tracking-widest">
             <Star className="w-4 h-4 fill-amber-500" />
-            Élu Meilleur Artisan 2024
+            {t('publicHeroBadge')}
           </div>
           <h1 className="font-display font-extrabold text-6xl md:text-7xl leading-[0.9] tracking-tighter text-slate-900 dark:text-white">
-            L'Art du Pain <br />
-            <span className="text-amber-600 dark:text-amber-500">Réinventé.</span>
+            {t('publicHeroTitleLine1')} <br />
+            <span className="text-amber-600 dark:text-amber-500">{t('publicHeroTitleHighlight')}</span>
           </h1>
           <p className="text-slate-600 dark:text-zinc-400 text-lg max-w-md leading-relaxed">
-            Découvrez nos créations artisanales, pétries avec passion et cuites au feu de bois chaque matin.
+            {t('publicHeroSubtitle')}
           </p>
           <div className="flex flex-wrap gap-4">
             <button 
               onClick={() => document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' })}
               className="px-8 py-4 bg-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
             >
-              Commander Maintenant
-              <ArrowRight className="w-5 h-5" />
+              {t('publicCtaOrder')}
+              <ArrowRight className={clsx('w-5 h-5', isRTL && 'rotate-180')} />
             </button>
             <button 
               onClick={() => document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' })}
               className="px-8 py-4 bg-white dark:bg-black border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-bold rounded-2xl hover:bg-slate-50 dark:hover:bg-zinc-900 transition-all shadow-sm dark:shadow-none"
             >
-              Voir le Menu
+              {t('publicCtaMenu')}
             </button>
           </div>
           <div className="flex items-center gap-8 pt-4 border-t border-slate-100 dark:border-white/10">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-amber-600 dark:text-amber-500" />
-              <span className="text-sm font-bold text-slate-500 dark:text-zinc-400">Prêt en 15 min</span>
+              <span className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('publicReadyTime')}</span>
             </div>
             <div className="flex items-center gap-2">
               <Truck className="w-5 h-5 text-amber-600 dark:text-amber-500" />
-              <span className="text-sm font-bold text-slate-500 dark:text-zinc-400">Livraison Gratuite</span>
+              <span className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('publicFreeDelivery')}</span>
             </div>
           </div>
         </div>
@@ -156,7 +160,7 @@ const PublicStore: React.FC = () => {
           >
             <img 
               src={promotions[0]?.imageUrl || "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&q=80&w=1000"} 
-              alt={promotions[0]?.title || "Artisanal Bread"} 
+              alt={promotions[0]?.title || t('publicArtisanBreadAlt')} 
               className="w-full aspect-square object-cover rounded-[40px] shadow-2xl border border-slate-100 dark:border-white/10 transition-transform duration-700 group-hover:scale-[1.02]"
               referrerPolicy="no-referrer"
             />
@@ -170,7 +174,7 @@ const PublicStore: React.FC = () => {
               >
                 <div className="flex items-center gap-2 mb-2">
                   <div className="px-2 py-0.5 bg-amber-500 text-black text-[10px] font-black uppercase tracking-tighter rounded-md">
-                    PROMO
+                    {t('publicPromoLabel')}
                   </div>
                   <h3 className="text-xl font-bold text-white tracking-tight">{promotions[0].title}</h3>
                 </div>
@@ -188,8 +192,8 @@ const PublicStore: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16">
             <div>
-              <h2 className="font-display font-extrabold text-4xl text-slate-900 dark:text-white mb-4 tracking-tight">Nos Créations</h2>
-              <p className="text-slate-500 dark:text-zinc-400 max-w-md">Chaque produit est unique, fabriqué à partir de farines locales et de levain naturel.</p>
+              <h2 className="font-display font-extrabold text-4xl text-slate-900 dark:text-white mb-4 tracking-tight">{t('publicCreationsTitle')}</h2>
+              <p className="text-slate-500 dark:text-zinc-400 max-w-md">{t('publicCreationsSubtitle')}</p>
             </div>
             
             <div className="flex flex-wrap gap-2">
@@ -204,7 +208,7 @@ const PublicStore: React.FC = () => {
                       : "bg-slate-50 dark:bg-black text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-zinc-800"
                   )}
                 >
-                  {cat === 'All' ? 'Tous' : cat}
+                  {cat === 'All' ? t('all') : tCategory(cat)}
                 </button>
               ))}
             </div>
@@ -224,12 +228,12 @@ const PublicStore: React.FC = () => {
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute top-4 right-4 px-3 py-1 bg-white/80 dark:bg-black/80 backdrop-blur-md rounded-full text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-500 border border-slate-100 dark:border-white/10">
-                    {product.category}
+                  <div className="absolute top-4 end-4 px-3 py-1 bg-white/80 dark:bg-black/80 backdrop-blur-md rounded-full text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-500 border border-slate-100 dark:border-white/10">
+                    {tCategory(product.category)}
                   </div>
                 </div>
                 <div className="px-2">
-                  <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-2">{product.name}</h3>
+                  <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-2">{tProduct(product)}</h3>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-2xl font-display font-extrabold text-amber-600 dark:text-amber-500">
                       {product.sellingPrice.toLocaleString()} {CURRENCY}
@@ -278,7 +282,7 @@ const PublicStore: React.FC = () => {
               <div className="p-8 border-b border-slate-100 dark:border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <ShoppingBag className="w-6 h-6 text-amber-600 dark:text-amber-500" />
-                  <h2 className="font-display font-bold text-xl text-slate-900 dark:text-white">Votre Panier</h2>
+                  <h2 className="font-display font-bold text-xl text-slate-900 dark:text-white">{t('cartYourCart')}</h2>
                 </div>
                 <button 
                   onClick={() => setIsCartOpen(false)}
@@ -294,12 +298,12 @@ const PublicStore: React.FC = () => {
                     <div className="w-20 h-20 bg-slate-50 dark:bg-zinc-900 rounded-full flex items-center justify-center border border-slate-100 dark:border-white/5">
                       <ShoppingBag className="w-10 h-10 text-slate-300 dark:text-zinc-700" />
                     </div>
-                    <p className="text-slate-500 dark:text-zinc-500 font-medium">Votre panier est vide.</p>
+                    <p className="text-slate-500 dark:text-zinc-500 font-medium">{t('cartEmpty')}</p>
                     <button 
                       onClick={() => setIsCartOpen(false)}
                       className="text-amber-600 dark:text-amber-500 font-bold hover:underline"
                     >
-                      Continuer mes achats
+                      {t('cartContinueShopping')}
                     </button>
                   </div>
                 ) : (
@@ -307,12 +311,12 @@ const PublicStore: React.FC = () => {
                     <div key={item.id} className="flex gap-4">
                       <img 
                         src={item.imageUrl || `https://picsum.photos/seed/${item.name}/100/100`} 
-                        alt={item.name}
+                        alt={tProduct(item)}
                         className="w-20 h-20 object-cover rounded-2xl border border-slate-100 dark:border-white/5"
                         referrerPolicy="no-referrer"
                       />
                       <div className="flex-1">
-                        <h4 className="font-bold text-slate-900 dark:text-white">{item.name}</h4>
+                        <h4 className="font-bold text-slate-900 dark:text-white">{tProduct(item)}</h4>
                         <p className="text-sm text-slate-500 dark:text-zinc-500 mb-2">{item.sellingPrice.toLocaleString()} {CURRENCY}</p>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center bg-slate-50 dark:bg-zinc-900 rounded-lg p-1 border border-slate-200 dark:border-white/5">
@@ -346,15 +350,15 @@ const PublicStore: React.FC = () => {
               {cart.length > 0 && (
                 <div className="p-8 bg-slate-50 dark:bg-zinc-900/50 border-t border-slate-100 dark:border-white/10 space-y-4">
                   <div className="flex items-center justify-between text-lg font-bold text-slate-900 dark:text-white">
-                    <span>Total</span>
+                    <span>{t('total')}</span>
                     <span className="text-amber-600 dark:text-amber-500">{cartTotal.toLocaleString()} {CURRENCY}</span>
                   </div>
                   <button 
                     onClick={handleCheckout}
                     className="w-full py-4 bg-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
-                    Confirmer la Commande
-                    <ChevronRight className="w-5 h-5" />
+                    {t('cartConfirmOrder')}
+                    <ChevronRight className={clsx('w-5 h-5', isRTL && 'rotate-180')} />
                   </button>
                 </div>
               )}
