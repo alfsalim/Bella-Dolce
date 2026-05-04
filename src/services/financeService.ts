@@ -178,10 +178,27 @@ export const financeService = {
 
   async addFinancialEmployee(employee: Omit<FinancialEmployee, 'createdAt'>): Promise<string> {
     try {
-      const data = {
-        ...employee,
-        createdAt: new Date().toISOString()
+      const data: Record<string, unknown> = {
+        id: employee.id,
+        name: employee.name,
+        role: employee.role,
+        email: employee.email ?? null,
+        phone: employee.phone ?? null,
+        nin: employee.nin ?? null,
+        cnasNumber: employee.cnasNumber ?? null,
+        department: employee.department ?? null,
+        hireDate: employee.hireDate,
+        baseSalary: employee.baseSalary,
+        transportAllowance: employee.transportAllowance ?? 0,
+        performanceBonus: employee.performanceBonus ?? 0,
+        otherAllowances: employee.otherAllowances ?? 0,
+        contributesToCNAS: employee.contributesToCNAS !== false,
+        bankRIB: employee.bankRIB ?? null,
+        status: employee.status ?? 'ACTIF',
+        createdAt: new Date().toISOString(),
       };
+      const matriculeTrim = employee.matricule?.trim();
+      data.matricule = matriculeTrim || `EMP-${String(employee.id).replace(/-/g, '')}`;
       await setDoc(doc(db, 'financialEmployees', employee.id), data);
       return employee.id;
     } catch (error) {

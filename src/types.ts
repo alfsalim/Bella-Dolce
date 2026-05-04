@@ -346,6 +346,27 @@ export interface SupplierInvoice {
   createdAt: string;
 }
 
+/** Record returned by `/api/db/fixedAssets` (aligned with Prisma `FixedAsset`). */
+export interface FixedAssetDbRow {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  location?: string | null;
+  acquisitionCost: number;
+  usefulLifeYears: number;
+  salvageValue: number;
+  depreciationMethod: string;
+  notes?: string | null;
+  lastMaintenanceAt?: string | null;
+  nextMaintenanceAt?: string | null;
+  maintenanceNotes?: string | null;
+  status: string;
+  acquisitionDate: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CustomerInvoice {
   id: string;
   invoiceNumber: string;

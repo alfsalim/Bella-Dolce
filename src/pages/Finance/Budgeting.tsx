@@ -34,7 +34,7 @@ const BUDGET_MOCK_ITEMS = [
   ];
 
 const Budgeting: React.FC = () => {
-  const { formatCurrency, isRTL } = useLanguage();
+  const { formatCurrency, isRTL, tf } = useLanguage();
   const [activeSubTab, setActiveSubTab] = useState('overview');
   const [budgetPage, setBudgetPage] = useState(1);
 
@@ -82,7 +82,7 @@ const Budgeting: React.FC = () => {
       {activeSubTab === 'overview' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white">Budget vs Actual (March 2026)</h3>
+            <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white">{tf('budgetVsActual')}</h3>
             <div className="flex items-center gap-2">
               <button className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20">
                 <Plus className="w-5 h-5" />
@@ -102,19 +102,19 @@ const Budgeting: React.FC = () => {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
                       <h4 className="font-bold text-slate-900 dark:text-white">{item.name}</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Monthly Allocation</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{tf('budgetMonthlyAllocation')}</p>
                     </div>
                     <div className="flex items-center gap-8">
                       <div className="text-right">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Budgeted</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{tf('budgetColumnBudgeted')}</p>
                         <p className="font-bold text-slate-900 dark:text-white">{formatCurrency(item.budget)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Actual</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{tf('budgetColumnActual')}</p>
                         <p className="font-bold text-slate-900 dark:text-white">{formatCurrency(item.actual)}</p>
                       </div>
                       <div className="text-right min-w-[100px]">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Variance</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{tf('budgetVarianceLabel')}</p>
                         <p className={clsx(
                           "font-bold",
                           item.variance >= 0 ? "text-emerald-600" : "text-rose-600"
@@ -127,7 +127,7 @@ const Budgeting: React.FC = () => {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500 dark:text-slate-400">Utilization</span>
+                      <span className="text-slate-500 dark:text-slate-400">{tf('budgetUtilization')}</span>
                       <span className={clsx(
                         "font-bold",
                         percentage > 100 ? "text-rose-600" : "text-emerald-600"
@@ -160,8 +160,8 @@ const Budgeting: React.FC = () => {
       {activeSubTab === 'planning' && (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <Calculator className="w-16 h-16 mb-4 opacity-20" />
-          <p className="font-medium">Budget Planning Module coming soon</p>
-          <p className="text-sm">Scenario analysis and forecasting engine is active</p>
+          <p className="font-medium">{tf('budgetingModuleSoon')}</p>
+          <p className="text-sm">{tf('scenarioEngineActive')}</p>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Language } from '../types';
-import { TRANSLATIONS, PRODUCT_NAMES, CATEGORY_NAMES, FINANCIAL_TRANSLATIONS } from '../constants';
+import { TRANSLATIONS, PRODUCT_NAMES, CATEGORY_NAMES, FINANCIAL_TRANSLATIONS, CURRENCY } from '../constants';
 
 /** Primary catalog name, optional Arabic override stored on product/material documents. */
 export type ProductDisplayInput =
@@ -17,6 +17,8 @@ interface LanguageContextType {
   tProduct: (input: ProductDisplayInput) => string;
   tCategory: (category: string) => string;
   formatCurrency: (amount: number) => string;
+  /** "DA" in French; "دج" in Arabic (display suffix for amounts). */
+  currencyUnit: string;
   isRTL: boolean;
   isBilingual: boolean;
   toggleBilingual: () => void;
@@ -68,13 +70,15 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return CATEGORY_NAMES[language]?.[category] || category;
   };
 
+  const currencyUnit = language === 'ar' ? 'دج' : CURRENCY;
+
   const formatCurrency = (amount: number) => {
     const formatted = new Intl.NumberFormat(language === 'ar' ? 'ar-DZ' : 'fr-DZ', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
-    
-    return language === 'ar' ? `${formatted} د.ج` : `${formatted} DA`;
+
+    return `${formatted} ${currencyUnit}`;
   };
 
   const isRTL = language === 'ar';
@@ -89,6 +93,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       tProduct, 
       tCategory, 
       formatCurrency,
+      currencyUnit,
       isRTL, 
       isBilingual, 
       toggleBilingual 

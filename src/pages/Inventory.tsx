@@ -32,7 +32,7 @@ import { Product, RawMaterial, StockMovement, Recipe } from '../types';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
-import { CATEGORIES, UNITS, CURRENCY, PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
+import { CATEGORIES, UNITS, PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
 import { compressImage } from '../lib/utils';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
@@ -42,7 +42,7 @@ interface InventoryProps {
 }
 
 const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
-  const { t, isRTL, tProduct, tCategory } = useLanguage();
+  const { t, isRTL, tProduct, tCategory, currencyUnit } = useLanguage();
   const { profile: currentUserProfile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
@@ -1165,7 +1165,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="font-bold text-slate-900 dark:text-white text-lg">{tProduct(product)}</h3>
-                      <p className="text-sm font-bold text-primary-600 dark:text-primary-400">{product.sellingPrice.toLocaleString()} {CURRENCY}</p>
+                      <p className="text-sm font-bold text-primary-600 dark:text-primary-400">{product.sellingPrice.toLocaleString()} {currencyUnit}</p>
                     </div>
                     <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-900 text-slate-400 transition-all">
                       <MoreVertical className="w-5 h-5" />
@@ -1777,7 +1777,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                               {(lastBatch.endDate || lastBatch.startDate) ? (() => { const d = lastBatch.endDate || lastBatch.startDate; return <span> · {new Date(Number(d) || d).toLocaleDateString()} {new Date(Number(d) || d).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>; })() : null}
                             </span>
                           ) : (
-                            <span className="italic text-slate-400 dark:text-slate-500">No production batch recorded</span>
+                            <span className="italic text-slate-400 dark:text-slate-500">{t('noProductionBatchRecorded')}</span>
                           )}
                         </div>
                       )}
@@ -1926,10 +1926,10 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         value={editFormData.sellingPrice || 0}
                         onChange={(e) => setEditFormData({...editFormData, sellingPrice: Number(e.target.value)})}
                       />
-                      <span className="text-xs font-bold text-slate-500">{CURRENCY}</span>
+                      <span className="text-xs font-bold text-slate-500">{currencyUnit}</span>
                     </div>
                   ) : (
-                    <p className="text-xl font-bold text-primary-600 dark:text-primary-400">{selectedProduct.sellingPrice} {CURRENCY}</p>
+                    <p className="text-xl font-bold text-primary-600 dark:text-primary-400">{selectedProduct.sellingPrice} {currencyUnit}</p>
                   )}
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10">
@@ -2442,7 +2442,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                     type="number" 
                     step="0.001"
                     className="input w-full bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white" 
-                    placeholder="0.00" 
+                    placeholder={t('placeholderNumeric')} 
                     required
                     value={adjustmentData.quantity || ''}
                     onChange={(e) => setAdjustmentData({...adjustmentData, quantity: Number(e.target.value)})}
@@ -2600,7 +2600,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         {lastBatch.createdBy ? ` · ${lastBatch.createdBy}` : ''}
                       </span>
                     ) : (
-                      <span className="italic text-slate-400 dark:text-slate-500">No production batch recorded</span>
+                      <span className="italic text-slate-400 dark:text-slate-500">{t('noProductionBatchRecorded')}</span>
                     )}
                   </div>
                 )}
@@ -2752,7 +2752,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       ('currentStock' in selectedItemForInventory
                         ? (inventoryFormData.currentStock + inventoryFormData.wasteQuantity)
                         : (inventoryFormData.shopStock + inventoryFormData.freezerStock + inventoryFormData.wasteQuantity))
-                    ).toFixed(2)} {CURRENCY}
+                    ).toFixed(2)} {currencyUnit}
                   </p>
                 </div>
               </div>

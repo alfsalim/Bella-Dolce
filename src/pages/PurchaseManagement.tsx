@@ -65,6 +65,8 @@ interface RawMaterial {
 
 const PurchaseManagement: React.FC = () => {
   const { t, formatCurrency } = useLanguage();
+  const tx = (key: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{{${k}}}`, v), t(key));
   const { profile } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
@@ -134,7 +136,7 @@ const PurchaseManagement: React.FC = () => {
       setPurchases(data || []);
     } catch (error) {
       console.error('Error fetching purchases:', error);
-      toast.error('Failed to load purchases');
+      toast.error(t('purchaseLoadFailed'));
     } finally {
       if (showSpinner) {
         setLoading(false);
@@ -240,7 +242,7 @@ const PurchaseManagement: React.FC = () => {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Inventory update error:', errorData);
-        toast.error(`Inventory update failed: ${errorData.error}`);
+        toast.error(tx('inventoryUpdateFailed', { msg: String(errorData.error ?? '') }));
         return;
       }
 
@@ -252,7 +254,7 @@ const PurchaseManagement: React.FC = () => {
       ));
     } catch (error) {
       console.error('Error updating inventory:', error);
-      toast.error(`Inventory sync error: ${error}`);
+      toast.error(tx('inventorySyncError', { msg: String(error) }));
     }
   };
 
@@ -261,19 +263,19 @@ const PurchaseManagement: React.FC = () => {
 
     const material = materials.find(m => m.id === formData.materialId);
     if (!material) {
-      toast.error('Please select a material');
+      toast.error(t('purchaseSelectMaterial'));
       return;
     }
 
     if (!formData.supplierId) {
-      toast.error('Please select a supplier');
+      toast.error(t('purchaseSelectSupplier'));
       return;
     }
 
     const quantity = roundPurchaseQuantity(material.unit, formData.quantity);
     const price = scaleTotalPrice(formData.quantity, quantity, formData.price);
     if (quantity !== formData.quantity) {
-      toast(`Quantity adjusted to ${quantity} ${material.unit} (whole units)`, { icon: 'ℹ️' });
+      toast(tx('purchaseQuantityAdjusted', { qty: String(quantity), unit: material.unit }), { icon: 'ℹ️' });
     }
 
     const token = localStorage.getItem('bakery_token');
@@ -295,7 +297,7 @@ const PurchaseManagement: React.FC = () => {
                 },
                 body: JSON.stringify({ file: base64 })
               });
-              if (!uploadRes.ok) throw new Error('Failed to upload PDF');
+              if (!uploadRes.ok) throw new Error(t('pdfUploadFailed'));
               const uploadData = await uploadRes.json();
               pdfPath = uploadData.path;
               resolve(null);
@@ -303,7 +305,7 @@ const PurchaseManagement: React.FC = () => {
               reject(error);
             }
           };
-          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.onerror = () => reject(new Error(t('fileReadFailed')));
           reader.readAsDataURL(pdfFile);
         });
       }
@@ -324,7 +326,7 @@ const PurchaseManagement: React.FC = () => {
             quantity,
             price,
             materialName: material.name,
-            supplierName: supplier?.name || 'Unknown Supplier',
+            supplierName: supplier?.name || t('unknownSupplier'),
             unit: material.unit,
             totalAmount: price,
             ...(pdfPath && { invoicePdfPath: pdfPath }),
@@ -348,7 +350,7 @@ const PurchaseManagement: React.FC = () => {
           }
         }
 
-        toast.success('Purchase updated successfully');
+        toast.success(t('purchaseUpdatedSuccess'));
       } else {
         // CREATE: Add to inventory
         const supplier = suppliers.find(s => s.id === formData.supplierId);
@@ -357,7 +359,7 @@ const PurchaseManagement: React.FC = () => {
           quantity,
           price,
           materialName: material.name,
-          supplierName: supplier?.name || 'Unknown Supplier',
+          supplierName: supplier?.name || t('unknownSupplier'),
           unit: material.unit,
           totalAmount: price,
           ...(pdfPath && { invoicePdfPath: pdfPath }),
@@ -402,7 +404,7 @@ const PurchaseManagement: React.FC = () => {
                 location: 'none',
                 reason: 'purchase',
                 userId: profile?.id || 'unknown',
-                userName: profile?.name || 'Unknown User',
+                userName: profile?.name || t('unknownUser'),
                 timestamp: new Date().toISOString()
               })
             });
@@ -412,7 +414,7 @@ const PurchaseManagement: React.FC = () => {
           // Don't fail the purchase creation if inventory sync fails
         }
 
-        toast.success('Purchase created successfully');
+        toast.success(t('purchaseCreatedSuccess'));
       }
 
       setIsModalOpen(false);
@@ -423,7 +425,7 @@ const PurchaseManagement: React.FC = () => {
       await reconcileInventoryWithProduction();
     } catch (error) {
       console.error('Error saving purchase:', error);
-      toast.error(editingPurchase ? 'Failed to update purchase' : 'Failed to create purchase');
+      toast.error(t('purchaseSaveFailed'));
     }
   };
 
@@ -431,7 +433,7 @@ const PurchaseManagement: React.FC = () => {
     try {
       const material = materials.find(m => m.id === purchase.materialId);
       if (!material) {
-        toast.error(`Material not found: ${purchase.materialId}`);
+        toast.error(tx('materialNotFound', { id: purchase.materialId }));
         return;
       }
 
@@ -452,7 +454,7 @@ const PurchaseManagement: React.FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        toast.error(`Sync failed: ${errorData.error || response.statusText}`);
+        toast.error(tx('syncFailedWithReason', { msg: String(errorData.error || response.statusText) }));
         return;
       }
 
@@ -475,7 +477,7 @@ const PurchaseManagement: React.FC = () => {
             location: 'none',
             reason: 'purchase',
             userId: profile?.id || 'unknown',
-            userName: profile?.name || 'Unknown User',
+            userName: profile?.name || t('unknownUser'),
             timestamp: new Date().toISOString()
           })
         });
@@ -486,10 +488,10 @@ const PurchaseManagement: React.FC = () => {
         console.warn('Error creating stock movement:', movementError);
       }
 
-      toast.success(`Synced ${purchase.quantity} ${purchase.unit} to inventory`);
+      toast.success(tx('purchaseSyncedToInventory', { qty: String(purchase.quantity), unit: purchase.unit }));
       fetchMaterials();
     } catch (error) {
-      toast.error(`Sync error: ${(error as Error).message}`);
+      toast.error(tx('syncErrorGeneric', { msg: (error as Error).message }));
     }
   };
 
@@ -501,7 +503,7 @@ const PurchaseManagement: React.FC = () => {
 
   const handleDelete = async (purchase: Purchase) => {
     if (!canDeletePurchase(purchase)) return;
-    if (!confirm('Are you sure you want to delete this purchase? Inventory will decrease by this order quantity.')) {
+    if (!confirm(t('purchaseDeleteConfirm'))) {
       return;
     }
 
@@ -518,12 +520,12 @@ const PurchaseManagement: React.FC = () => {
         return;
       }
 
-      toast.success('Purchase deleted successfully');
+      toast.success(t('purchaseDeletedSuccess'));
       void fetchPurchases();
       await fetchMaterials();
     } catch (error) {
       console.error('Error deleting purchase:', error);
-      toast.error('Failed to delete purchase');
+      toast.error(t('purchaseDeleteFailed'));
     }
   };
 
@@ -571,8 +573,8 @@ const PurchaseManagement: React.FC = () => {
         <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 mb-6">
           <AlertCircle className="w-10 h-10" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h1>
-        <p className="text-slate-500 max-w-md">Only administrators can access purchase management.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('accessDeniedTitle')}</h1>
+        <p className="text-slate-500 max-w-md">{t('purchaseManagementAccessDenied')}</p>
       </div>
     );
   }
@@ -588,8 +590,8 @@ const PurchaseManagement: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Purchase Management</h1>
-          <p className="text-slate-500 mt-1">Manage purchases and inventory sync</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('purchaseManagementTitle')}</h1>
+          <p className="text-slate-500 mt-1">{t('purchaseManagementSubtitle')}</p>
         </div>
         <button
           onClick={() => {
@@ -600,7 +602,7 @@ const PurchaseManagement: React.FC = () => {
           className="btn-primary gap-2 inline-flex"
         >
           <Plus className="w-5 h-5" />
-          New Purchase
+          {t('newPurchase')}
         </button>
       </div>
 
@@ -610,14 +612,14 @@ const PurchaseManagement: React.FC = () => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by material, invoice number, or supplier..."
+            placeholder={t('searchPurchasesPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="input pl-12 w-full"
           />
         </div>
         <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 shrink-0">
-          <span className="font-bold whitespace-nowrap">Show purchases</span>
+          <span className="font-bold whitespace-nowrap">{t('showPurchases')}</span>
           <select
             className="input py-2 text-sm min-w-[8rem]"
             value={purchaseTimeScope === 'all' ? 'all' : String(purchaseTimeScope)}
@@ -626,16 +628,16 @@ const PurchaseManagement: React.FC = () => {
               setPurchaseTimeScope(v === 'all' ? 'all' : Number(v));
             }}
           >
-            <option value="all">{`All time (latest ${QUERY_MAX_ITEMS})`}</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
-            <option value={180}>Last 180 days</option>
-            <option value={365}>Last 365 days</option>
+            <option value="all">{tx('purchaseTimeAll', { max: String(QUERY_MAX_ITEMS) })}</option>
+            <option value={30}>{t('purchaseTimeLast30')}</option>
+            <option value={90}>{t('purchaseTimeLast90')}</option>
+            <option value={180}>{t('purchaseTimeLast180')}</option>
+            <option value={365}>{t('purchaseTimeLast365')}</option>
           </select>
           <span className="text-xs text-slate-400">
             {purchaseTimeScope === 'all'
-              ? '(newest first, bounded by settings)'
-              : '(by invoice date — older lines may be hidden)'}
+              ? t('purchaseListSortedNewest')
+              : t('purchaseListByInvoiceDate')}
           </span>
         </label>
       </div>
@@ -646,29 +648,29 @@ const PurchaseManagement: React.FC = () => {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-white/5">
-                <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Material</th>
+                <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">{t('colMaterial')}</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">
                   <button onClick={() => handleSort('supplier')} className="flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                    Supplier
+                    {t('colSupplier')}
                     {sortCol === 'supplier' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
                   </button>
                 </th>
-                <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Qty</th>
-                <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Price</th>
+                <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">{t('quantity')}</th>
+                <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">{t('price')}</th>
                 <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">
                   <button onClick={() => handleSort('total')} className="flex items-center gap-1 ml-auto hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                    Total
+                    {t('colTotal')}
                     {sortCol === 'total' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
                   </button>
                 </th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">
                   <button onClick={() => handleSort('date')} className="flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                    Date
+                    {t('colDate')}
                     {sortCol === 'date' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
                   </button>
                 </th>
-                <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Invoice</th>
-                <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Actions</th>
+                <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">{t('colInvoice')}</th>
+                <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">{t('actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -696,7 +698,7 @@ const PurchaseManagement: React.FC = () => {
                         rel="noopener noreferrer"
                         className="text-primary-600 hover:underline text-sm font-medium"
                       >
-                        📄 View
+                        📄 {t('invoiceView')}
                       </a>
                     ) : (
                       <span className="text-slate-400">-</span>
@@ -707,14 +709,14 @@ const PurchaseManagement: React.FC = () => {
                       <button
                         onClick={() => handleSyncToInventory(purchase)}
                         className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
-                        title="Sync to Inventory"
+                        title={t('titleSyncToInventory')}
                       >
                         ⤴️
                       </button>
                       <button
                         onClick={() => handleEdit(purchase)}
                         className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
-                        title="Edit"
+                        title={t('titleEditPurchase')}
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -725,8 +727,8 @@ const PurchaseManagement: React.FC = () => {
                         className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all disabled:opacity-35 disabled:pointer-events-none"
                         title={
                           canDeletePurchase(purchase)
-                            ? 'Delete purchase'
-                            : 'Cannot delete — not enough inventory to remove this receipt'
+                            ? t('titleDeletePurchase')
+                            : t('titleDeletePurchaseDisabled')
                         }
                       >
                         <Trash2 className="w-4 h-4" />
@@ -741,7 +743,7 @@ const PurchaseManagement: React.FC = () => {
 
         {filteredPurchases.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-slate-500">No purchases found</p>
+            <p className="text-slate-500">{t('noPurchasesFound')}</p>
           </div>
         )}
         <Pagination
@@ -770,7 +772,7 @@ const PurchaseManagement: React.FC = () => {
             >
               <div className="p-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-zinc-800/50">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                  {editingPurchase ? 'Edit Purchase' : 'New Purchase'}
+                  {editingPurchase ? t('purchaseModalEdit') : t('newPurchase')}
                 </h2>
               </div>
 
@@ -778,7 +780,7 @@ const PurchaseManagement: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Material <span className="text-red-600">*</span>
+                      {t('colMaterial')} <span className="text-red-600">*</span>
                     </label>
                     <select
                       required
@@ -786,7 +788,7 @@ const PurchaseManagement: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, materialId: e.target.value })}
                       className="input w-full"
                     >
-                      <option value="">Select Material</option>
+                      <option value="">{t('selectMaterial')}</option>
                       {materials.map(m => (
                         <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>
                       ))}
@@ -795,7 +797,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Supplier <span className="text-red-600">*</span>
+                      {t('colSupplier')} <span className="text-red-600">*</span>
                     </label>
                     <select
                       required
@@ -803,7 +805,7 @@ const PurchaseManagement: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
                       className="input w-full"
                     >
-                      <option value="">Select Supplier</option>
+                      <option value="">{t('selectSupplier')}</option>
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
@@ -812,7 +814,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Quantity <span className="text-red-600">*</span>
+                      {t('quantity')} <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="number"
@@ -827,7 +829,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Price <span className="text-red-600">*</span>
+                      {t('price')} <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="number"
@@ -841,7 +843,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Brand
+                      {t('brand')}
                     </label>
                     <input
                       type="text"
@@ -853,7 +855,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Purchase Date <span className="text-red-600">*</span>
+                      {t('purchaseDate')} <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="date"
@@ -866,7 +868,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Expiry Date
+                      {t('expiryDate')}
                     </label>
                     <input
                       type="date"
@@ -878,7 +880,7 @@ const PurchaseManagement: React.FC = () => {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Invoice PDF (Optional, Max 2MB)
+                      {t('invoicePdfLabel')}
                     </label>
                     <input
                       type="file"
@@ -887,7 +889,7 @@ const PurchaseManagement: React.FC = () => {
                         const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 2 * 1024 * 1024) {
-                            toast.error('PDF file must be less than 2MB');
+                            toast.error(t('pdfMaxSizeError'));
                             return;
                           }
                           setPdfFile(file);
@@ -896,7 +898,7 @@ const PurchaseManagement: React.FC = () => {
                       className="input w-full"
                     />
                     {pdfFile && (
-                      <p className="text-sm text-slate-500 mt-1">Selected: {pdfFile.name}</p>
+                      <p className="text-sm text-slate-500 mt-1">{tx('selectedFileLabel', { name: pdfFile.name })}</p>
                     )}
                   </div>
                 </div>
@@ -907,13 +909,13 @@ const PurchaseManagement: React.FC = () => {
                     onClick={() => setIsModalOpen(false)}
                     className="btn-secondary"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     type="submit"
                     className="btn-primary"
                   >
-                    {editingPurchase ? 'Update' : 'Create'} Purchase
+                    {editingPurchase ? t('purchaseSubmitUpdate') : t('purchaseSubmitCreate')}
                   </button>
                 </div>
               </form>

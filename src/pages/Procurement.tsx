@@ -48,6 +48,8 @@ interface RawMaterial {
 
 const Procurement: React.FC = () => {
   const { t, formatCurrency } = useLanguage();
+  const tx = (key: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{{${k}}}`, v), t(key));
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'purchases' | 'suppliers'>('purchases');
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -148,7 +150,7 @@ const Procurement: React.FC = () => {
       setPurchases(data || []);
     } catch (error) {
       console.error('Error fetching purchases:', error);
-      toast.error('Failed to load purchases');
+      toast.error(t('purchaseLoadFailed'));
     } finally {
       if (showSpinner) {
         setLoading(false);
@@ -220,12 +222,12 @@ const Procurement: React.FC = () => {
 
     const material = materials.find(m => m.id === formData.materialId);
     if (!material) {
-      toast.error('Please select a material');
+      toast.error(t('purchaseSelectMaterial'));
       return;
     }
 
     if (!formData.supplierId) {
-      toast.error('Please select a supplier');
+      toast.error(t('purchaseSelectSupplier'));
       return;
     }
 
@@ -247,7 +249,7 @@ const Procurement: React.FC = () => {
                 },
                 body: JSON.stringify({ file: base64 })
               });
-              if (!uploadRes.ok) throw new Error('Failed to upload PDF');
+              if (!uploadRes.ok) throw new Error(t('pdfUploadFailed'));
               const uploadData = await uploadRes.json();
               pdfPath = uploadData.path;
               resolve(null);
@@ -255,7 +257,7 @@ const Procurement: React.FC = () => {
               reject(error);
             }
           };
-          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.onerror = () => reject(new Error(t('fileReadFailed')));
           reader.readAsDataURL(pdfFile);
         });
       }
@@ -273,7 +275,7 @@ const Procurement: React.FC = () => {
           body: JSON.stringify({
             ...formData,
             materialName: material.name,
-            supplierName: supplier?.name || 'Unknown Supplier',
+            supplierName: supplier?.name || t('unknownSupplier'),
             unit: material.unit,
             totalAmount: formData.price,
             ...(pdfPath && { invoicePdfPath: pdfPath }),
@@ -295,13 +297,13 @@ const Procurement: React.FC = () => {
           }
         }
 
-        toast.success('Purchase updated successfully');
+        toast.success(t('purchaseUpdatedSuccess'));
       } else {
         const supplier = suppliers.find(s => s.id === formData.supplierId);
         const purchaseData = {
           ...formData,
           materialName: material.name,
-          supplierName: supplier?.name || 'Unknown Supplier',
+          supplierName: supplier?.name || t('unknownSupplier'),
           unit: material.unit,
           totalAmount: formData.price,
           ...(pdfPath && { invoicePdfPath: pdfPath }),
@@ -326,7 +328,7 @@ const Procurement: React.FC = () => {
           console.error('Inventory sync warning:', invError);
         }
 
-        toast.success('Purchase created successfully');
+        toast.success(t('purchaseCreatedSuccess'));
       }
 
       setIsModalOpen(false);
@@ -336,7 +338,7 @@ const Procurement: React.FC = () => {
       void fetchPurchases();
     } catch (error) {
       console.error('Error saving purchase:', error);
-      toast.error(editingPurchase ? 'Failed to update purchase' : 'Failed to create purchase');
+      toast.error(t('purchaseSaveFailed'));
     }
   };
 
@@ -348,7 +350,7 @@ const Procurement: React.FC = () => {
 
   const handleDelete = async (purchase: Purchase) => {
     if (!canDeletePurchase(purchase)) return;
-    if (!confirm('Are you sure you want to delete this purchase? Inventory will decrease by this order quantity.')) {
+    if (!confirm(t('purchaseDeleteConfirm'))) {
       return;
     }
 
@@ -372,11 +374,11 @@ const Procurement: React.FC = () => {
             : m
         )
       );
-      toast.success('Purchase deleted successfully');
+      toast.success(t('purchaseDeletedSuccess'));
       void fetchPurchases();
     } catch (error) {
       console.error('Error deleting purchase:', error);
-      toast.error('Failed to delete purchase');
+      toast.error(t('purchaseDeleteFailed'));
     }
   };
 
@@ -436,9 +438,9 @@ const Procurement: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
             <Truck className="w-8 h-8 text-primary-600" />
-            Procurement & Purchases
+            {t('procurementPurchasesTitle')}
           </h1>
-          <p className="text-slate-500 mt-1">Manage purchases, suppliers, and inventory</p>
+          <p className="text-slate-500 mt-1">{t('procurementSubtitle')}</p>
         </div>
 
         <div className="flex bg-slate-100 dark:bg-zinc-800 p-1 rounded-2xl">
@@ -450,7 +452,7 @@ const Procurement: React.FC = () => {
             )}
           >
             <Plus className="w-4 h-4" />
-            Purchases
+            {t('procurementTabPurchases')}
           </button>
           <button
             onClick={() => setActiveTab('suppliers')}
@@ -460,7 +462,7 @@ const Procurement: React.FC = () => {
             )}
           >
             <Building2 className="w-4 h-4" />
-            Suppliers
+            {t('suppliers')}
           </button>
         </div>
       </div>
@@ -480,7 +482,7 @@ const Procurement: React.FC = () => {
                 <div className="flex items-center gap-3 text-amber-800 dark:text-amber-300">
                   <AlertTriangle className="w-5 h-5 shrink-0" />
                   <span className="text-sm font-semibold">
-                    {missingSupplierCount} purchase{missingSupplierCount > 1 ? 's' : ''} {missingSupplierCount > 1 ? 'are' : 'is'} missing a supplier — click the edit button on highlighted rows to assign one.
+                    {tx('procurementMissingSupplierBanner', { count: String(missingSupplierCount) })}
                   </span>
                 </div>
                 <button
@@ -492,7 +494,7 @@ const Procurement: React.FC = () => {
                       : 'bg-amber-100 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-700/50'
                   )}
                 >
-                  {showMissingOnly ? 'Show all' : 'Show incomplete only'}
+                  {showMissingOnly ? t('showAll') : t('showIncompleteOnly')}
                 </button>
               </div>
             )}
@@ -503,14 +505,14 @@ const Procurement: React.FC = () => {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search by material or supplier..."
+                  placeholder={t('searchPurchasesPlaceholder')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="input pl-12 w-full"
                 />
               </div>
               <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 shrink-0">
-                <span className="font-bold whitespace-nowrap">Show purchases</span>
+                <span className="font-bold whitespace-nowrap">{t('showPurchases')}</span>
                 <select
                   className="input py-2 text-sm"
                   value={purchaseTimeScope === 'all' ? 'all' : String(purchaseTimeScope)}
@@ -519,16 +521,16 @@ const Procurement: React.FC = () => {
                     setPurchaseTimeScope(v === 'all' ? 'all' : Number(v));
                   }}
                 >
-                  <option value="all">{`All time (latest ${QUERY_MAX_ITEMS})`}</option>
-                  <option value={30}>Last 30 days</option>
-                  <option value={90}>Last 90 days</option>
-                  <option value={180}>Last 180 days</option>
-                  <option value={365}>Last 365 days</option>
+                  <option value="all">{tx('purchaseTimeAll', { max: String(QUERY_MAX_ITEMS) })}</option>
+                  <option value={30}>{t('purchaseTimeLast30')}</option>
+                  <option value={90}>{t('purchaseTimeLast90')}</option>
+                  <option value={180}>{t('purchaseTimeLast180')}</option>
+                  <option value={365}>{t('purchaseTimeLast365')}</option>
                 </select>
                 <span className="text-xs text-slate-400">
                   {purchaseTimeScope === 'all'
-                    ? '(newest first, bounded by settings)'
-                    : '(by invoice date — older lines may be hidden)'}
+                    ? t('purchaseListSortedNewest')
+                    : t('purchaseListByInvoiceDate')}
                 </span>
               </label>
               <button
@@ -540,7 +542,7 @@ const Procurement: React.FC = () => {
                 className="btn-primary gap-2 inline-flex"
               >
                 <Plus className="w-5 h-5" />
-                New Purchase
+                {t('newPurchase')}
               </button>
             </div>
 
@@ -550,29 +552,29 @@ const Procurement: React.FC = () => {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-white/5">
-                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">Material</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">{t('colMaterial')}</th>
                       <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">
                         <button type="button" onClick={() => handleSort('supplier')} className="flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                          Supplier
+                          {t('colSupplier')}
                           {sortCol === 'supplier' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
                         </button>
                       </th>
-                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Qty</th>
-                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">Price</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">{t('quantity')}</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">{t('price')}</th>
                       <th className="px-6 py-4 text-right text-sm font-bold text-slate-600 dark:text-slate-300">
                         <button type="button" onClick={() => handleSort('total')} className="flex items-center gap-1 ml-auto hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                          Total
+                          {t('colTotal')}
                           {sortCol === 'total' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
                         </button>
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-bold text-slate-600 dark:text-slate-300">
                         <button type="button" onClick={() => handleSort('date')} className="flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                          Date
+                          {t('colDate')}
                           {sortCol === 'date' ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronDown className="w-3.5 h-3.5 opacity-30" />}
                         </button>
                       </th>
-                      <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Invoice</th>
-                      <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">Actions</th>
+                      <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">{t('colInvoice')}</th>
+                      <th className="px-6 py-4 text-center text-sm font-bold text-slate-600 dark:text-slate-300">{t('actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -590,7 +592,7 @@ const Procurement: React.FC = () => {
                           {missingSupplier ? (
                             <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium">
                               <AlertTriangle className="w-3.5 h-3.5" />
-                              No supplier
+                              {t('noSupplierLabel')}
                             </span>
                           ) : purchase.supplierName}
                         </td>
@@ -614,7 +616,7 @@ const Procurement: React.FC = () => {
                               rel="noopener noreferrer"
                               className="text-primary-600 hover:underline text-sm font-medium"
                             >
-                              📄 View
+                              📄 {t('invoiceView')}
                             </a>
                           ) : (
                             <span className="text-slate-400">-</span>
@@ -630,7 +632,7 @@ const Procurement: React.FC = () => {
                                   ? "text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
                                   : "text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                               )}
-                              title={missingSupplier ? "Assign supplier" : "Edit"}
+                              title={missingSupplier ? t('titleAssignSupplier') : t('titleEditPurchase')}
                             >
                               {missingSupplier ? <AlertTriangle className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                             </button>
@@ -641,8 +643,8 @@ const Procurement: React.FC = () => {
                               className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all disabled:opacity-35 disabled:pointer-events-none"
                               title={
                                 canDeletePurchase(purchase)
-                                  ? 'Delete purchase'
-                                  : 'Cannot delete — not enough inventory to remove this receipt'
+                                  ? t('titleDeletePurchase')
+                                  : t('titleDeletePurchaseDisabled')
                               }
                             >
                               <Trash2 className="w-4 h-4" />
@@ -658,7 +660,7 @@ const Procurement: React.FC = () => {
 
               {filteredPurchases.length === 0 && (
                 <div className="text-center py-12">
-                  <p className="text-slate-500">No purchases found</p>
+                  <p className="text-slate-500">{t('noPurchasesFound')}</p>
                 </div>
               )}
               <Pagination
@@ -699,7 +701,7 @@ const Procurement: React.FC = () => {
             >
               <div className="p-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-zinc-800/50">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                  {editingPurchase ? 'Edit Purchase' : 'New Purchase'}
+                  {editingPurchase ? t('purchaseModalEdit') : t('newPurchase')}
                 </h2>
               </div>
 
@@ -707,7 +709,7 @@ const Procurement: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Material <span className="text-red-600">*</span>
+                      {t('colMaterial')} <span className="text-red-600">*</span>
                     </label>
                     <select
                       required
@@ -715,7 +717,7 @@ const Procurement: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, materialId: e.target.value })}
                       className="input w-full"
                     >
-                      <option value="">Select Material</option>
+                      <option value="">{t('selectMaterial')}</option>
                       {materials.map(m => (
                         <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>
                       ))}
@@ -724,7 +726,7 @@ const Procurement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Supplier <span className="text-red-600">*</span>
+                      {t('colSupplier')} <span className="text-red-600">*</span>
                     </label>
                     <select
                       required
@@ -732,7 +734,7 @@ const Procurement: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
                       className="input w-full"
                     >
-                      <option value="">Select Supplier</option>
+                      <option value="">{t('selectSupplier')}</option>
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
@@ -741,7 +743,7 @@ const Procurement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Quantity <span className="text-red-600">*</span>
+                      {t('quantity')} <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="number"
@@ -755,7 +757,7 @@ const Procurement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Price (Total) <span className="text-red-600">*</span>
+                      {t('priceTotalField')} <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="number"
@@ -769,7 +771,7 @@ const Procurement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Brand
+                      {t('brand')}
                     </label>
                     <input
                       type="text"
@@ -781,7 +783,7 @@ const Procurement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Purchase Date <span className="text-red-600">*</span>
+                      {t('purchaseDate')} <span className="text-red-600">*</span>
                     </label>
                     <input
                       type="date"
@@ -794,7 +796,7 @@ const Procurement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Expiry Date
+                      {t('expiryDate')}
                     </label>
                     <input
                       type="date"
@@ -806,7 +808,7 @@ const Procurement: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Invoice PDF (Optional, Max 2MB)
+                      {t('invoicePdfLabel')}
                     </label>
                     <input
                       type="file"
@@ -815,7 +817,7 @@ const Procurement: React.FC = () => {
                         const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 2 * 1024 * 1024) {
-                            toast.error('File size exceeds 2MB limit');
+                            toast.error(t('pdfMaxSizeError'));
                             e.target.value = '';
                             return;
                           }
@@ -838,13 +840,13 @@ const Procurement: React.FC = () => {
                     }}
                     className="btn-secondary"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                   <button
                     type="submit"
                     className="btn-primary px-10 shadow-lg shadow-primary-600/20"
                   >
-                    {editingPurchase ? 'Update Purchase' : 'Create Purchase'}
+                    {editingPurchase ? t('purchaseSubmitUpdate') : t('purchaseSubmitCreate')}
                   </button>
                 </div>
               </form>

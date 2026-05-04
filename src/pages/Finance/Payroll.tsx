@@ -27,8 +27,19 @@ import { toast } from 'react-hot-toast';
 import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
 
+const PAYROLL_ELIGIBLE_ROLES = new Set([
+  'admin',
+  'manager',
+  'cashier',
+  'baker',
+  'delivery_guy',
+  'inventory',
+]);
+
 const Payroll: React.FC = () => {
-  const { formatCurrency, isRTL } = useLanguage();
+  const { formatCurrency, isRTL, tf, t } = useLanguage();
+  const tx = (key: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{{${k}}}`, v), tf(key));
   const [activeSubTab, setActiveSubTab] = useState('employees');
   const [employees, setEmployees] = useState<FinancialEmployee[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -74,7 +85,7 @@ const Payroll: React.FC = () => {
       setUsers(fetchedUsers);
     } catch (error) {
       console.error('Error fetching payroll data:', error);
-      toast.error('Failed to load payroll data');
+      toast.error(tf('payrollLoadFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -84,7 +95,7 @@ const Payroll: React.FC = () => {
     return employees.filter(emp => 
       emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.matricule.toLowerCase().includes(searchQuery.toLowerCase())
+      (emp.matricule ?? '').toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [employees, searchQuery]);
 
@@ -102,6 +113,7 @@ const Payroll: React.FC = () => {
   const availableUsers = useMemo(() => {
     const employeeIds = new Set(employees.map(emp => emp.id));
     const filtered = users.filter(user => 
+      PAYROLL_ELIGIBLE_ROLES.has(user.role) &&
       !employeeIds.has(user.id) && 
       (user.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
        user.role.toLowerCase().includes(userSearchQuery.toLowerCase()))
@@ -126,24 +138,35 @@ const Payroll: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      const newEmployee: FinancialEmployee = {
-        ...selectedUser,
-        ...formData,
+      const newEmployee: Omit<FinancialEmployee, 'createdAt'> = {
         id: selectedUser.id,
         name: selectedUser.name,
         role: selectedUser.role,
+        email: selectedUser.email,
+        phone: selectedUser.phone,
         status: 'ACTIF',
-        createdAt: new Date().toISOString()
+        matricule: formData.matricule.trim(),
+        nin: formData.nin,
+        cnasNumber: formData.cnasNumber,
+        department: formData.department,
+        hireDate: formData.hireDate,
+        baseSalary: Number(formData.baseSalary) || 0,
+        transportAllowance: Number(formData.transportAllowance) || 0,
+        performanceBonus: Number(formData.performanceBonus) || 0,
+        otherAllowances: Number(formData.otherAllowances) || 0,
+        contributesToCNAS: formData.contributesToCNAS,
+        bankRIB: formData.bankRIB,
       };
 
       await financeService.addFinancialEmployee(newEmployee);
-      toast.success('Employee added successfully');
+      toast.success(tf('payrollEmployeeAdded'));
       setIsModalOpen(false);
       resetModal();
       fetchData();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error adding employee:', error);
-      toast.error('Failed to add employee');
+      const msg = error instanceof Error ? error.message : '';
+      toast.error(msg.trim() ? msg.slice(0, 280) : tf('payrollEmployeeAddFailed'));
     }
   };
 
@@ -180,7 +203,7 @@ const Payroll: React.FC = () => {
               : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
           )}
         >
-          <BilingualLabel tKey="employees" tf />
+          <BilingualLabel tKey="financeEmployees" tf />
           {activeSubTab === 'employees' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
           )}
@@ -194,7 +217,7 @@ const Payroll: React.FC = () => {
               : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
           )}
         >
-          <BilingualLabel tKey="payrollRuns" tf />
+          <BilingualLabel tKey="financePayrollRuns" tf />
           {activeSubTab === 'runs' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
           )}
@@ -208,7 +231,7 @@ const Payroll: React.FC = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search employees..."
+                placeholder={tf('searchEmployees')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
@@ -233,7 +256,11 @@ const Payroll: React.FC = () => {
             <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {paginatedEmployees.map((emp) => {
-                const payroll = financeService.calculatePayroll(emp.baseSalary, emp.transportAllowance, emp.otherAllowances);
+                const payroll = financeService.calculatePayroll(
+                  emp.baseSalary,
+                  emp.transportAllowance ?? 0,
+                  (emp.performanceBonus ?? 0) + (emp.otherAllowances ?? 0)
+                );
                 return (
                   <div 
                     key={emp.id}
@@ -256,19 +283,19 @@ const Payroll: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-4 py-4 border-y border-slate-50 dark:border-white/5">
                       <div>
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Base Salary</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{tf('baseSalary')}</p>
                         <p className="font-bold text-slate-900 dark:text-white">{formatCurrency(emp.baseSalary)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Net to Pay</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{tf('netToPay')}</p>
                         <p className="font-bold text-emerald-600">{formatCurrency(payroll.net)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">CNAS (9%)</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{tf('payrollCnasShort')}</p>
                         <p className="font-bold text-rose-600">{formatCurrency(payroll.cnasEmployee)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">IRG</p>
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{tf('irg')}</p>
                         <p className="font-bold text-rose-600">{formatCurrency(payroll.irg)}</p>
                       </div>
                     </div>
@@ -277,7 +304,7 @@ const Payroll: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                          {emp.status}
+                          {emp.status === 'ACTIF' ? tf('empStatusActive') : emp.status}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -310,12 +337,12 @@ const Payroll: React.FC = () => {
             <div className="p-6 border-b border-slate-100 dark:border-white/10 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                  {modalStep === 'select-user' ? 'Select User' : 'Salary Details'}
+                  {modalStep === 'select-user' ? tf('payrollModalSelectUser') : tf('payrollModalSalaryDetails')}
                 </h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   {modalStep === 'select-user' 
-                    ? 'Choose an existing user to add to payroll' 
-                    : `Configuring payroll for ${selectedUser?.name}`
+                    ? tf('payrollModalSelectHint')
+                    : tx('payrollConfiguringFor', { name: selectedUser?.name ?? '' })
                   }
                 </p>
               </div>
@@ -334,7 +361,7 @@ const Payroll: React.FC = () => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Search users..."
+                      placeholder={tf('searchUsersPayroll')}
                       value={userSearchQuery}
                       onChange={(e) => {
                         setUserSearchQuery(e.target.value);
@@ -372,7 +399,7 @@ const Payroll: React.FC = () => {
                         {totalUserPages > 1 && (
                           <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/10">
                             <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">
-                              Page {userPage} of {totalUserPages}
+                              {tx('payrollPageIndicator', { current: String(userPage), total: String(totalUserPages) })}
                             </p>
                             <div className="flex items-center gap-2">
                               <button
@@ -397,11 +424,11 @@ const Payroll: React.FC = () => {
                       <div className="text-center py-10 text-slate-400">
                         <Users className="w-12 h-12 mx-auto mb-2 opacity-20" />
                         {users.length === 0 ? (
-                          <p>No users found in the system. Please add users first.</p>
+                          <p>{tf('payrollNoUsersInSystem')}</p>
                         ) : availableUsers.length === 0 ? (
-                          <p>All users are already enrolled in payroll.</p>
+                          <p>{tf('payrollAllEnrolled')}</p>
                         ) : (
-                          <p>No users match your search.</p>
+                          <p>{tf('payrollNoSearchResults')}</p>
                         )}
                       </div>
                     )}
@@ -410,30 +437,30 @@ const Payroll: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">Administrative</h4>
+                    <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">{tf('sectionAdministrative')}</h4>
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Matricule</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('matriculeLabel')}</label>
                         <input
                           type="text"
                           value={formData.matricule}
                           onChange={(e) => setFormData({...formData, matricule: e.target.value})}
                           className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-                          placeholder="e.g., 2026001"
+                          placeholder={tf('placeholderPayrollMatricule')}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">NIN (National ID)</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('ninLabel')}</label>
                         <input
                           type="text"
                           value={formData.nin}
                           onChange={(e) => setFormData({...formData, nin: e.target.value})}
                           className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-                          placeholder="18-digit number"
+                          placeholder={tf('placeholderNationalId')}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">CNAS Number</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('cnasNumberLabel')}</label>
                         <input
                           type="text"
                           value={formData.cnasNumber}
@@ -442,7 +469,7 @@ const Payroll: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Hire Date</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('hireDateLabel')}</label>
                         <input
                           type="date"
                           value={formData.hireDate}
@@ -454,10 +481,10 @@ const Payroll: React.FC = () => {
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">Financial</h4>
+                    <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">{tf('sectionFinancial')}</h4>
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Base Salary (DZD)</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('baseSalaryCurrency')}</label>
                         <input
                           type="number"
                           value={formData.baseSalary}
@@ -466,7 +493,7 @@ const Payroll: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Transport Allowance</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('transportAllowanceLabel')}</label>
                         <input
                           type="number"
                           value={formData.transportAllowance}
@@ -475,7 +502,7 @@ const Payroll: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Other Allowances</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('otherAllowancesLabel')}</label>
                         <input
                           type="number"
                           value={formData.otherAllowances}
@@ -491,7 +518,7 @@ const Payroll: React.FC = () => {
                           onChange={(e) => setFormData({...formData, contributesToCNAS: e.target.checked})}
                           className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
                         />
-                        <label htmlFor="cnas" className="text-sm font-bold text-slate-700 dark:text-slate-200">Contributes to CNAS (9%)</label>
+                        <label htmlFor="cnas" className="text-sm font-bold text-slate-700 dark:text-slate-200">{tf('payrollCnasLabel')}</label>
                       </div>
                     </div>
                   </div>
@@ -506,7 +533,7 @@ const Payroll: React.FC = () => {
                   className="flex items-center gap-2 px-4 py-2 text-slate-600 dark:text-slate-400 font-bold hover:text-slate-900 dark:hover:text-white transition-colors"
                 >
                   <ChevronLeft className="w-5 h-5" />
-                  Back
+                  {tf('payrollBack')}
                 </button>
               ) : (
                 <div />
@@ -517,7 +544,7 @@ const Payroll: React.FC = () => {
                   onClick={() => setIsModalOpen(false)}
                   className="px-6 py-2 text-slate-600 dark:text-slate-400 font-bold hover:text-slate-900 dark:hover:text-white transition-colors"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
                 {modalStep === 'salary-details' && (
                   <button
@@ -525,7 +552,7 @@ const Payroll: React.FC = () => {
                     className="px-8 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 flex items-center gap-2"
                   >
                     <UserPlus className="w-5 h-5" />
-                    Complete Setup
+                    {tf('payrollCompleteSetup')}
                   </button>
                 )}
               </div>
@@ -537,8 +564,8 @@ const Payroll: React.FC = () => {
       {activeSubTab === 'runs' && (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <Calculator className="w-16 h-16 mb-4 opacity-20" />
-          <p className="font-medium">Payroll Runs Module coming soon</p>
-          <p className="text-sm">Automated CNAS/IRG reporting is active</p>
+          <p className="font-medium">{tf('payrollRunsModuleSoon')}</p>
+          <p className="text-sm">{tf('payrollCnasIrgReporting')}</p>
         </div>
       )}
     </div>

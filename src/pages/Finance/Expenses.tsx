@@ -1,97 +1,325 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Download, 
-  Receipt, 
-  FileText, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle,
-  Truck,
-  DollarSign,
-  Calendar
-} from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Search, Link2, ExternalLink, Truck, FileText, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
-import { SupplierInvoice } from '../../types';
+import { FixedAssetDbRow } from '../../types';
 import { clsx } from 'clsx';
-import { format } from 'date-fns';
 import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
+import { authFetch, getAuthHeaders, parseJsonResponse, readApiErrorMessage } from '../../lib/api-client';
+import { toast } from 'react-hot-toast';
+import { format } from 'date-fns';
 
-const MOCK_SUPPLIER_INVOICES: SupplierInvoice[] = [
-    {
-      id: 'inv-1',
-      supplierId: 'sup-1',
-      supplierName: 'Minoterie des Grands Moulins',
-      invoiceNumber: 'FAC-2026-001',
-      date: '2026-03-20',
-      dueDate: '2026-04-20',
-      amountHT: 450000,
-      tvaAmount: 40500,
-      totalAmount: 490500,
-      amountPaid: 0,
-      status: 'APPROUVÉ',
-      category: 'MATIÈRES_PREMIÈRES',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'inv-2',
-      supplierId: 'sup-2',
-      supplierName: 'Sonelgaz',
-      invoiceNumber: 'ELEC-2026-03',
-      date: '2026-03-25',
-      dueDate: '2026-04-10',
-      amountHT: 12500,
-      tvaAmount: 2375,
-      totalAmount: 14875,
-      amountPaid: 0,
-      status: 'EN_ATTENTE_VALIDATION',
-      category: 'CHARGES_EXTÉRIEURES',
-      createdAt: new Date().toISOString()
-    }
-  ];
+type PurchaseExpenseRow = {
+  id: string;
+  invoiceNumber: string;
+  supplierId: string;
+  supplierName?: string | null;
+  date: string;
+  dueDate?: string | null;
+  amountHT?: string | null;
+  tvaAmount?: number | null;
+  totalAmount: number;
+  amountPaid?: number;
+  status: string;
+};
+
+function parsePurchaseDetails(amountHT: string | null | undefined): {
+  materialName?: string;
+  quantity?: number;
+  unit?: string;
+} {
+  if (amountHT == null || typeof amountHT !== 'string') return {};
+  try {
+    const j = JSON.parse(amountHT) as Record<string, unknown>;
+    return {
+      materialName: typeof j.materialName === 'string' ? j.materialName : undefined,
+      quantity: typeof j.quantity === 'number' ? j.quantity : undefined,
+      unit: typeof j.unit === 'string' ? j.unit : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function formatApiDate(d: string | Date | null | undefined): string {
+  if (d == null) return '—';
+  try {
+    const x = typeof d === 'string' ? new Date(d) : d;
+    if (Number.isNaN(x.getTime())) return '—';
+    return format(x, 'yyyy-MM-dd');
+  } catch {
+    return '—';
+  }
+}
+
+const ASSET_CATEGORIES = ['oven', 'refrigeration', 'vehicle', 'it', 'furniture', 'other'] as const;
+const ASSET_STATUSES = ['IN_SERVICE', 'IDLE', 'DISPOSED'] as const;
 
 const Expenses: React.FC = () => {
-  const { formatCurrency, isRTL } = useLanguage();
-  const [activeSubTab, setActiveSubTab] = useState('invoices');
+  const { formatCurrency, isRTL, tf, t } = useLanguage();
+  const [activeSubTab, setActiveSubTab] = useState<'invoices' | 'assets'>('invoices');
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoicePage, setInvoicePage] = useState(1);
+  const [purchaseRows, setPurchaseRows] = useState<PurchaseExpenseRow[]>([]);
+  const [purchasesLoading, setPurchasesLoading] = useState(true);
+
+  const [assets, setAssets] = useState<FixedAssetDbRow[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const [assetPage, setAssetPage] = useState(1);
+  const [assetSearch, setAssetSearch] = useState('');
+  const [assetModalOpen, setAssetModalOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<FixedAssetDbRow | null>(null);
+  const [assetForm, setAssetForm] = useState({
+    code: '',
+    name: '',
+    category: 'other',
+    location: '',
+    acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
+    acquisitionCost: '' as string | number,
+    usefulLifeYears: 5,
+    salvageValue: 0,
+    depreciationMethod: 'LINEAR',
+    notes: '',
+    lastMaintenanceAt: '',
+    nextMaintenanceAt: '',
+    maintenanceNotes: '',
+    status: 'IN_SERVICE',
+  });
+
+  const fetchPurchases = useCallback(async () => {
+    setPurchasesLoading(true);
+    try {
+      const res = await authFetch('/api/db/purchases', { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const data = await parseJsonResponse<PurchaseExpenseRow[]>(res);
+      const sorted = [...data].sort((a, b) => {
+        const ta = new Date(a.date).getTime();
+        const tb = new Date(b.date).getTime();
+        return tb - ta;
+      });
+      setPurchaseRows(sorted);
+    } catch (e) {
+      console.error(e);
+      toast.error(tf('payrollLoadFailed'));
+      setPurchaseRows([]);
+    } finally {
+      setPurchasesLoading(false);
+    }
+  }, [tf]);
+
+  const fetchAssets = useCallback(async () => {
+    setAssetsLoading(true);
+    try {
+      const res = await authFetch('/api/db/fixedAssets', { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const data = await parseJsonResponse<FixedAssetDbRow[]>(res);
+      setAssets(
+        [...data].sort((a, b) => new Date(b.acquisitionDate).getTime() - new Date(a.acquisitionDate).getTime())
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(tf('payrollLoadFailed'));
+      setAssets([]);
+    } finally {
+      setAssetsLoading(false);
+    }
+  }, [tf]);
+
+  useEffect(() => {
+    void fetchPurchases();
+  }, [fetchPurchases]);
+
+  useEffect(() => {
+    if (activeSubTab === 'assets') void fetchAssets();
+  }, [activeSubTab, fetchAssets]);
 
   useEffect(() => {
     setInvoicePage(1);
   }, [invoiceSearch]);
 
-  const filteredInvoices = useMemo(
-    () =>
-      MOCK_SUPPLIER_INVOICES.filter(
-        inv =>
-          inv.supplierName.toLowerCase().includes(invoiceSearch.toLowerCase()) ||
-          inv.invoiceNumber.toLowerCase().includes(invoiceSearch.toLowerCase())
-      ),
-    [invoiceSearch]
-  );
+  useEffect(() => {
+    setAssetPage(1);
+  }, [assetSearch]);
 
-  const invoiceTotalPages = Math.ceil(filteredInvoices.length / PAGE_SIZE) || 1;
+  const filteredPurchases = useMemo(() => {
+    const q = invoiceSearch.trim().toLowerCase();
+    if (!q) return purchaseRows;
+    return purchaseRows.filter((row) => {
+      const det = parsePurchaseDetails(row.amountHT);
+      return (
+        (row.supplierName ?? '').toLowerCase().includes(q) ||
+        row.invoiceNumber.toLowerCase().includes(q) ||
+        (det.materialName ?? '').toLowerCase().includes(q) ||
+        row.id.toLowerCase().includes(q)
+      );
+    });
+  }, [purchaseRows, invoiceSearch]);
+
+  const invoiceTotalPages = Math.max(1, Math.ceil(filteredPurchases.length / PAGE_SIZE));
   const safeInvoicePage = Math.min(invoicePage, invoiceTotalPages);
-  const paginatedInvoices = filteredInvoices.slice(
+  const paginatedInvoices = filteredPurchases.slice(
     (safeInvoicePage - 1) * PAGE_SIZE,
     safeInvoicePage * PAGE_SIZE
   );
 
+  const filteredAssets = useMemo(() => {
+    const q = assetSearch.trim().toLowerCase();
+    if (!q) return assets;
+    return assets.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        a.code.toLowerCase().includes(q) ||
+        (a.location ?? '').toLowerCase().includes(q)
+    );
+  }, [assets, assetSearch]);
+
+  const assetTotalPages = Math.max(1, Math.ceil(filteredAssets.length / PAGE_SIZE));
+  const safeAssetPage = Math.min(assetPage, assetTotalPages);
+  const paginatedAssets = filteredAssets.slice((safeAssetPage - 1) * PAGE_SIZE, safeAssetPage * PAGE_SIZE);
+
+  const categoryTf = (c: string) => {
+    const m: Record<string, string> = {
+      oven: 'assetCatOven',
+      refrigeration: 'assetCatRefrigeration',
+      vehicle: 'assetCatVehicle',
+      it: 'assetCatIt',
+      furniture: 'assetCatFurniture',
+      other: 'assetCatOther',
+    };
+    return tf(m[c] ?? 'assetCatOther');
+  };
+
+  const statusTf = (s: string) => {
+    if (s === 'IN_SERVICE') return tf('assetStatusInService');
+    if (s === 'IDLE') return tf('assetStatusIdle');
+    if (s === 'DISPOSED') return tf('assetStatusDisposed');
+    return s;
+  };
+
+  const annualDepreciation = (cost: number, salvage: number, years: number) => {
+    const y = Math.max(1, years || 1);
+    return Math.max(0, (Number(cost) - Number(salvage)) / y);
+  };
+
+  const openNewAsset = () => {
+    setEditingAsset(null);
+    setAssetForm({
+      code: '',
+      name: '',
+      category: 'other',
+      location: '',
+      acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
+      acquisitionCost: '',
+      usefulLifeYears: 5,
+      salvageValue: 0,
+      depreciationMethod: 'LINEAR',
+      notes: '',
+      lastMaintenanceAt: '',
+      nextMaintenanceAt: '',
+      maintenanceNotes: '',
+      status: 'IN_SERVICE',
+    });
+    setAssetModalOpen(true);
+  };
+
+  const openEditAsset = (a: FixedAssetDbRow) => {
+    setEditingAsset(a);
+    setAssetForm({
+      code: a.code,
+      name: a.name,
+      category: ASSET_CATEGORIES.includes(a.category as (typeof ASSET_CATEGORIES)[number]) ? (a.category as typeof ASSET_CATEGORIES[number]) : 'other',
+      location: a.location ?? '',
+      acquisitionDate: formatApiDate(a.acquisitionDate) === '—' ? format(new Date(), 'yyyy-MM-dd') : formatApiDate(a.acquisitionDate),
+      acquisitionCost: a.acquisitionCost,
+      usefulLifeYears: a.usefulLifeYears ?? 5,
+      salvageValue: a.salvageValue ?? 0,
+      depreciationMethod: a.depreciationMethod ?? 'LINEAR',
+      notes: a.notes ?? '',
+      lastMaintenanceAt: a.lastMaintenanceAt ? formatApiDate(a.lastMaintenanceAt) : '',
+      nextMaintenanceAt: a.nextMaintenanceAt ? formatApiDate(a.nextMaintenanceAt) : '',
+      maintenanceNotes: a.maintenanceNotes ?? '',
+      status: ASSET_STATUSES.includes(a.status as (typeof ASSET_STATUSES)[number])
+        ? (a.status as typeof ASSET_STATUSES[number])
+        : 'IN_SERVICE',
+    });
+    setAssetModalOpen(true);
+  };
+
+  const saveAsset = async () => {
+    const cost = Number(assetForm.acquisitionCost);
+    if (!assetForm.name.trim() || !Number.isFinite(cost) || cost < 0) {
+      toast.error(t('requiredFieldsMissing') || 'Invalid');
+      return;
+    }
+    const code = assetForm.code.trim() || `AST-${Date.now().toString(36).toUpperCase()}`;
+    const payload: Record<string, unknown> = {
+      code,
+      name: assetForm.name.trim(),
+      category: assetForm.category,
+      location: assetForm.location.trim() || null,
+      acquisitionDate: assetForm.acquisitionDate,
+      acquisitionCost: cost,
+      usefulLifeYears: Number(assetForm.usefulLifeYears) || 5,
+      salvageValue: Number(assetForm.salvageValue) || 0,
+      depreciationMethod: assetForm.depreciationMethod,
+      notes: assetForm.notes.trim() || null,
+      maintenanceNotes: assetForm.maintenanceNotes.trim() || null,
+      status: assetForm.status,
+      lastMaintenanceAt: assetForm.lastMaintenanceAt || null,
+      nextMaintenanceAt: assetForm.nextMaintenanceAt || null,
+    };
+
+    try {
+      if (editingAsset) {
+        const res = await authFetch(`/api/db/fixedAssets/${editingAsset.id}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      } else {
+        const res = await authFetch('/api/db/fixedAssets', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      }
+      toast.success(tf('assetSaved'));
+      setAssetModalOpen(false);
+      void fetchAssets();
+    } catch (e) {
+      console.error(e);
+      toast.error(t('errorAddingCategory') || 'Error');
+    }
+  };
+
+  const deleteAsset = async (a: FixedAssetDbRow) => {
+    if (!confirm(t('confirmDelete'))) return;
+    try {
+      const res = await authFetch(`/api/db/fixedAssets/${a.id}`, { method: 'DELETE', headers: getAuthHeaders() });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      toast.success(tf('assetDeleted'));
+      void fetchAssets();
+    } catch (e) {
+      console.error(e);
+      toast.error(t('purchaseSaveFailed') || 'Error');
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Sub-tabs */}
       <div className="flex items-center gap-4 border-b border-slate-100 dark:border-white/10">
         <button
+          type="button"
           onClick={() => setActiveSubTab('invoices')}
           className={clsx(
-            "pb-3 text-sm font-bold transition-all relative",
+            'pb-3 text-sm font-bold transition-all relative',
             activeSubTab === 'invoices'
-              ? "text-primary-600"
-              : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              ? 'text-primary-600'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           )}
         >
           <BilingualLabel tKey="supplierInvoices" tf />
@@ -100,12 +328,13 @@ const Expenses: React.FC = () => {
           )}
         </button>
         <button
+          type="button"
           onClick={() => setActiveSubTab('assets')}
           className={clsx(
-            "pb-3 text-sm font-bold transition-all relative",
+            'pb-3 text-sm font-bold transition-all relative',
             activeSubTab === 'assets'
-              ? "text-primary-600"
-              : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              ? 'text-primary-600'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           )}
         >
           <BilingualLabel tKey="fixedAssets" tf />
@@ -117,106 +346,511 @@ const Expenses: React.FC = () => {
 
       {activeSubTab === 'invoices' && (
         <div className="space-y-4">
+          <div className="rounded-2xl border border-amber-200/80 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 p-4 text-sm text-amber-950 dark:text-amber-100/90">
+            <p className="font-bold flex items-center gap-2 mb-1">
+              <Link2 className="w-4 h-4" />
+              {tf('expensesLinkedPurchasesIntro')}
+            </p>
+            <p className="text-amber-900/80 dark:text-amber-200/80 mb-3">{tf('expensesAttachHint')}</p>
+            <Link
+              to="/procurement"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-sm hover:bg-amber-700 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              {tf('expensesGoToProcurement')}
+            </Link>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className={clsx('relative flex-1 max-w-md', isRTL && 'ms-auto')}>
+              <Search
+                className={clsx(
+                  'absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400',
+                  isRTL ? 'right-3' : 'left-3'
+                )}
+              />
               <input
                 type="text"
-                placeholder="Search invoices..."
+                placeholder={tf('searchInvoices')}
                 value={invoiceSearch}
                 onChange={(e) => setInvoiceSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                className={clsx(
+                  'w-full py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all',
+                  isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'
+                )}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20">
-                <Plus className="w-5 h-5" />
-                <BilingualLabel tKey="addInvoice" tf />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => void fetchPurchases()}
+              className="text-sm font-bold text-primary-600 hover:text-primary-700"
+            >
+              {t('sync')}
+            </button>
           </div>
 
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-white/10">
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      <BilingualLabel tKey="supplier" tf />
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      <BilingualLabel tKey="invoiceNumber" tf />
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      <BilingualLabel tKey="date" tf />
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      <BilingualLabel tKey="status" tf />
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
-                      <BilingualLabel tKey="totalAmount" tf />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                  {paginatedInvoices.map((invoice) => (
-                    <tr 
-                      key={invoice.id}
-                      className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer group"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-slate-100 dark:bg-zinc-800 rounded-lg text-slate-500">
-                            <Truck className="w-4 h-4" />
-                          </div>
-                          <span className="font-bold text-slate-900 dark:text-white">
-                            {invoice.supplierName}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="font-mono text-sm text-slate-500 dark:text-slate-400">
-                          {invoice.invoiceNumber}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-sm text-slate-900 dark:text-white font-medium">{invoice.date}</span>
-                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Due: {invoice.dueDate}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={clsx(
-                          "text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-widest",
-                          invoice.status === 'APPROUVÉ' ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600" :
-                          invoice.status === 'EN_ATTENTE_VALIDATION' ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600" :
-                          "bg-slate-50 dark:bg-zinc-800 text-slate-500"
-                        )}>
-                          {invoice.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                        {formatCurrency(invoice.totalAmount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              currentPage={safeInvoicePage}
-              totalPages={Math.ceil(filteredInvoices.length / PAGE_SIZE)}
-              onPageChange={setInvoicePage}
-            />
+            {purchasesLoading ? (
+              <div className="flex justify-center py-16">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-white/10">
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          <BilingualLabel tKey="supplier" tf />
+                        </th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          {tf('expensesColumnMaterial')}
+                        </th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          <BilingualLabel tKey="invoiceNumber" tf />
+                        </th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          <BilingualLabel tKey="date" tf />
+                        </th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          <BilingualLabel tKey="status" tf />
+                        </th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
+                          <BilingualLabel tKey="totalAmount" tf />
+                        </th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
+                          {t('actions')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                      {paginatedInvoices.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                            {tf('searchNoResults')}
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedInvoices.map((invoice) => {
+                          const det = parsePurchaseDetails(invoice.amountHT);
+                          const matLabel =
+                            det.materialName ??
+                            (typeof invoice.amountHT === 'string' && invoice.amountHT && !det.materialName
+                              ? '—'
+                              : '—');
+                          return (
+                            <tr
+                              key={invoice.id}
+                              className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors"
+                            >
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-slate-100 dark:bg-zinc-800 rounded-lg text-slate-500">
+                                    <Truck className="w-4 h-4" />
+                                  </div>
+                                  <span className="font-bold text-slate-900 dark:text-white">
+                                    {invoice.supplierName ?? '—'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
+                                {matLabel}
+                                {det.quantity != null && det.unit != null && (
+                                  <span className="text-slate-400 text-xs block">
+                                    {det.quantity} {det.unit}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="font-mono text-sm text-slate-500 dark:text-slate-400">
+                                  {invoice.invoiceNumber}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex flex-col">
+                                  <span className="text-sm text-slate-900 dark:text-white font-medium">
+                                    {formatApiDate(invoice.date)}
+                                  </span>
+                                  {invoice.dueDate && (
+                                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
+                                      {tf('invoiceDuePrefix')} {formatApiDate(invoice.dueDate)}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span
+                                  className={clsx(
+                                    'text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-widest',
+                                    invoice.status === 'APPROUVÉ'
+                                      ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
+                                      : invoice.status === 'EN_ATTENTE_VALIDATION'
+                                        ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600'
+                                        : 'bg-slate-50 dark:bg-zinc-800 text-slate-500'
+                                  )}
+                                >
+                                  {invoice.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                {formatCurrency(Number(invoice.totalAmount))}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <Link
+                                  to="/procurement"
+                                  className="inline-flex items-center gap-1 text-xs font-bold text-primary-600 hover:text-primary-700"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  {tf('expensesGoToProcurement')}
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <Pagination
+                  currentPage={safeInvoicePage}
+                  totalPages={invoiceTotalPages}
+                  onPageChange={setInvoicePage}
+                />
+              </>
+            )}
           </div>
         </div>
       )}
 
       {activeSubTab === 'assets' && (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-          <FileText className="w-16 h-16 mb-4 opacity-20" />
-          <p className="font-medium">Fixed Assets Module coming soon</p>
-          <p className="text-sm">Amortization schedules are being calculated</p>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className={clsx('relative flex-1 max-w-md', isRTL && 'ms-auto')}>
+              <Search
+                className={clsx(
+                  'absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400',
+                  isRTL ? 'right-3' : 'left-3'
+                )}
+              />
+              <input
+                type="text"
+                placeholder={tf('searchAccounts')}
+                value={assetSearch}
+                onChange={(e) => setAssetSearch(e.target.value)}
+                className={clsx(
+                  'w-full py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all',
+                  isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'
+                )}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={openNewAsset}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20"
+            >
+              <Plus className="w-5 h-5" />
+              {tf('assetAdd')}
+            </button>
+          </div>
+
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
+            {tf('assetDepreciationLinear')} — {tf('assetAnnualDepreciation')}.
+          </p>
+
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm overflow-hidden">
+            {assetsLoading ? (
+              <div className="flex justify-center py-16">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-white/10">
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          {tf('assetCode')}
+                        </th>
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          {tf('assetName')}
+                        </th>
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          {tf('assetCategory')}
+                        </th>
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-end">
+                          {tf('assetAcquisitionCost')}
+                        </th>
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-end">
+                          {tf('assetAnnualDepreciation')}
+                        </th>
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          {tf('assetNextMaintenance')}
+                        </th>
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          {tf('assetStatus')}
+                        </th>
+                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-end">
+                          {t('actions')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                      {paginatedAssets.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                            {tf('searchNoResults')}
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedAssets.map((a) => (
+                          <tr key={a.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
+                            <td className="px-4 py-3 font-mono text-xs">{a.code}</td>
+                            <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">{a.name}</td>
+                            <td className="px-4 py-3">{categoryTf(a.category)}</td>
+                            <td className="px-4 py-3 text-end font-mono">{formatCurrency(a.acquisitionCost)}</td>
+                            <td className="px-4 py-3 text-end font-mono text-slate-600 dark:text-slate-300">
+                              {formatCurrency(annualDepreciation(a.acquisitionCost, a.salvageValue, a.usefulLifeYears))}
+                            </td>
+                            <td className="px-4 py-3 text-xs">
+                              {a.nextMaintenanceAt ? formatApiDate(a.nextMaintenanceAt) : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-xs font-bold">{statusTf(a.status)}</td>
+                            <td className="px-4 py-3 text-end">
+                              <button
+                                type="button"
+                                onClick={() => openEditAsset(a)}
+                                className="p-2 text-slate-400 hover:text-primary-600 inline-flex"
+                                title={tf('assetEdit')}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void deleteAsset(a)}
+                                className="p-2 text-slate-400 hover:text-rose-600 inline-flex"
+                                title={t('delete')}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <Pagination
+                  currentPage={safeAssetPage}
+                  totalPages={assetTotalPages}
+                  onPageChange={setAssetPage}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {assetModalOpen && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-white/10">
+            <div className="sticky top-0 flex items-center justify-between p-4 border-b border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900">
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary-600" />
+                {editingAsset ? tf('assetEdit') : tf('assetAdd')}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAssetModalOpen(false)}
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetCode')}
+                  </label>
+                  <input
+                    className="input w-full mt-1"
+                    value={assetForm.code}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, code: e.target.value }))}
+                    placeholder="AST-…"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetCategory')}
+                  </label>
+                  <select
+                    className="input w-full mt-1"
+                    value={assetForm.category}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, category: e.target.value }))}
+                  >
+                    {ASSET_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {categoryTf(c)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {tf('assetName')}
+                </label>
+                <input
+                  className="input w-full mt-1"
+                  value={assetForm.name}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {tf('assetLocation')}
+                </label>
+                <input
+                  className="input w-full mt-1"
+                  value={assetForm.location}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, location: e.target.value }))}
+                  placeholder={tf('stockLocationShop')}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetAcquisitionDate')}
+                  </label>
+                  <input
+                    type="date"
+                    className="input w-full mt-1"
+                    value={assetForm.acquisitionDate}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, acquisitionDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetStatus')}
+                  </label>
+                  <select
+                    className="input w-full mt-1"
+                    value={assetForm.status}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, status: e.target.value }))}
+                  >
+                    {ASSET_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {statusTf(s)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetAcquisitionCost')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input w-full mt-1"
+                    value={assetForm.acquisitionCost}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, acquisitionCost: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetSalvageValue')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input w-full mt-1"
+                    value={assetForm.salvageValue}
+                    onChange={(e) =>
+                      setAssetForm((f) => ({ ...f, salvageValue: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetUsefulLifeYears')}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="input w-full mt-1"
+                    value={assetForm.usefulLifeYears}
+                    onChange={(e) =>
+                      setAssetForm((f) => ({ ...f, usefulLifeYears: Number(e.target.value) || 5 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetDepreciationMethod')}
+                  </label>
+                  <select
+                    className="input w-full mt-1"
+                    value={assetForm.depreciationMethod}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, depreciationMethod: e.target.value }))}
+                  >
+                    <option value="LINEAR">{tf('assetDepreciationLinear')}</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetLastMaintenance')}
+                  </label>
+                  <input
+                    type="date"
+                    className="input w-full mt-1"
+                    value={assetForm.lastMaintenanceAt}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, lastMaintenanceAt: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {tf('assetNextMaintenance')}
+                  </label>
+                  <input
+                    type="date"
+                    className="input w-full mt-1"
+                    value={assetForm.nextMaintenanceAt}
+                    onChange={(e) => setAssetForm((f) => ({ ...f, nextMaintenanceAt: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {tf('assetMaintenanceNotes')}
+                </label>
+                <textarea
+                  className="input w-full mt-1 min-h-[72px]"
+                  value={assetForm.maintenanceNotes}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, maintenanceNotes: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {tf('assetNotes')}
+                </label>
+                <textarea
+                  className="input w-full mt-1 min-h-[56px]"
+                  value={assetForm.notes}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, notes: e.target.value }))}
+                />
+              </div>
+              <button type="button" onClick={() => void saveAsset()} className="btn-primary w-full py-3 font-bold">
+                {t('save')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

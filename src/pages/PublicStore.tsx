@@ -32,7 +32,7 @@ import { logActivity } from '../lib/logger';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { Product, Promotion } from '../types';
-import { CURRENCY, PAGE_SIZE } from '../constants';
+import { PAGE_SIZE } from '../constants';
 import Pagination from '../components/Pagination';
 import { BrandWordmark } from '../components/BrandLogo';
 
@@ -48,7 +48,7 @@ const PublicStore: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = PAGE_SIZE;
-  const { t, tCategory, tProduct, isRTL } = useLanguage();
+  const { t, tCategory, tProduct, isRTL, currencyUnit } = useLanguage();
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -236,7 +236,7 @@ const PublicStore: React.FC = () => {
                   <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-2">{tProduct(product)}</h3>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-2xl font-display font-extrabold text-amber-600 dark:text-amber-500">
-                      {product.sellingPrice.toLocaleString()} {CURRENCY}
+                      {product.sellingPrice.toLocaleString()} {currencyUnit}
                     </span>
                     <button 
                       onClick={() => {
@@ -317,7 +317,7 @@ const PublicStore: React.FC = () => {
                       />
                       <div className="flex-1">
                         <h4 className="font-bold text-slate-900 dark:text-white">{tProduct(item)}</h4>
-                        <p className="text-sm text-slate-500 dark:text-zinc-500 mb-2">{item.sellingPrice.toLocaleString()} {CURRENCY}</p>
+                        <p className="text-sm text-slate-500 dark:text-zinc-500 mb-2">{item.sellingPrice.toLocaleString()} {currencyUnit}</p>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center bg-slate-50 dark:bg-zinc-900 rounded-lg p-1 border border-slate-200 dark:border-white/5">
                             <button 
@@ -351,7 +351,7 @@ const PublicStore: React.FC = () => {
                 <div className="p-8 bg-slate-50 dark:bg-zinc-900/50 border-t border-slate-100 dark:border-white/10 space-y-4">
                   <div className="flex items-center justify-between text-lg font-bold text-slate-900 dark:text-white">
                     <span>{t('total')}</span>
-                    <span className="text-amber-600 dark:text-amber-500">{cartTotal.toLocaleString()} {CURRENCY}</span>
+                    <span className="text-amber-600 dark:text-amber-500">{cartTotal.toLocaleString()} {currencyUnit}</span>
                   </div>
                   <button 
                     onClick={handleCheckout}

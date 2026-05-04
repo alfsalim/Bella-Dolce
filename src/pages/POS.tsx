@@ -17,13 +17,13 @@ import {
 import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/firebase-compat';
 import { Product, SaleItem, Customer } from '../types';
 import { clsx } from 'clsx';
-import { SELLABLE_CATEGORIES, CURRENCY } from '../constants';
+import { SELLABLE_CATEGORIES } from '../constants';
 import { authFetch } from '../lib/api-client';
 
 import { logActivity } from '../lib/logger';
 
 const POS: React.FC = () => {
-  const { t, isRTL, tProduct, tCategory } = useLanguage();
+  const { t, isRTL, tProduct, tCategory, currencyUnit } = useLanguage();
   const { profile } = useAuth();
   
   const [products, setProducts] = useState<Product[]>([]);
@@ -136,7 +136,7 @@ const POS: React.FC = () => {
       }
 
       if (profile) {
-        logActivity(profile.id, profile.name, 'Sale', `Completed sale of ${total} ${CURRENCY}`);
+        logActivity(profile.id, profile.name, 'Sale', `Completed sale of ${total} ${currencyUnit}`);
       }
 
       setIsSuccess(true);
@@ -264,7 +264,7 @@ const POS: React.FC = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{product ? tProduct(product) : ''}</h4>
-                    <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">{(item.price * item.quantity).toLocaleString()} {CURRENCY}</p>
+                    <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">{(item.price * item.quantity).toLocaleString()} {currencyUnit}</p>
                   </div>
                   <div className="flex items-center gap-1.5 bg-white dark:bg-black rounded-lg p-2 border border-slate-200 dark:border-[#2a1e17]">
                     <button
@@ -302,15 +302,15 @@ const POS: React.FC = () => {
             <div className="space-y-2">
               <div className="flex justify-between text-slate-500 dark:text-slate-400 font-medium">
                 <span>{t('subtotal')}</span>
-                <span>{total.toLocaleString()} {CURRENCY}</span>
+                <span>{total.toLocaleString()} {currencyUnit}</span>
               </div>
               <div className="flex justify-between text-slate-500 dark:text-slate-400 font-medium">
                 <span>{t('tax')} (0%)</span>
-                <span>0 {CURRENCY}</span>
+                <span>0 {currencyUnit}</span>
               </div>
               <div className="flex justify-between text-slate-900 dark:text-white text-xl font-bold pt-2 border-t border-slate-200 dark:border-[#2a1e17]">
                 <span>{t('total')}</span>
-                <span>{total.toLocaleString()} {CURRENCY}</span>
+                <span>{total.toLocaleString()} {currencyUnit}</span>
               </div>
             </div>
 
@@ -401,7 +401,7 @@ const POS: React.FC = () => {
                   <div className="p-4 bg-slate-50 dark:bg-[#1a1512] rounded-2xl">
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-xs tracking-widest">{t('amountDue')}</span>
-                      <span className="text-2xl font-display font-bold text-slate-900 dark:text-white">{total.toLocaleString()} {CURRENCY}</span>
+                      <span className="text-2xl font-display font-bold text-slate-900 dark:text-white">{total.toLocaleString()} {currencyUnit}</span>
                     </div>
                   </div>
 

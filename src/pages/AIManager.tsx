@@ -24,11 +24,10 @@ import { generateDailyReport, askAiManager, ReportContext } from '../services/ai
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
-import { CURRENCY } from '../constants';
 import toast from 'react-hot-toast';
 
 const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
-  const { t, isRTL, language } = useLanguage();
+  const { t, isRTL, language, currencyUnit } = useLanguage();
   const { profile } = useAuth();
   
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -76,7 +75,7 @@ const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
         setData(context);
       } catch (error) {
         console.error("Error fetching report data:", error);
-        toast.error("Error loading daily data");
+        toast.error(t('aiManagerLoadDailyFailed'));
       } finally {
         setLoading(false);
       }
@@ -92,10 +91,10 @@ const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
     try {
       const generatedReport = await generateDailyReport(data, language as 'fr' | 'ar');
       setReport(generatedReport);
-      toast.success("Daily report generated successfully");
+      toast.success(t('aiManagerReportSuccess'));
     } catch (error) {
       console.error("Error generating report:", error);
-      toast.error("Failed to generate AI report");
+      toast.error(t('aiManagerReportFailed'));
     } finally {
       setIsGenerating(false);
     }
@@ -110,10 +109,10 @@ const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
     try {
       const response = await askAiManager(question, data, language as 'fr' | 'ar');
       setAiResponse(response);
-      toast.success("AI Manager responded");
+      toast.success(t('aiManagerResponseSuccess'));
     } catch (error) {
       console.error("Error asking AI:", error);
-      toast.error("Failed to get AI response");
+      toast.error(t('aiManagerResponseFailed'));
     } finally {
       setIsAsking(false);
     }
@@ -123,8 +122,8 @@ const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center px-4">
         <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Restricted</h2>
-        <p className="text-slate-500 max-w-md">Only administrators have access to the AI Manager insights and daily reports.</p>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('accessDeniedTitle')}</h2>
+        <p className="text-slate-500 max-w-md">{t('aiManagerAccessDenied')}</p>
       </div>
     );
   }
@@ -148,7 +147,7 @@ const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-600/10 border border-primary-500/20 text-primary-400 text-xs font-bold uppercase tracking-widest mb-6">
               <Sparkles className="w-4 h-4" />
-              AI Bakery Manager
+              {t('aiManagerBadge')}
             </div>
             <h1 className={heroTitleClass}>
               {language === 'ar' ? 'رؤى المدير الذكي' : 'Insights du Manager IA'}
@@ -195,7 +194,7 @@ const AIManager: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 gap-4 w-full lg:w-auto">
             {[
-              { label: t('sales'), value: data?.sales.reduce((acc, s) => acc + s.totalAmount, 0) || 0, icon: TrendingUp, color: 'text-emerald-400', suffix: CURRENCY },
+              { label: t('sales'), value: data?.sales.reduce((acc, s) => acc + s.totalAmount, 0) || 0, icon: TrendingUp, color: 'text-emerald-400', suffix: currencyUnit },
               { label: t('production'), value: data?.batches.length || 0, icon: ChefHat, color: 'text-amber-400', suffix: t('batches') },
               { label: t('orders'), value: data?.orders.length || 0, icon: Package, color: 'text-blue-400', suffix: t('orders') },
               { label: t('alerts'), value: (data?.products.filter(p => p.stock < p.minStock).length || 0) + (data?.materials.filter(m => m.currentStock < m.minStock).length || 0), icon: AlertTriangle, color: 'text-red-400', suffix: t('items') },

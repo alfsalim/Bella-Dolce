@@ -49,7 +49,7 @@ const Finance: React.FC = () => {
             <BilingualLabel tKey="finance" tf />
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Bakery Financial Module — Algeria Edition (BFM-DZ v1.0)
+            {tf('financeModuleTagline')}
           </p>
         </div>
       </div>

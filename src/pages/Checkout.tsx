@@ -8,12 +8,12 @@ import { logActivity } from '../lib/logger';
 import { ShoppingBag, User, Phone, MapPin, CreditCard, ChevronLeft, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { clsx } from 'clsx';
-import { CURRENCY } from '../constants';
+import { toast } from 'react-hot-toast';
 
 const Checkout: React.FC = () => {
   const { cart, cartTotal, clearCart } = useCart();
   const { user, profile } = useAuth();
-  const { t } = useLanguage();
+  const { t, currencyUnit } = useLanguage();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -80,7 +80,7 @@ const Checkout: React.FC = () => {
           user.uid,
           profile?.name || 'Customer',
           'Place Order',
-          `Placed ${formData.type.toUpperCase()} order via checkout form. Total: ${cartTotal} ${CURRENCY}`
+          `Placed ${formData.type.toUpperCase()} order via checkout form. Total: ${cartTotal} ${currencyUnit}`
         );
       }
 
@@ -104,13 +104,13 @@ const Checkout: React.FC = () => {
           <div className="w-20 h-20 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
             <CheckCircle2 className="w-10 h-10" />
           </div>
-          <h2 className="text-3xl font-display font-bold text-slate-900 dark:text-white">Commande Reçue !</h2>
-          <p className="text-slate-500 dark:text-zinc-400">Merci pour votre confiance. Notre équipe prépare déjà vos délices artisanaux.</p>
+          <h2 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('checkoutOrderReceivedTitle')}</h2>
+          <p className="text-slate-500 dark:text-zinc-400">{t('checkoutThankYou')}</p>
           <button 
             onClick={() => navigate('/')}
             className="w-full py-4 bg-amber-600 text-white font-bold rounded-2xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20"
           >
-            Retour à la Boutique
+            Retour à la boutique
           </button>
         </motion.div>
       </div>
@@ -127,37 +127,37 @@ const Checkout: React.FC = () => {
             className="flex items-center gap-2 text-slate-500 dark:text-zinc-500 font-bold hover:text-amber-500 transition-colors"
           >
             <ChevronLeft className="w-5 h-5" />
-            Retour à la boutique
+            {t('checkoutBackToStore')}
           </button>
 
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-100 dark:border-white/10 p-8 md:p-12">
-            <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white mb-8">Informations de Livraison</h1>
+            <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white mb-8">{t('checkoutDeliveryTitle')}</h1>
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">Nom Complet</label>
+                  <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">{t('fullName')}</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                     <input 
                       required
                       type="text"
                       className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
-                      placeholder="John Doe"
+                      placeholder={t('placeholderFullName')}
                       value={formData.name}
                       onChange={e => setFormData({ ...formData, name: e.target.value })}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">Téléphone</label>
+                  <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">{t('phone')}</label>
                   <div className="relative">
                     <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                     <input 
                       required
                       type="tel"
                       className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
-                      placeholder="05XX XX XX XX"
+                      placeholder={t('placeholderPhoneDz')}
                       value={formData.phone}
                       onChange={e => setFormData({ ...formData, phone: e.target.value })}
                     />
@@ -166,13 +166,13 @@ const Checkout: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">Adresse de Livraison</label>
+                <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">{t('checkoutAddressLabel')}</label>
                 <div className="relative">
                   <MapPin className="absolute left-4 top-3 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                   <textarea 
                     required
                     className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700 min-h-[100px]"
-                    placeholder="Votre adresse complète..."
+                    placeholder={t('placeholderFullAddress')}
                     value={formData.address}
                     onChange={e => setFormData({ ...formData, address: e.target.value })}
                   />
@@ -180,7 +180,7 @@ const Checkout: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">Type de Commande</label>
+                <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">{t('checkoutOrderTypeLabel')}</label>
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     type="button"
@@ -192,7 +192,7 @@ const Checkout: React.FC = () => {
                         : "border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-black text-slate-400 dark:text-zinc-500 hover:border-slate-200 dark:hover:border-white/10"
                     )}
                   >
-                    Particulier (B2C)
+                    {t('checkoutOrderTypeB2C')}
                   </button>
                   <button
                     type="button"
@@ -204,16 +204,16 @@ const Checkout: React.FC = () => {
                         : "border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-black text-slate-400 dark:text-zinc-500 hover:border-slate-200 dark:hover:border-white/10"
                     )}
                   >
-                    Professionnel (B2B)
+                    {t('checkoutOrderTypeB2B')}
                   </button>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">Notes (Optionnel)</label>
+                <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest ml-1">{t('checkoutNotesLabel')}</label>
                 <textarea 
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
-                  placeholder="Instructions spéciales..."
+                  placeholder={t('placeholderSpecialNotes')}
                   value={formData.notes}
                   onChange={e => setFormData({ ...formData, notes: e.target.value })}
                 />
@@ -224,7 +224,7 @@ const Checkout: React.FC = () => {
                 disabled={isSubmitting}
                 className="w-full py-5 bg-amber-600 text-white font-bold rounded-2xl shadow-xl shadow-amber-600/20 hover:bg-amber-500 transition-all text-lg disabled:opacity-50"
               >
-                {isSubmitting ? 'Traitement...' : 'Confirmer et Payer à la Livraison'}
+                {isSubmitting ? t('checkoutProcessing') : t('checkoutConfirmCod')}
               </button>
             </form>
           </div>
@@ -235,7 +235,7 @@ const Checkout: React.FC = () => {
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-100 dark:border-white/10 p-8">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
               <ShoppingBag className="w-5 h-5 text-amber-500" />
-              Résumé de la Commande
+              {t('checkoutOrderSummaryTitle')}
             </h2>
             
             <div className="space-y-4 mb-8 max-h-[400px] overflow-y-auto pr-2 no-scrollbar">
@@ -247,11 +247,11 @@ const Checkout: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-slate-900 dark:text-white">{item.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-500 font-medium">{item.sellingPrice.toLocaleString()} {CURRENCY}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-500 font-medium">{item.sellingPrice.toLocaleString()} {currencyUnit}</p>
                     </div>
                   </div>
                   <span className="font-bold text-slate-900 dark:text-white">
-                    {(item.sellingPrice * item.quantity).toLocaleString()} {CURRENCY}
+                    {(item.sellingPrice * item.quantity).toLocaleString()} {currencyUnit}
                   </span>
                 </div>
               ))}
@@ -259,16 +259,16 @@ const Checkout: React.FC = () => {
 
             <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-white/10">
               <div className="flex justify-between text-slate-500 dark:text-zinc-400 font-medium">
-                <span>Sous-total</span>
-                <span>{cartTotal.toLocaleString()} {CURRENCY}</span>
+                <span>{t('checkoutSubtotal')}</span>
+                <span>{cartTotal.toLocaleString()} {currencyUnit}</span>
               </div>
               <div className="flex justify-between text-slate-500 dark:text-zinc-400 font-medium">
-                <span>Livraison</span>
-                <span className="text-emerald-500 dark:text-emerald-400 font-bold uppercase tracking-widest text-xs">Gratuit</span>
+                <span>{t('delivery')}</span>
+                <span className="text-emerald-500 dark:text-emerald-400 font-bold uppercase tracking-widest text-xs">{t('checkoutFree')}</span>
               </div>
               <div className="flex justify-between text-2xl font-display font-extrabold text-slate-900 dark:text-white pt-4">
-                <span>Total</span>
-                <span className="text-amber-600 dark:text-amber-500">{cartTotal.toLocaleString()} {CURRENCY}</span>
+                <span>{t('checkoutTotal')}</span>
+                <span className="text-amber-600 dark:text-amber-500">{cartTotal.toLocaleString()} {currencyUnit}</span>
               </div>
             </div>
           </div>
@@ -278,10 +278,10 @@ const Checkout: React.FC = () => {
               <div className="w-12 h-12 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center border border-amber-500/20">
                 <CreditCard className="w-6 h-6" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Paiement Sécurisé</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t('checkoutSecurePaymentTitle')}</h3>
             </div>
             <p className="text-slate-500 dark:text-zinc-400 text-sm leading-relaxed">
-              Nous acceptons uniquement le paiement à la livraison pour le moment. Veuillez préparer le montant exact pour faciliter la transaction.
+              {t('checkoutCodNote')}
             </p>
           </div>
         </div>

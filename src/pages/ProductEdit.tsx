@@ -18,7 +18,7 @@ import {
 import { db, doc, getDoc, updateDoc, onSnapshot, collection, setDoc, deleteDoc } from '../lib/firebase-compat';
 import { Product, Recipe, RawMaterial, RecipeIngredient } from '../types';
 import { clsx } from 'clsx';
-import { CATEGORIES, UNITS, CURRENCY } from '../constants';
+import { CATEGORIES, UNITS } from '../constants';
 import { Percent, Hash } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { compressImage } from '../lib/utils';
@@ -26,7 +26,9 @@ import { compressImage } from '../lib/utils';
 const ProductEdit: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t, tProduct, tCategory, isRTL } = useLanguage();
+  const { t, tProduct, tCategory, isRTL, currencyUnit } = useLanguage();
+  const tx = (key: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{{${k}}}`, v), t(key));
 
   const [product, setProduct] = useState<Product | null>(null);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -173,7 +175,7 @@ const ProductEdit: React.FC = () => {
   };
 
   if (loading) return <div className="h-96 flex items-center justify-center"><div className="w-10 h-10 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div></div>;
-  if (!product) return <div className="card text-center py-20"><h2 className="text-2xl font-bold text-slate-400">Product not found</h2></div>;
+  if (!product) return <div className="card text-center py-20"><h2 className="text-2xl font-bold text-slate-400">{t('productNotFound')}</h2></div>;
 
   return (
     <div className="space-y-8">
@@ -187,7 +189,7 @@ const ProductEdit: React.FC = () => {
           </button>
           <div>
             <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{tProduct(product)}</h1>
-            <p className="text-slate-500 dark:text-zinc-500 font-medium">Modifier les détails du produit et la recette artisanale</p>
+            <p className="text-slate-500 dark:text-zinc-500 font-medium">{t('productEditSubtitle')}</p>
           </div>
         </div>
         <div className="flex gap-3">
@@ -203,10 +205,10 @@ const ProductEdit: React.FC = () => {
             onClick={handleSave}
             disabled={saving || validationErrors.length > 0}
             className="px-6 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20 flex items-center gap-2 disabled:opacity-50"
-            title={validationErrors.length > 0 ? `Remplissez les champs obligatoires: ${validationErrors.join(', ')}` : ''}
+            title={validationErrors.length > 0 ? tx('validationFillRequired', { fields: validationErrors.join(', ') }) : ''}
           >
             <Save className="w-4 h-4" />
-            {saving ? 'Enregistrement...' : t('save')}
+            {saving ? t('savingInProgress') : t('save')}
           </button>
         </div>
       </div>
@@ -216,7 +218,7 @@ const ProductEdit: React.FC = () => {
           {validationErrors.length > 0 && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
               <p className="text-sm font-bold text-red-700 dark:text-red-400">
-                Veuillez remplir les champs obligatoires: {validationErrors.join(', ')}
+                {tx('validationFillRequired', { fields: validationErrors.join(', ') })}
               </p>
             </div>
           )}
@@ -259,7 +261,7 @@ const ProductEdit: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('shelfLife')} (Heures)</label>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('shelfLife')} ({t('hours')})</label>
                 <div className="relative">
                   <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                   <input 
@@ -271,7 +273,7 @@ const ProductEdit: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('sellingPrice')} ({CURRENCY}) <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('sellingPrice')} ({currencyUnit}) <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                   <input 
@@ -284,7 +286,7 @@ const ProductEdit: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('costPrice')} ({CURRENCY}) <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('costPrice')} ({currencyUnit}) <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
                   <input 
@@ -327,7 +329,7 @@ const ProductEdit: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">{t('prepTime')} (Min)</label>
+                    <label className="block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">{t('prepTime')} ({t('minutes')})</label>
                     <input 
                       type="number" 
                       className="bg-transparent border-none p-0 font-bold text-slate-900 dark:text-white focus:ring-0 w-full"
@@ -368,7 +370,7 @@ const ProductEdit: React.FC = () => {
                         <input 
                           type="number" 
                           className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
-                          placeholder="Qté"
+                          placeholder={t('placeholderQtyAbbrev')}
                           value={ing.quantity || 0}
                           onChange={(e) => updateIngredient(idx, 'quantity', Number(e.target.value))}
                         />
@@ -418,7 +420,7 @@ const ProductEdit: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-500 dark:text-zinc-500 font-medium">{t('currentStock')}</span>
-                  <span className="font-bold text-slate-900 dark:text-white">{product.stock} unités</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{tx('stockWithUnits', { count: String(product.stock) })}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-500 dark:text-zinc-500 font-medium">{t('minStock')}</span>

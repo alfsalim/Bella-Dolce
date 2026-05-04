@@ -22,7 +22,7 @@ import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
 
 const GeneralLedger: React.FC = () => {
-  const { formatCurrency, isRTL } = useLanguage();
+  const { formatCurrency, isRTL, tf } = useLanguage();
   const [activeSubTab, setActiveSubTab] = useState('accounts');
   const [searchTerm, setSearchTerm] = useState('');
   const [accountsPage, setAccountsPage] = useState(1);
@@ -110,7 +110,7 @@ const GeneralLedger: React.FC = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search accounts..."
+                placeholder={tf('searchAccounts')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"

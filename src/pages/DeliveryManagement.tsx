@@ -9,7 +9,7 @@ import Pagination from '../components/Pagination';
 import { PAGE_SIZE } from '../constants';
 
 const DeliveryManagement: React.FC = () => {
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, currencyUnit } = useLanguage();
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -129,7 +129,7 @@ const DeliveryManagement: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('delivery')}</h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">{t('manageTeam')}</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">{t('manageDeliveriesDesc')}</p>
         </div>
         <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-1 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm">
           <button 
@@ -239,7 +239,7 @@ const DeliveryManagement: React.FC = () => {
                                   "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
                                   order.deliveryType === 'business' ? "bg-slate-900 dark:bg-slate-800 text-white" : "bg-primary-100 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400"
                                 )}>
-                                  {order.deliveryType}
+                                  {t(order.deliveryType)}
                                 </span>
                               </div>
                               <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
@@ -248,7 +248,7 @@ const DeliveryManagement: React.FC = () => {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{order.totalAmount} DA</p>
+                            <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{order.totalAmount} {currencyUnit}</p>
                             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">{order.items.length} {t('items')}</p>
                           </div>
                         </div>
@@ -257,7 +257,7 @@ const DeliveryManagement: React.FC = () => {
                           <div className="space-y-3">
                             <div className="flex items-start gap-2 text-sm">
                               <MapPin className="w-4 h-4 text-slate-300 dark:text-slate-600 mt-0.5" />
-                              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{t('deliveryAddress')}: {order.notes || 'N/A'}</p>
+                              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{t('deliveryAddress')}: {order.notes || t('notAvailable')}</p>
                             </div>
                             <div className="flex items-center gap-2 text-sm">
                               <User className="w-4 h-4 text-slate-300 dark:text-slate-600" />
@@ -278,7 +278,7 @@ const DeliveryManagement: React.FC = () => {
                                   <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold text-xs">
                                     {deliveryGuy?.name?.charAt(0)}
                                   </div>
-                                  <p className="text-sm font-bold text-slate-900 dark:text-white">{deliveryGuy?.name || 'Unknown'}</p>
+                                  <p className="text-sm font-bold text-slate-900 dark:text-white">{deliveryGuy?.name || t('unknownUser')}</p>
                                 </div>
                               </div>
                             ) : (
@@ -357,7 +357,7 @@ const DeliveryManagement: React.FC = () => {
                             <td className="px-8 py-5">
                               <div className="flex flex-col">
                                 <span className="font-bold text-slate-900 dark:text-white">#{order.id.slice(-6)}</span>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{order.deliveryType}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t(order.deliveryType)}</span>
                               </div>
                             </td>
                             <td className="px-8 py-5">

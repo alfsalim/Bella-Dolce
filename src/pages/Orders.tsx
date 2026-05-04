@@ -29,14 +29,14 @@ import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { CURRENCY, PAGE_SIZE } from '../constants';
+import { PAGE_SIZE } from '../constants';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import DeliveryManagement from './DeliveryManagement';
 
 const Orders: React.FC = () => {
-  const { t, isRTL, tProduct } = useLanguage();
+  const { t, isRTL, tProduct, currencyUnit } = useLanguage();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'orders' | 'tracking'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -200,7 +200,7 @@ const Orders: React.FC = () => {
   };
 
   const handlePrintInvoice = () => {
-    toast.success(t('openingPrintDialog') || 'Opening print dialog...');
+      toast.success(t('openingPrintDialog'));
     setTimeout(() => {
       window.print();
     }, 100);
@@ -210,7 +210,7 @@ const Orders: React.FC = () => {
     const printContent = document.getElementById('invoice-content');
     if (!printContent || !selectedOrderForInvoice) return;
 
-    const toastId = toast.loading(t('generatingPDF') || 'Generating PDF...');
+    const toastId = toast.loading(t('generatingPDF'));
 
     try {
       // Create a clone to avoid flickering in the UI
@@ -259,10 +259,10 @@ const Orders: React.FC = () => {
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`invoice-${selectedOrderForInvoice.id.slice(-8).toUpperCase()}.pdf`);
       
-      toast.success(t('pdfDownloaded') || 'PDF downloaded successfully', { id: toastId });
+      toast.success(t('pdfDownloaded'), { id: toastId });
     } catch (error) {
       console.error('PDF generation error:', error);
-      toast.error(t('pdfError') || 'Failed to generate PDF', { id: toastId });
+      toast.error(t('pdfError'), { id: toastId });
     }
   };
 
@@ -290,7 +290,7 @@ const Orders: React.FC = () => {
                   className="btn-primary gap-2"
                 >
                   <Download className="w-4 h-4" />
-                  {t('downloadPDF') || 'PDF'}
+                  {t('downloadPDF')}
                 </button>
                 <button 
                   onClick={() => setIsInvoiceModalOpen(false)}
@@ -304,7 +304,7 @@ const Orders: React.FC = () => {
             <div className="p-8 print:p-0 print:text-black" id="invoice-content">
               <div className="flex justify-between items-start mb-12">
                 <div>
-                  <h1 className="text-4xl font-display font-bold text-primary-600 mb-2 print:text-primary-600">INVOICE</h1>
+                  <h1 className="text-4xl font-display font-bold text-primary-600 mb-2 print:text-primary-600">{t('invoiceDocumentTitle')}</h1>
                   <p className="text-slate-500 font-bold uppercase tracking-widest text-xs print:text-slate-500">#{selectedOrderForInvoice.id.slice(-8).toUpperCase()}</p>
                 </div>
                 <div className="text-right">
@@ -317,20 +317,20 @@ const Orders: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-12 mb-12">
                 <div>
-                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 print:text-slate-400">Bill To</h3>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white mb-1 print:text-black">{selectedOrderForInvoice.clientName || 'Walk-in Customer'}</p>
+                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 print:text-slate-400">{t('billTo')}</h3>
+                  <p className="text-lg font-bold text-slate-900 dark:text-white mb-1 print:text-black">{selectedOrderForInvoice.clientName || t('walkInCustomer')}</p>
                   {selectedOrderForInvoice.customerId && (
-                    <p className="text-slate-500 text-sm print:text-slate-500">Customer ID: {selectedOrderForInvoice.customerId}</p>
+                    <p className="text-slate-500 text-sm print:text-slate-500">{t('customerIdLabel').replace('{{id}}', selectedOrderForInvoice.customerId)}</p>
                   )}
                 </div>
                 <div className="text-right">
                   <div className="space-y-2">
                     <div className="flex justify-end gap-4">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">Date</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('date')}</span>
                       <span className="text-sm font-bold text-slate-900 dark:text-white print:text-black">{format(new Date(selectedOrderForInvoice.createdAt), 'PPP')}</span>
                     </div>
                     <div className="flex justify-end gap-4">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">Status</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('status')}</span>
                       <span className="text-sm font-bold text-primary-600 uppercase print:text-primary-600">{t(selectedOrderForInvoice.status)}</span>
                     </div>
                   </div>
@@ -340,10 +340,10 @@ const Orders: React.FC = () => {
               <table className="w-full mb-12">
                 <thead>
                   <tr className="border-b-2 border-slate-100 dark:border-[#2a1e17] print:border-slate-100">
-                    <th className="py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">Item</th>
-                    <th className="py-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">Qty</th>
-                    <th className="py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">Price</th>
-                    <th className="py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">Total</th>
+                    <th className="py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('invoiceItem')}</th>
+                    <th className="py-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('qtyAbbrev')}</th>
+                    <th className="py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('price')}</th>
+                    <th className="py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('total')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#2a1e17] print:divide-slate-100">
@@ -352,11 +352,11 @@ const Orders: React.FC = () => {
                     return (
                       <tr key={idx}>
                         <td className="py-4">
-                          <p className="font-bold text-slate-900 dark:text-white print:text-black">{product ? tProduct(product) : 'Unknown'}</p>
+                          <p className="font-bold text-slate-900 dark:text-white print:text-black">{product ? tProduct(product) : t('unknownProduct')}</p>
                         </td>
                         <td className="py-4 text-center font-bold text-slate-700 dark:text-slate-300 print:text-slate-700">x{item.quantity}</td>
-                        <td className="py-4 text-right font-bold text-slate-700 dark:text-slate-300 print:text-slate-700">{item.price.toLocaleString()} {CURRENCY}</td>
-                        <td className="py-4 text-right font-bold text-slate-900 dark:text-white print:text-black">{(item.quantity * item.price).toLocaleString()} {CURRENCY}</td>
+                        <td className="py-4 text-right font-bold text-slate-700 dark:text-slate-300 print:text-slate-700">{item.price.toLocaleString()} {currencyUnit}</td>
+                        <td className="py-4 text-right font-bold text-slate-900 dark:text-white print:text-black">{(item.quantity * item.price).toLocaleString()} {currencyUnit}</td>
                       </tr>
                     );
                   })}
@@ -366,22 +366,22 @@ const Orders: React.FC = () => {
               <div className="flex justify-end">
                 <div className="w-full max-w-xs space-y-4">
                   <div className="flex justify-between items-center text-slate-500 print:text-slate-500">
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Subtotal</span>
-                    <span className="font-bold">{selectedOrderForInvoice.totalAmount.toLocaleString()} {CURRENCY}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{t('subtotal')}</span>
+                    <span className="font-bold">{selectedOrderForInvoice.totalAmount.toLocaleString()} {currencyUnit}</span>
                   </div>
                   <div className="flex justify-between items-center text-slate-500 print:text-slate-500">
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Tax (0%)</span>
-                    <span className="font-bold">0 {CURRENCY}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{t('taxZeroPercent')}</span>
+                    <span className="font-bold">0 {currencyUnit}</span>
                   </div>
                   <div className="pt-4 border-t-2 border-slate-100 dark:border-[#2a1e17] flex justify-between items-center print:border-slate-100">
-                    <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-widest print:text-black">Total Amount</span>
-                    <span className="text-2xl font-display font-bold text-primary-600 print:text-primary-600">{selectedOrderForInvoice.totalAmount.toLocaleString()} {CURRENCY}</span>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-widest print:text-black">{t('totalAmount')}</span>
+                    <span className="text-2xl font-display font-bold text-primary-600 print:text-primary-600">{selectedOrderForInvoice.totalAmount.toLocaleString()} {currencyUnit}</span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-24 pt-12 border-t border-slate-100 dark:border-[#2a1e17] text-center print:border-slate-100">
-                <p className="text-slate-400 text-sm italic print:text-slate-400">Thank you for your business!</p>
+                <p className="text-slate-400 text-sm italic print:text-slate-400">{t('invoiceThankYou')}</p>
               </div>
             </div>
           </div>
@@ -392,7 +392,7 @@ const Orders: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('orders')}</h1>
-            <p className="text-slate-500 dark:text-slate-400 font-medium">{t('manageOrdersDesc') || 'Manage client orders and delivery status'}</p>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">{t('manageOrdersDesc')}</p>
           </div>
           <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
             <button
@@ -413,7 +413,7 @@ const Orders: React.FC = () => {
               )}
             >
               <Truck className="w-4 h-4" />
-              {t('tracking') || 'Tracking'}
+              {t('tracking')}
             </button>
           </div>
         </div>
@@ -508,7 +508,7 @@ const Orders: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('clientName')}</p>
-                          <p className="font-bold text-slate-900 dark:text-white">{order.clientName || 'Walk-in Customer'}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">{order.clientName || t('walkInCustomer')}</p>
                         </div>
                       </div>
 
@@ -528,7 +528,7 @@ const Orders: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('expectedTime')}</p>
-                          <p className="font-bold text-slate-900 dark:text-white">{order.expectedDate} at {order.expectedTime}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">{t('dateTimeAt').replace('{{date}}', order.expectedDate).replace('{{time}}', order.expectedTime)}</p>
                         </div>
                       </div>
 
@@ -547,11 +547,11 @@ const Orders: React.FC = () => {
                   <div className="flex-1 p-6">
                     <div className="flex items-start justify-between mb-6">
                       <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-1">{order.description || 'No description'}</h3>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-1">{order.description || t('noDescription')}</h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400">{order.items.length} {t('items')}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-display font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toLocaleString()} {CURRENCY}</p>
+                        <p className="text-2xl font-display font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toLocaleString()} {currencyUnit}</p>
                         <p className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{t('totalAmount')}</p>
                       </div>
                     </div>
@@ -570,7 +570,7 @@ const Orders: React.FC = () => {
                               />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{product ? tProduct(product) : 'Unknown'}</p>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{product ? tProduct(product) : t('unknownProduct')}</p>
                               <p className="text-xs text-slate-500 dark:text-slate-400">x{item.quantity}</p>
                             </div>
                           </div>
@@ -627,10 +627,10 @@ const Orders: React.FC = () => {
                           setIsInvoiceModalOpen(true);
                         }}
                         className="btn-secondary gap-2"
-                        title={t('issueInvoice') || 'Issue Invoice'}
+                        title={t('issueInvoice')}
                       >
                         <FileText className="w-4 h-4" />
-                        <span className="hidden sm:inline">{t('issueInvoice') || 'Issue Invoice'}</span>
+                        <span className="hidden sm:inline">{t('issueInvoice')}</span>
                       </button>
                     </div>
                   </div>
@@ -665,7 +665,7 @@ const Orders: React.FC = () => {
                       <span className="text-xs font-bold text-slate-400 dark:text-slate-600">#{order.id.slice(-6).toUpperCase()}</span>
                     </td>
                     <td className="p-4">
-                      <p className="font-bold text-slate-900 dark:text-white">{order.clientName || 'Walk-in Customer'}</p>
+                      <p className="font-bold text-slate-900 dark:text-white">{order.clientName || t('walkInCustomer')}</p>
                     </td>
                     <td className="p-4">
                       <div className={clsx("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider inline-block", getStatusColor(order.status))}>
@@ -673,7 +673,7 @@ const Orders: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-4">
-                      <p className="font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toLocaleString()} {CURRENCY}</p>
+                      <p className="font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toLocaleString()} {currencyUnit}</p>
                     </td>
                     <td className="p-4">
                       <p className="text-sm text-slate-600 dark:text-slate-300">{order.expectedDate} {order.expectedTime}</p>
@@ -702,7 +702,7 @@ const Orders: React.FC = () => {
                             setIsInvoiceModalOpen(true);
                           }}
                           className="p-2 text-slate-400 dark:text-slate-600 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
-                          title={t('issueInvoice') || 'Issue Invoice'}
+                          title={t('issueInvoice')}
                         >
                           <FileText className="w-4 h-4" />
                         </button>

@@ -46,7 +46,6 @@ import {
 import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase-compat';
 import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
 import { clsx } from 'clsx';
-import { CURRENCY } from '../constants';
 import Pagination from '../components/Pagination';
 
 const REPORTS_PAGE_SIZE = 100;
@@ -61,7 +60,7 @@ function parseSaleItems(sale: Sale): (SaleItem & { name?: string })[] {
 }
 
 const Reports: React.FC = () => {
-  const { t, tProduct, tCategory } = useLanguage();
+  const { t, tProduct, tCategory, currencyUnit } = useLanguage();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'analytics' | 'sales' | 'activities'>('analytics');
 
@@ -489,7 +488,7 @@ const Reports: React.FC = () => {
                 </div>
               </div>
               <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('totalRevenue')}</p>
-              <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{totalRevenue.toLocaleString()} {CURRENCY}</h3>
+              <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{totalRevenue.toLocaleString()} {currencyUnit}</h3>
             </div>
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
@@ -498,7 +497,7 @@ const Reports: React.FC = () => {
                 </div>
               </div>
               <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('profit')}</p>
-              <h3 className="text-2xl font-display font-bold text-emerald-600 dark:text-emerald-400">{totalProfit.toLocaleString()} {CURRENCY}</h3>
+              <h3 className="text-2xl font-display font-bold text-emerald-600 dark:text-emerald-400">{totalProfit.toLocaleString()} {currencyUnit}</h3>
             </div>
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
@@ -507,7 +506,7 @@ const Reports: React.FC = () => {
                 </div>
               </div>
               <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('costs')}</p>
-              <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{totalCosts.toLocaleString()} {CURRENCY}</h3>
+              <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{totalCosts.toLocaleString()} {currencyUnit}</h3>
             </div>
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
@@ -516,7 +515,7 @@ const Reports: React.FC = () => {
                 </div>
               </div>
               <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('avgOrderValue')}</p>
-              <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{avgOrderValue.toLocaleString()} {CURRENCY}</h3>
+              <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{avgOrderValue.toLocaleString()} {currencyUnit}</h3>
             </div>
           </div>
 
@@ -573,21 +572,21 @@ const Reports: React.FC = () => {
               <p className="text-slate-500 dark:text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">{t('daily')}</p>
               <div className="flex items-end justify-between">
                 <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{fulfilledToday.length}</h3>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{totalFulfilledToday.toLocaleString()} {CURRENCY}</p>
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{totalFulfilledToday.toLocaleString()} {currencyUnit}</p>
               </div>
             </div>
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
               <p className="text-slate-500 dark:text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">{t('weekly')}</p>
               <div className="flex items-end justify-between">
                 <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{fulfilledThisWeek.length}</h3>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{totalFulfilledThisWeek.toLocaleString()} {CURRENCY}</p>
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{totalFulfilledThisWeek.toLocaleString()} {currencyUnit}</p>
               </div>
             </div>
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
               <p className="text-slate-500 dark:text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">{t('monthly')}</p>
               <div className="flex items-end justify-between">
                 <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{fulfilledThisMonth.length}</h3>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{totalFulfilledThisMonth.toLocaleString()} {CURRENCY}</p>
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{totalFulfilledThisMonth.toLocaleString()} {currencyUnit}</p>
               </div>
             </div>
             <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20">
@@ -912,7 +911,7 @@ const Reports: React.FC = () => {
 
             <div className="card p-4 bg-primary-600 border-none flex flex-col justify-center">
               <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">{t('totalPeriodSales') || 'Total Period Sales'}</p>
-              <h3 className="text-2xl font-display font-bold text-white">{displayPeriodTotal.toLocaleString()} {CURRENCY}</h3>
+              <h3 className="text-2xl font-display font-bold text-white">{displayPeriodTotal.toLocaleString()} {currencyUnit}</h3>
             </div>
           </div>
 
@@ -1043,7 +1042,7 @@ const Reports: React.FC = () => {
                               </div>
                             </td>
                             <td className="px-8 py-5 text-right font-display font-bold text-lg text-slate-900 dark:text-white">
-                              {sale.totalAmount.toLocaleString()} {CURRENCY}
+                              {sale.totalAmount.toLocaleString()} {currencyUnit}
                             </td>
                           </tr>
                         );
@@ -1118,7 +1117,7 @@ const Reports: React.FC = () => {
                             </td>
                             <td className="px-8 py-5 text-slate-700 dark:text-slate-300">{row.quantity}</td>
                             <td className="px-8 py-5 text-slate-700 dark:text-slate-300">
-                              {row.revenue.toLocaleString()} {CURRENCY}
+                              {row.revenue.toLocaleString()} {currencyUnit}
                             </td>
                             <td className="px-8 py-5 text-right font-bold text-slate-900 dark:text-white">{row.saleCount}</td>
                           </tr>

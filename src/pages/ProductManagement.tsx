@@ -12,7 +12,7 @@ import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
 
 const ProductManagement: React.FC = () => {
-  const { t, tProduct, tCategory, isRTL } = useLanguage();
+  const { t, tProduct, tCategory, isRTL, currencyUnit } = useLanguage();
   const { profile: currentUserProfile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
@@ -418,7 +418,7 @@ const ProductManagement: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('productManagement')}</h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Define products, recipes, and specifications</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">{t('productManagementSubtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-white dark:bg-[#0a0a0a] p-1 rounded-xl border border-slate-200 dark:border-[#2a1e17] shadow-sm">
@@ -665,7 +665,7 @@ const ProductManagement: React.FC = () => {
                           {isProduct ? t('price') : t('minStock')}
                         </p>
                         <p className="font-bold text-slate-900 dark:text-white">
-                          {isProduct ? `${product?.sellingPrice} DA` : `${material?.minStock} ${material?.unit}`}
+                          {isProduct ? `${product?.sellingPrice} ${currencyUnit}` : `${material?.minStock} ${material?.unit}`}
                         </p>
                       </div>
                       <div className="p-3 bg-slate-50 dark:bg-[#0a0a0a] rounded-xl">
@@ -798,7 +798,7 @@ const ProductManagement: React.FC = () => {
                       </td>
                       <td className="px-6 py-4">
                         <span className="font-bold text-primary-600 dark:text-primary-400">
-                          {isProduct ? `${product?.sellingPrice} DA` : `${material?.minStock} ${material?.unit}`}
+                          {isProduct ? `${product?.sellingPrice} ${currencyUnit}` : `${material?.minStock} ${material?.unit}`}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -1332,7 +1332,7 @@ const ProductManagement: React.FC = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">{t('price')}</p>
-                  <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">{selectedProductForDetails.sellingPrice} DA</p>
+                  <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">{selectedProductForDetails.sellingPrice} {currencyUnit}</p>
                 </div>
               </div>
 
@@ -1347,7 +1347,7 @@ const ProductManagement: React.FC = () => {
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10">
                   <p className="text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-1">{t('costPrice')}</p>
-                  <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProductForDetails.costPrice || 0} DA</p>
+                  <p className="text-xl font-bold text-slate-900 dark:text-white">{selectedProductForDetails.costPrice || 0} {currencyUnit}</p>
                 </div>
               </div>
 

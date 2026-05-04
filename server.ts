@@ -108,6 +108,133 @@ const unwrapDataIfNeeded = (collection: string, item: any) => {
   return item;
 };
 
+/** Coerces JSON/API values to `string | null` for optional Prisma `String?` fields (avoids Prisma Int/object rejects). */
+function optionalEmployeeTextField(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    const t = v.trim();
+    return t !== "" ? t : null;
+  }
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return null;
+}
+
+const FINANCIAL_EMPLOYEE_WRITE_KEYS = [
+  "name",
+  "role",
+  "email",
+  "phone",
+  "matricule",
+  "nin",
+  "cnasNumber",
+  "department",
+  "hireDate",
+  "baseSalary",
+  "transportAllowance",
+  "performanceBonus",
+  "otherAllowances",
+  "contributesToCNAS",
+  "bankRIB",
+  "status",
+] as const;
+
+/** Keeps only fields on Prisma `FinancialEmployee` create/update input (no `createdAt`, stray client keys, etc.). */
+function pickFinancialEmployeeWriteData(src: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const k of FINANCIAL_EMPLOYEE_WRITE_KEYS) {
+    if (src[k] !== undefined) out[k] = src[k];
+  }
+  return out;
+}
+
+/** Maps app payroll payload to Prisma `FinancialEmployee` (strips UserProfile-only fields like username/password). */
+function prepareFinancialEmployeeForPrisma(body: Record<string, any>, explicitId?: string) {
+  const id = explicitId ?? body.id;
+  const matriculeRaw = body.matricule != null ? String(body.matricule).trim() : "";
+  const matricule = matriculeRaw || `EMP-${String(id ?? "x").replace(/-/g, "")}`;
+  let hireDate: Date | null = null;
+  if (body.hireDate) {
+    const d = new Date(body.hireDate);
+    if (!Number.isNaN(d.getTime())) hireDate = d;
+  }
+  const baseSalary = Number(body.baseSalary);
+  const transportAllowance = Number(body.transportAllowance) || 0;
+  const performanceBonus = Number(body.performanceBonus) || 0;
+  const otherAllowances = Number(body.otherAllowances) || 0;
+  const contributesToCNAS = body.contributesToCNAS !== false && body.contributesToCNAS !== "false";
+  return {
+    name: String(body.name ?? ""),
+    role: String(body.role ?? ""),
+    email: optionalEmployeeTextField(body.email),
+    phone: optionalEmployeeTextField(body.phone),
+    matricule,
+    nin: optionalEmployeeTextField(body.nin),
+    cnasNumber: optionalEmployeeTextField(body.cnasNumber),
+    department: optionalEmployeeTextField(body.department),
+    hireDate,
+    baseSalary: Number.isFinite(baseSalary) ? baseSalary : 0,
+    transportAllowance,
+    performanceBonus,
+    otherAllowances,
+    contributesToCNAS,
+    bankRIB: optionalEmployeeTextField(body.bankRIB),
+    status: body.status != null ? String(body.status) : "ACTIF",
+  };
+}
+
+const FIXED_ASSET_PRISMA_FIELDS = [
+  "code",
+  "name",
+  "category",
+  "location",
+  "acquisitionCost",
+  "usefulLifeYears",
+  "salvageValue",
+  "depreciationMethod",
+  "notes",
+  "lastMaintenanceAt",
+  "nextMaintenanceAt",
+  "maintenanceNotes",
+  "status",
+  "acquisitionDate",
+] as const;
+
+function prepareFixedAssetForPrisma(raw: Record<string, any>) {
+  const num = (v: unknown, d: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : d;
+  };
+  const int = (v: unknown, d: number) => {
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : d;
+  };
+  const out: Record<string, any> = {};
+  for (const key of FIXED_ASSET_PRISMA_FIELDS) {
+    if (key in raw && raw[key] !== undefined) out[key] = raw[key];
+  }
+  out.acquisitionCost = num(out.acquisitionCost ?? raw.acquisitionCost, 0);
+  out.usefulLifeYears = int(out.usefulLifeYears ?? raw.usefulLifeYears, 5);
+  out.salvageValue = num(out.salvageValue ?? raw.salvageValue, 0);
+  out.name = String(out.name ?? raw.name ?? "");
+  out.code = String(out.code ?? raw.code ?? "").trim();
+  out.category = String(out.category ?? raw.category ?? "other");
+  if (out.location != null && out.location !== "") out.location = String(out.location);
+  else delete out.location;
+  out.depreciationMethod = String(out.depreciationMethod ?? raw.depreciationMethod ?? "LINEAR");
+  if (out.notes != null && out.notes !== "") out.notes = String(out.notes);
+  else delete out.notes;
+  if (out.maintenanceNotes != null && out.maintenanceNotes !== "") out.maintenanceNotes = String(out.maintenanceNotes);
+  else delete out.maintenanceNotes;
+  out.status = String(out.status ?? raw.status ?? "IN_SERVICE");
+  if (out.acquisitionDate) out.acquisitionDate = new Date(out.acquisitionDate);
+  else out.acquisitionDate = new Date();
+  if (out.lastMaintenanceAt) out.lastMaintenanceAt = new Date(out.lastMaintenanceAt);
+  else delete out.lastMaintenanceAt;
+  if (out.nextMaintenanceAt) out.nextMaintenanceAt = new Date(out.nextMaintenanceAt);
+  else delete out.nextMaintenanceAt;
+  return out;
+}
+
 /** Prisma DateTime filters reject bare YYYY-MM-DD; normalize at any depth (Express query shapes vary). */
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -200,7 +327,10 @@ async function canReadCollectionForSearch(userRole: string, collection: string):
   const routeRequired = COLLECTION_ROUTE_MAP[collection];
   if (!routeRequired) return true;
   const allowedPaths = await getCachedAllowedPaths(role);
-  return allowedPaths.includes('*') || allowedPaths.includes(routeRequired);
+  if (allowedPaths.includes('*') || allowedPaths.includes(routeRequired)) return true;
+  // Expenses view in finance reads the same rows as procurement (purchases → SupplierInvoice)
+  if (collection === 'purchases' && allowedPaths.includes('/finance')) return true;
+  return false;
 }
 
 const SEARCH_HITS_PER_TYPE = 8;
@@ -764,7 +894,16 @@ async function startServer() {
     if (!routeRequired) return next(); // Unknown collection — allow (safe default for new collections)
 
     getCachedAllowedPaths(userRole).then((allowedPaths) => {
-      if (allowedPaths.includes('*') || allowedPaths.includes(routeRequired)) {
+      if (allowedPaths.includes('*')) return next();
+      const routeRequired = COLLECTION_ROUTE_MAP[collection];
+      if (!routeRequired) return next();
+      if (allowedPaths.includes(routeRequired)) return next();
+      // Finance users may list purchases for the Dépenses tab (read-only expense mirror).
+      if (
+        collection === 'purchases' &&
+        method === 'GET' &&
+        allowedPaths.includes('/finance')
+      ) {
         return next();
       }
       return res.status(403).json({ error: 'Forbidden: insufficient role' });
@@ -1204,6 +1343,14 @@ async function startServer() {
         else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
       }
 
+      if (collection === 'fixedAssets') {
+        const idKeep = dataToSave.id;
+        const prepared = prepareFixedAssetForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, prepared);
+        if (idKeep) dataToSave.id = idKeep;
+      }
+
       if (collection === 'purchases') {
         dataToSave.invoiceNumber = `INV-${Date.now()}`;
         dataToSave.date = new Date(dataToSave.purchaseDate);
@@ -1243,6 +1390,15 @@ async function startServer() {
         }
       }
 
+      // Must run after other collection transforms + stringify; guarantees matricule & Prisma types (compat clients omit matricule).
+      if (collection === 'financialEmployees') {
+        const rowId = dataToSave.id != null ? String(dataToSave.id) : undefined;
+        const preparedFe = prepareFinancialEmployeeForPrisma({ ...dataToSave, id: rowId }, rowId);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, pickFinancialEmployeeWriteData(preparedFe));
+        if (rowId) dataToSave.id = rowId;
+      }
+
       const data = await model.create({ data: dataToSave });
       const result = unwrapDataIfNeeded(collection, data);
 
@@ -1278,6 +1434,13 @@ async function startServer() {
       if (collection === 'rawMaterials') {
         if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
         else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
+      }
+
+      if (collection === 'fixedAssets') {
+        const prepared = prepareFixedAssetForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, prepared);
+        delete dataToSave.id;
       }
 
       if (collection === 'purchases') {
@@ -1317,6 +1480,13 @@ async function startServer() {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object' && !(dataToSave[key] instanceof Date)) {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
         }
+      }
+
+      if (collection === 'financialEmployees') {
+        const preparedFe = prepareFinancialEmployeeForPrisma({ ...dataToSave, id }, id);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, pickFinancialEmployeeWriteData(preparedFe));
+        delete dataToSave.id;
       }
 
       const existing = await model.findUnique({ where: { id } });

@@ -27,11 +27,10 @@ import {
 } from 'recharts';
 import { db, collection, onSnapshot, query, orderBy, limit, where, handleFirestoreError, OperationType } from '../lib/firebase-compat';
 import { ProductionBatch, Sale, Product, RawMaterial, Order } from '../types';
-import { CURRENCY } from '../constants';
 import { clsx } from 'clsx';
 
 const Dashboard: React.FC = () => {
-  const { t, isRTL, tProduct, tCategory } = useLanguage();
+  const { t, isRTL, tProduct, tCategory, currencyUnit } = useLanguage();
   const { profile } = useAuth();
   
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
@@ -155,7 +154,7 @@ const Dashboard: React.FC = () => {
   const stats = [
     { 
       label: t('todaySales'), 
-      value: `${todaySalesAmount.toLocaleString()} ${CURRENCY}`, 
+      value: `${todaySalesAmount.toLocaleString()} ${currencyUnit}`, 
       change: todaySales.length > 0 ? `+${todaySales.length} ${t('orders')}` : t('noSalesYet'), 
       icon: TrendingUp, 
       color: 'text-emerald-600', 
@@ -321,7 +320,7 @@ const Dashboard: React.FC = () => {
                         <span className="font-semibold text-slate-900 dark:text-zinc-300 text-sm">{t('sale')} {sale.id.slice(-4)}</span>
                       </div>
                     </td>
-                    <td className="py-4 font-bold text-slate-900 dark:text-white text-sm">{sale.totalAmount.toLocaleString()} {CURRENCY}</td>
+                    <td className="py-4 font-bold text-slate-900 dark:text-white text-sm">{sale.totalAmount.toLocaleString()} {currencyUnit}</td>
                     <td className="py-4">
                       <div className="flex items-center gap-1 text-emerald-400 font-bold text-xs">
                         <CheckCircle2 className="w-4 h-4" />

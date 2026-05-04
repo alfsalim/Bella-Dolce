@@ -304,7 +304,7 @@ const Users: React.FC = () => {
                           {user.name?.charAt(0) || '?'}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{user.name || 'Unknown'}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">{user.name || t('unknownUser')}</p>
                         </div>
                       </div>
                     </td>

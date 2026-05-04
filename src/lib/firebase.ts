@@ -9,23 +9,62 @@ export enum OperationType {
 }
 
 export function isAuthError(error: any): boolean {
-  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return msg.includes('unauthorized') || 
-         msg.includes('token') || 
-         msg.includes('expired') || 
-         msg.includes('unauthenticated') ||
-         msg.includes('credentials') ||
-         msg.includes('jwt');
+  const raw = error instanceof Error ? error.message : String(error);
+  const msg = raw.toLowerCase();
+  // JSON/HTML parse failures often say "Unexpected token" — must not wipe session.
+  if (msg.includes('unexpected token')) return false;
+  return (
+    msg.includes('unauthorized') ||
+    msg.includes('unauthenticated') ||
+    msg.includes('invalid or expired token') ||
+    (msg.includes('invalid token') && !msg.includes('prisma')) ||
+    msg.includes('expired token') ||
+    msg.includes('credentials') ||
+    msg.includes('jwt malformed') ||
+    msg.includes('jwt expired')
+  );
+}
+
+function parseApiErrorBody(text: string): string {
+  const t = text.trim();
+  if (!t) return 'Request failed';
+  try {
+    const j = JSON.parse(t) as { error?: unknown; message?: unknown };
+    if (typeof j.error === 'string' && j.error.length > 0) return j.error;
+    if (typeof j.message === 'string' && j.message.length > 0) return j.message;
+  } catch {
+    /* plain text */
+  }
+  return t.length > 500 ? `${t.slice(0, 500)}…` : t;
+}
+
+/** Use HTTP status for session invalidation (avoids false positives from "token" in Prisma/JSON errors). */
+async function throwIfDbResponseFailed(
+  res: Response,
+  operationType: OperationType,
+  path: string | null
+): Promise<void> {
+  if (res.ok) return;
+  const text = await res.text();
+  const message = parseApiErrorBody(text);
+  if (res.status === 401) {
+    localStorage.removeItem('bakery_token');
+    localStorage.removeItem('bakery_user');
+    window.dispatchEvent(
+      new CustomEvent('bakery_auth_error', { detail: { error: message, operationType, path } })
+    );
+    console.warn(`Auth session error during [${operationType}] at ${path}. Token cleared.`);
+    throw new Error(message);
+  }
+  console.error(`Postgres Migration Error [${operationType}] at ${path}:`, message);
+  throw new Error(message);
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   if (isAuthError(error)) {
-    // Proactively clear stale session markers
     localStorage.removeItem('bakery_token');
     localStorage.removeItem('bakery_user');
-    // Dispatch event to allow AuthContext to trigger global logout/redirect
     window.dispatchEvent(new CustomEvent('bakery_auth_error', { detail: { error, operationType, path } }));
-    // Silent warn, avoid console.error noise
     console.warn(`Auth session error during [${operationType}] at ${path}. Token cleared.`);
   } else {
     console.error(`Postgres Migration Error [${operationType}] at ${path}:`, error);
@@ -130,8 +169,7 @@ export async function getDocs(queryRef: any) {
 
   const res = await fetch(url.toString(), { headers: getAuthHeaders() });
   if (!res.ok) {
-    const error = await res.text();
-    handleFirestoreError(new Error(error), OperationType.LIST, queryRef.path);
+    await throwIfDbResponseFailed(res, OperationType.LIST, queryRef.path);
   }
   let data = await res.json();
   
@@ -157,8 +195,7 @@ export async function getDocs(queryRef: any) {
 export async function getDoc(docRef: any) {
   const res = await fetch(`/api/db/${docRef.path}`, { headers: getAuthHeaders() });
   if (!res.ok) {
-    const error = await res.text();
-    handleFirestoreError(new Error(error), OperationType.GET, docRef.path);
+    await throwIfDbResponseFailed(res, OperationType.GET, docRef.path);
   }
   const item = await res.json();
   return {
@@ -175,8 +212,7 @@ export async function addDoc(collectionRef: any, data: any) {
     body: JSON.stringify(data)
   });
   if (!res.ok) {
-    const error = await res.text();
-    handleFirestoreError(new Error(error), OperationType.CREATE, collectionRef.path);
+    await throwIfDbResponseFailed(res, OperationType.CREATE, collectionRef.path);
   }
   const item = await res.json();
   return { id: item.id } as any;
@@ -189,8 +225,7 @@ export async function updateDoc(docRef: any, data: any) {
     body: JSON.stringify(data)
   });
   if (!res.ok) {
-    const error = await res.text();
-    handleFirestoreError(new Error(error), OperationType.UPDATE, docRef.path);
+    await throwIfDbResponseFailed(res, OperationType.UPDATE, docRef.path);
   }
   return await res.json();
 }
@@ -205,8 +240,7 @@ export async function deleteDoc(docRef: any) {
     headers: getAuthHeaders()
   });
   if (!res.ok) {
-    const error = await res.text();
-    handleFirestoreError(new Error(error), OperationType.DELETE, docRef.path);
+    await throwIfDbResponseFailed(res, OperationType.DELETE, docRef.path);
   }
 }
 

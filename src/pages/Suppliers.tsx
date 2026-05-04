@@ -119,7 +119,7 @@ const Suppliers: React.FC = () => {
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error saving supplier:", error);
-      toast.error("Failed to save supplier");
+      toast.error(t('supplierSaveFailed'));
     }
   };
 
@@ -131,7 +131,7 @@ const Suppliers: React.FC = () => {
       if (selectedSupplier?.id === id) setSelectedSupplier(null);
     } catch (error) {
       console.error("Error deleting supplier:", error);
-      toast.error("Failed to delete supplier");
+      toast.error(t('supplierDeleteFailed'));
     }
   };
 
@@ -158,8 +158,8 @@ const Suppliers: React.FC = () => {
         <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 mb-6">
           <Truck className="w-10 h-10" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h1>
-        <p className="text-slate-500 max-w-md">Only administrators and managers can access the supplier management section.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('accessDeniedTitle')}</h1>
+        <p className="text-slate-500 max-w-md">{t('suppliersAccessDenied')}</p>
       </div>
     );
   }
@@ -173,7 +173,7 @@ const Suppliers: React.FC = () => {
             <Truck className="w-8 h-8 text-primary-600" />
             {t('suppliers')}
           </h1>
-          <p className="text-slate-500 mt-1">Manage your supply chain and raw material providers</p>
+          <p className="text-slate-500 mt-1">{t('suppliersPageDesc')}</p>
         </div>
         <button 
           onClick={() => handleOpenModal()}
@@ -261,7 +261,7 @@ const Suppliers: React.FC = () => {
                         <p className="text-slate-500 font-medium">{selectedSupplier.contact}</p>
                         <div className="flex items-center gap-4 mt-3">
                           <span className="px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 text-xs font-bold uppercase tracking-wider">
-                            Active Supplier
+                            {t('activeSupplier')}
                           </span>
                         </div>
                       </div>
@@ -315,7 +315,7 @@ const Suppliers: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">{t('address')}</p>
-                          <p className="text-slate-900 dark:text-white font-medium">{selectedSupplier.address || 'N/A'}</p>
+                          <p className="text-slate-900 dark:text-white font-medium">{selectedSupplier.address || t('notAvailable')}</p>
                         </div>
                       </div>
                     </div>
@@ -335,7 +335,7 @@ const Suppliers: React.FC = () => {
                           </span>
                         ))
                       ) : (
-                        <p className="text-slate-500 italic text-sm">No materials associated yet.</p>
+                        <p className="text-slate-500 italic text-sm">{t('supplierNoMaterials')}</p>
                       )}
                     </div>
                   </div>
@@ -351,10 +351,10 @@ const Suppliers: React.FC = () => {
                     <table className="w-full text-left">
                       <thead>
                         <tr className="text-xs text-slate-500 uppercase font-bold tracking-wider border-b border-slate-100 dark:border-white/5">
-                          <th className="pb-4 px-4">Invoice #</th>
-                          <th className="pb-4 px-4">Date</th>
-                          <th className="pb-4 px-4">Amount</th>
-                          <th className="pb-4 px-4">Status</th>
+                          <th className="pb-4 px-4">{t('invoiceColNumber')}</th>
+                          <th className="pb-4 px-4">{t('colDate')}</th>
+                          <th className="pb-4 px-4">{t('amount')}</th>
+                          <th className="pb-4 px-4">{t('status')}</th>
                           <th className="pb-4 px-4"></th>
                         </tr>
                       </thead>
@@ -382,7 +382,7 @@ const Suppliers: React.FC = () => {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={5} className="py-8 text-center text-slate-500 italic">No invoice history found.</td>
+                            <td colSpan={5} className="py-8 text-center text-slate-500 italic">{t('supplierNoInvoiceHistory')}</td>
                           </tr>
                         )}
                       </tbody>
@@ -395,8 +395,8 @@ const Suppliers: React.FC = () => {
                 <div className="w-20 h-20 bg-slate-50 dark:bg-zinc-900 rounded-full flex items-center justify-center text-slate-300 mb-6">
                   <Truck className="w-10 h-10" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Select a Supplier</h2>
-                <p className="text-slate-500 max-w-xs">Choose a supplier from the list to view their full profile, materials, and financial history.</p>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t('selectSupplier')}</h2>
+                <p className="text-slate-500 max-w-xs">{t('selectSupplierHint')}</p>
               </div>
             )}
           </AnimatePresence>
@@ -442,18 +442,18 @@ const Suppliers: React.FC = () => {
                       value={formData.name}
                       onChange={(e) => setFormData({...formData, name: e.target.value})}
                       className="input"
-                      placeholder="e.g. Grands Moulins de Paris"
+                      placeholder={t('placeholderSupplierCompany')}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Contact Person</label>
+                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{t('contactPerson')}</label>
                     <input 
                       required
                       type="text"
                       value={formData.contact}
                       onChange={(e) => setFormData({...formData, contact: e.target.value})}
                       className="input"
-                      placeholder="e.g. Jean Dupont"
+                      placeholder={t('placeholderContactName')}
                     />
                   </div>
                   <div className="space-y-2">
@@ -464,7 +464,7 @@ const Suppliers: React.FC = () => {
                       value={formData.phone}
                       onChange={(e) => setFormData({...formData, phone: e.target.value})}
                       className="input"
-                      placeholder="+213 5XX XX XX XX"
+                      placeholder={t('placeholderPhoneDz')}
                     />
                   </div>
                   <div className="space-y-2">
@@ -475,7 +475,7 @@ const Suppliers: React.FC = () => {
                       value={formData.email}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                       className="input"
-                      placeholder="contact@supplier.com"
+                      placeholder={t('placeholderSupplierEmail')}
                     />
                   </div>
                 </div>
@@ -486,7 +486,7 @@ const Suppliers: React.FC = () => {
                     value={formData.address}
                     onChange={(e) => setFormData({...formData, address: e.target.value})}
                     className="input min-h-[100px] py-4"
-                    placeholder="Full business address..."
+                    placeholder={t('placeholderSupplierAddress')}
                   />
                 </div>
 

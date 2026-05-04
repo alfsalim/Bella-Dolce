@@ -24,16 +24,16 @@ import { clsx } from 'clsx';
 import { format } from 'date-fns';
 
 const RiskEngine: React.FC = () => {
-  const { formatCurrency, isRTL } = useLanguage();
+  const { formatCurrency, isRTL, tf } = useLanguage();
   const [activeSubTab, setActiveSubTab] = useState('overview');
 
   // Mock data for Risk
   const riskMetrics = [
-    { name: 'Liquidity Risk', score: 85, status: 'Low', color: 'emerald' },
-    { name: 'Credit Risk (B2B)', score: 62, status: 'Moderate', color: 'amber' },
-    { name: 'Operational Risk', score: 92, status: 'Very Low', color: 'emerald' },
-    { name: 'Tax Compliance Risk', score: 78, status: 'Low', color: 'emerald' },
-    { name: 'Inventory Shrinkage', score: 45, status: 'High', color: 'rose' }
+    { nameKey: 'riskLiquidity', score: 85, statusKey: 'low' as const, color: 'emerald' },
+    { nameKey: 'riskCreditB2B', score: 62, statusKey: 'moderate' as const, color: 'amber' },
+    { nameKey: 'riskOperational', score: 92, statusKey: 'veryLow' as const, color: 'emerald' },
+    { nameKey: 'riskTaxCompliance', score: 78, statusKey: 'low' as const, color: 'emerald' },
+    { nameKey: 'riskInventoryShrinkage', score: 45, statusKey: 'high' as const, color: 'rose' }
   ];
 
   return (
@@ -75,7 +75,7 @@ const RiskEngine: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
               <div className="flex items-center justify-between mb-8">
-                <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white">Composite Risk Score</h3>
+                <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white">{tf('compositeRiskScore')}</h3>
                 <div className="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-full text-primary-600">
                   <ShieldCheck className="w-8 h-8" />
                 </div>
@@ -108,29 +108,29 @@ const RiskEngine: React.FC = () => {
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-5xl font-display font-bold text-slate-900 dark:text-white">82</span>
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Healthy</span>
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{tf('riskHealthHealthy')}</span>
                   </div>
                 </div>
                 <p className="mt-8 text-sm text-slate-500 dark:text-slate-400 text-center max-w-xs">
-                  Your financial health is strong. Inventory shrinkage is the primary concern this period.
+                  {tf('riskHealthBlurb')}
                 </p>
               </div>
             </div>
 
             <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
-              <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-8">Risk Breakdown</h3>
+              <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-8">{tf('riskBreakdown')}</h3>
               <div className="space-y-6">
                 {riskMetrics.map((metric) => (
-                  <div key={metric.name} className="space-y-2">
+                  <div key={metric.nameKey} className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold text-slate-700 dark:text-slate-300">{metric.name}</span>
+                      <span className="font-bold text-slate-700 dark:text-slate-300">{tf(metric.nameKey)}</span>
                       <span className={clsx(
                         "font-bold",
                         metric.color === 'emerald' ? "text-emerald-600" :
                         metric.color === 'amber' ? "text-amber-600" :
                         "text-rose-600"
                       )}>
-                        {metric.status} ({metric.score}%)
+                        {tf(metric.statusKey)} ({metric.score}%)
                       </span>
                     </div>
                     <div className="h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
@@ -155,12 +155,12 @@ const RiskEngine: React.FC = () => {
               <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="font-bold text-rose-900 dark:text-rose-400">Critical Alert: Inventory Shrinkage</h4>
+              <h4 className="font-bold text-rose-900 dark:text-rose-400">{tf('riskAlertShrinkageTitle')}</h4>
               <p className="text-sm text-rose-700 dark:text-rose-300 mt-1">
-                Detected a 12% discrepancy between production output and POS sales for 'Baguette Traditionnelle' over the last 48 hours.
+                {tf('riskAlertShrinkageBody')}
               </p>
-              <button className="mt-3 text-xs font-bold text-rose-900 dark:text-rose-400 underline underline-offset-4">
-                Investigate Discrepancy
+              <button type="button" className="mt-3 text-xs font-bold text-rose-900 dark:text-rose-400 underline underline-offset-4">
+                {tf('riskInvestigate')}
               </button>
             </div>
           </div>
@@ -170,8 +170,8 @@ const RiskEngine: React.FC = () => {
       {activeSubTab === 'alerts' && (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <ShieldAlert className="w-16 h-16 mb-4 opacity-20" />
-          <p className="font-medium">Real-time Risk Alerts coming soon</p>
-          <p className="text-sm">Composite engine is monitoring all transactions</p>
+          <p className="font-medium">{tf('riskAlertsSoon')}</p>
+          <p className="text-sm">{tf('riskMonitoringActive')}</p>
         </div>
       )}
     </div>

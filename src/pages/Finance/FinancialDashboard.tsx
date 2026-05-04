@@ -27,7 +27,7 @@ import {
 } from 'recharts';
 
 const FinancialDashboard: React.FC = () => {
-  const { formatCurrency } = useLanguage();
+  const { formatCurrency, tf } = useLanguage();
 
   // Mock data for the dashboard
   const pnlData = [
@@ -88,7 +88,7 @@ const FinancialDashboard: React.FC = () => {
               <Activity className="w-5 h-5" />
             </div>
             <span className="text-xs font-bold text-primary-600 bg-primary-50 dark:bg-primary-900/20 px-2 py-1 rounded-full">
-              Healthy
+              {tf('financialStatusHealthy')}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -105,7 +105,7 @@ const FinancialDashboard: React.FC = () => {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <span className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
-              Score: {riskScore}/100
+              {tf('riskScoreLabel')}: {riskScore}{tf('riskScoreOutOf')}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -130,15 +130,15 @@ const FinancialDashboard: React.FC = () => {
             <div className="flex items-center gap-4 text-xs font-medium">
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-primary-500" />
-                <span className="text-slate-500 dark:text-slate-400">Revenue</span>
+                <span className="text-slate-500 dark:text-slate-400">{tf('revenue')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-rose-500" />
-                <span className="text-slate-500 dark:text-slate-400">Expenses</span>
+                <span className="text-slate-500 dark:text-slate-400">{tf('expenses')}</span>
               </div>
             </div>
           </div>
-          <div className="h-[300px] w-full">
+          <div className="h-[300px] min-h-[280px] w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={pnlData}>
                 <defs>
@@ -199,7 +199,7 @@ const FinancialDashboard: React.FC = () => {
                   <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Caisse POS</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{tf('financePosCashLabel')}</p>
                   <p className="font-bold text-slate-900 dark:text-white">{formatCurrency(24500)}</p>
                 </div>
               </div>
@@ -212,7 +212,7 @@ const FinancialDashboard: React.FC = () => {
                   <Activity className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Banque (BNA)</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{tf('financeBankLabel')}</p>
                   <p className="font-bold text-slate-900 dark:text-white">{formatCurrency(1250000)}</p>
                 </div>
               </div>
@@ -221,11 +221,11 @@ const FinancialDashboard: React.FC = () => {
 
             <div className="pt-4 border-t border-slate-100 dark:border-white/10">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-slate-500 dark:text-slate-400">Total Cash Available</span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">{tf('financeTotalCashAvailable')}</span>
                 <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(1274500)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500 dark:text-slate-400">Burn Rate (Daily)</span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">{tf('financeBurnRateDaily')}</span>
                 <span className="font-bold text-rose-600">{formatCurrency(12400)}</span>
               </div>
             </div>

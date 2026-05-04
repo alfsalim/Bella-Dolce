@@ -259,12 +259,23 @@ model SupplierInvoice {
 }
 
 model FixedAsset {
-  id              String   @id @default(uuid())
-  code            String   @unique
-  name            String
-  acquisitionCost Float
-  usefulLifeYears Int
-  acquisitionDate DateTime @default(now())
+  id                 String    @id @default(uuid())
+  code               String    @unique
+  name               String
+  category           String    @default("other")
+  location           String?
+  acquisitionCost    Float
+  usefulLifeYears    Int       @default(5)
+  salvageValue       Float     @default(0)
+  depreciationMethod String    @default("LINEAR")
+  notes              String?
+  lastMaintenanceAt  DateTime?
+  nextMaintenanceAt  DateTime?
+  maintenanceNotes   String?
+  status             String    @default("IN_SERVICE")
+  acquisitionDate    DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 model DailyCashReconciliation {
@@ -285,14 +296,25 @@ model RiskSnapshot {
 }
 
 model FinancialEmployee {
-  id         String   @id @default(uuid())
-  name       String
-  role       String
-  matricule  String   @unique
-  nin        String?
-  baseSalary Float
-  status     String   @default("ACTIF")
-  createdAt  DateTime @default(now())
+  id                   String    @id @default(uuid())
+  name                 String
+  role                 String
+  email                String?
+  phone                String?
+  matricule            String    @unique
+  nin                  String?
+  cnasNumber           String?
+  department           String?
+  hireDate             DateTime?
+  baseSalary           Float
+  transportAllowance   Float     @default(0)
+  performanceBonus     Float     @default(0)
+  otherAllowances      Float     @default(0)
+  contributesToCNAS    Boolean   @default(true)
+  bankRIB              String?
+  status               String    @default("ACTIF")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }
 
 model StockMovement {

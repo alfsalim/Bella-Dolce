@@ -107,7 +107,7 @@ const Customers: React.FC = () => {
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error saving customer:", error);
-      toast.error("Failed to save customer");
+      toast.error(t('customerSaveFailed'));
     }
   };
 
@@ -119,7 +119,7 @@ const Customers: React.FC = () => {
       if (selectedCustomer?.id === id) setSelectedCustomer(null);
     } catch (error) {
       console.error("Error deleting customer:", error);
-      toast.error("Failed to delete customer");
+      toast.error(t('customerDeleteFailed'));
     }
   };
 
@@ -139,8 +139,8 @@ const Customers: React.FC = () => {
         <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center text-red-600 mb-6">
           <Users className="w-10 h-10" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h1>
-        <p className="text-slate-500 max-w-md">Only authorized personnel can access the customer management section.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('customersAccessDenied')}</h1>
+        <p className="text-slate-500 max-w-md">{t('customersAccessDeniedDesc')}</p>
       </div>
     );
   }
@@ -154,7 +154,7 @@ const Customers: React.FC = () => {
             <Users className="w-8 h-8 text-primary-600" />
             {t('customers')}
           </h1>
-          <p className="text-slate-500 mt-1">Manage individual and business customer profiles</p>
+          <p className="text-slate-500 mt-1">{t('customersPageDesc')}</p>
         </div>
         <button 
           onClick={() => handleOpenModal()}
@@ -243,9 +243,9 @@ const Customers: React.FC = () => {
                              "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
                              selectedCustomer.type === 'b2b' ? "bg-amber-100 text-amber-600" : "bg-blue-100 text-blue-600"
                            )}>
-                             {selectedCustomer.type === 'b2b' ? 'Business' : 'Individual'}
+                             {selectedCustomer.type === 'b2b' ? t('customerTypeBusiness') : t('customerTypeIndividual')}
                            </span>
-                           <span className="px-2 py-0.5 bg-green-100 text-green-600 rounded text-[10px] font-bold uppercase tracking-wider">Regular</span>
+                           <span className="px-2 py-0.5 bg-green-100 text-green-600 rounded text-[10px] font-bold uppercase tracking-wider">{t('customerTierRegular')}</span>
                         </div>
                       </div>
                     </div>
@@ -288,7 +288,7 @@ const Customers: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">{t('email')}</p>
-                          <p className="text-slate-900 dark:text-white font-medium">{selectedCustomer.email || 'N/A'}</p>
+                          <p className="text-slate-900 dark:text-white font-medium">{selectedCustomer.email || t('notAvailable')}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-white/5">
@@ -297,7 +297,7 @@ const Customers: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">{t('address')}</p>
-                          <p className="text-slate-900 dark:text-white font-medium">{selectedCustomer.address || 'N/A'}</p>
+                          <p className="text-slate-900 dark:text-white font-medium">{selectedCustomer.address || t('notAvailable')}</p>
                         </div>
                       </div>
                     </div>
@@ -306,17 +306,17 @@ const Customers: React.FC = () => {
                   <div className="space-y-6">
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                       <ShoppingBag className="w-5 h-5 text-primary-600" />
-                      Recent Activity
+                      {t('recentActivity')}
                     </h3>
                     <div className="space-y-3">
                        <div className="p-4 rounded-2xl bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-500/20">
-                          <p className="text-xs text-primary-600 dark:text-primary-400 font-bold uppercase tracking-widest mb-1">Total Purchases</p>
+                          <p className="text-xs text-primary-600 dark:text-primary-400 font-bold uppercase tracking-widest mb-1">{t('totalPurchases')}</p>
                           <p className="text-2xl font-bold text-primary-700 dark:text-primary-300">
                             {formatCurrency(orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0))}
                           </p>
                        </div>
                        <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-500/20">
-                          <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase tracking-widest mb-1">Active Orders</p>
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase tracking-widest mb-1">{t('activeOrders')}</p>
                           <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
                             {orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length}
                           </p>
@@ -328,7 +328,7 @@ const Customers: React.FC = () => {
                 <div className="p-8 border-t border-slate-100 dark:border-white/5">
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
                     <History className="w-5 h-5 text-primary-600" />
-                    Order History
+                    {t('orderHistory')}
                   </h3>
                   <div className="space-y-3">
                     {orders.length > 0 ? (
@@ -339,7 +339,7 @@ const Customers: React.FC = () => {
                                  <ShoppingBag className="w-5 h-5 text-slate-400" />
                               </div>
                               <div>
-                                 <p className="text-sm font-bold text-slate-900 dark:text-white">Order #{order.id.slice(-6).toUpperCase()}</p>
+                                 <p className="text-sm font-bold text-slate-900 dark:text-white">{t('orderRefPrefix')} #{order.id.slice(-6).toUpperCase()}</p>
                                  <p className="text-xs text-slate-500">{new Date(order.createdAt).toLocaleDateString()}</p>
                               </div>
                            </div>
@@ -348,12 +348,12 @@ const Customers: React.FC = () => {
                               <span className={clsx(
                                 "text-[10px] font-bold uppercase tracking-widest",
                                 order.status === 'delivered' ? "text-green-600" : "text-amber-600"
-                              )}>{order.status}</span>
+                              )}>{t(order.status) || order.status}</span>
                            </div>
                         </div>
                       ))
                     ) : (
-                      <p className="text-slate-500 italic text-sm text-center py-8">No order history found.</p>
+                      <p className="text-slate-500 italic text-sm text-center py-8">{t('noOrderHistory')}</p>
                     )}
                   </div>
                 </div>
@@ -363,8 +363,8 @@ const Customers: React.FC = () => {
                 <div className="w-20 h-20 bg-slate-50 dark:bg-zinc-900 rounded-full flex items-center justify-center text-slate-300 mb-6">
                   <Users className="w-10 h-10" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Select a Customer</h2>
-                <p className="text-slate-500 max-w-xs">View detailed purchase history and manage profile information.</p>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t('selectCustomer')}</h2>
+                <p className="text-slate-500 max-w-xs">{t('selectCustomerHint')}</p>
               </div>
             )}
           </AnimatePresence>
@@ -403,7 +403,7 @@ const Customers: React.FC = () => {
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     className="input"
-                    placeholder="Enter customer name"
+                    placeholder={t('placeholderCustomerName')}
                   />
                 </div>
                 <div className="space-y-2">
@@ -413,7 +413,7 @@ const Customers: React.FC = () => {
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
                     className="input"
-                    placeholder="customer@example.com"
+                    placeholder={t('placeholderCustomerEmail')}
                   />
                 </div>
                 <div className="space-y-2">
@@ -424,7 +424,7 @@ const Customers: React.FC = () => {
                     value={formData.phone}
                     onChange={(e) => setFormData({...formData, phone: e.target.value})}
                     className="input"
-                    placeholder="+213 5XX XX XX XX"
+                    placeholder={t('placeholderCustomerPhone')}
                   />
                 </div>
                 <div className="space-y-2">
@@ -434,18 +434,18 @@ const Customers: React.FC = () => {
                     value={formData.address}
                     onChange={(e) => setFormData({...formData, address: e.target.value})}
                     className="input"
-                    placeholder="Street address, City"
+                    placeholder={t('placeholderCustomerAddress')}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Type</label>
+                  <label className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t('customerType')}</label>
                   <select 
                     value={formData.type}
                     onChange={(e) => setFormData({...formData, type: e.target.value as any})}
                     className="input"
                   >
-                    <option value="b2c">Individual</option>
-                    <option value="b2b">Business / Wholesale</option>
+                    <option value="b2c">{t('customerTypeIndividual')}</option>
+                    <option value="b2b">{t('customerTypeBusiness')}</option>
                   </select>
                 </div>
 

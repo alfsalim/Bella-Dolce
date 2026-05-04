@@ -5,7 +5,7 @@ const Placeholder: React.FC<{ title: string }> = ({ title }) => {
   const { t } = useLanguage();
   return (
     <div className="card h-96 flex items-center justify-center">
-      <h2 className="text-2xl font-bold text-slate-400">{t(title)} - Coming Soon</h2>
+      <h2 className="text-2xl font-bold text-slate-400">{t(title)} — {t('comingSoonSuffix')}</h2>
     </div>
   );
 };

@@ -452,7 +452,7 @@ const Settings: React.FC = () => {
       toast.success(t('settingsUpdated'));
     } catch (error) {
       console.error('Error updating permissions:', error);
-      toast.error('Failed to update permissions');
+      toast.error(t('permissionsUpdateFailed'));
     }
   };
 
@@ -464,10 +464,10 @@ const Settings: React.FC = () => {
           allowedPaths: perm.allowedPaths
         });
       }
-      toast.success('Permissions initialized successfully');
+      toast.success(t('permissionsInitSuccess'));
     } catch (error) {
       console.error('Error seeding permissions:', error);
-      toast.error('Failed to initialize permissions');
+      toast.error(t('permissionsInitFailed'));
     } finally {
       setIsSeeding(false);
     }

@@ -4,6 +4,7 @@
   "version": "1.3.3",
   "type": "module",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "tsx server.ts",
     "dev:backend": "tsx server.ts",
     "build": "vite build",
