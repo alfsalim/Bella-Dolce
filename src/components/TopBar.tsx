@@ -8,6 +8,7 @@ import {
   Settings as SettingsIcon,
   LogOut,
   Loader2,
+  Bell,
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,6 +50,7 @@ const TopBar: React.FC<TopBarProps> = ({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<StaffSearchHit[]>([]);
+  const [orderAlertsEnabled, setOrderAlertsEnabled] = useState(false);
 
   const canAccess = (path: string) =>
     !!permissions && (permissions.includes('*') || permissions.includes(path));
@@ -105,6 +107,15 @@ const TopBar: React.FC<TopBarProps> = ({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [searchOpen]);
+
+  useEffect(() => {
+    const syncAlerts = () => {
+      setOrderAlertsEnabled(localStorage.getItem('systemAlerts') === 'true');
+    };
+    syncAlerts();
+    window.addEventListener('storage', syncAlerts);
+    return () => window.removeEventListener('storage', syncAlerts);
+  }, []);
 
   const onHitNavigate = (path: string) => {
     setSearchOpen(false);
@@ -254,6 +265,23 @@ const TopBar: React.FC<TopBarProps> = ({
 
         {user ? (
           <div className="flex items-center gap-3 pl-2">
+            {!isPublic && (canAccess('/settings') || canAccess('*')) && (
+              <button
+                type="button"
+                onClick={() => navigate('/settings')}
+                className="relative w-11 h-11 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all shrink-0"
+                title={t('topBarNotificationsHint')}
+                aria-label={t('topBarNotificationsHint')}
+              >
+                <Bell className="w-5 h-5" aria-hidden />
+                {orderAlertsEnabled ? (
+                  <span
+                    className="absolute top-2 end-2 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-zinc-900"
+                    aria-hidden
+                  />
+                ) : null}
+              </button>
+            )}
             <div className="text-right hidden md:block">
               <p className="text-sm font-bold text-slate-900 dark:text-white">{profile?.name || t('topBarLocationFallback')}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{profile?.role ? tRole(profile.role) : t('topBarLocationFallback')}</p>
