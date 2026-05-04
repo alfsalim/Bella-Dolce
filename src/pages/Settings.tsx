@@ -729,7 +729,7 @@ const Settings: React.FC = () => {
               <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-black rounded-2xl border border-slate-100 dark:border-white/5">
                 <div>
                   <p className="font-bold text-slate-900 dark:text-white">{t('arabic')}</p>
-                  <p className="text-xs text-zinc-500">العربية</p>
+                  <p className="text-xs text-zinc-500 font-arabic">العربية</p>
                 </div>
                 <input 
                   type="radio" 

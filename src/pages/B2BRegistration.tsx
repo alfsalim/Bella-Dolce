@@ -90,7 +90,9 @@ const B2BRegistration: React.FC = () => {
           title={t('language')}
         >
           <Globe className="w-4 h-4 shrink-0" aria-hidden />
-          <span className="text-sm font-semibold">{language === 'fr' ? 'عربي' : 'FR'}</span>
+          <span className={clsx('text-sm font-semibold', language === 'fr' && 'font-arabic')}>
+            {language === 'fr' ? 'عربي' : 'FR'}
+          </span>
         </button>
       </div>
 

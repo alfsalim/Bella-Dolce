@@ -223,7 +223,11 @@ const TopBar: React.FC<TopBarProps> = ({
           className="btn-secondary gap-2"
         >
           <Globe className="w-4 h-4" />
-          <span className="text-sm font-semibold">{language === 'fr' ? 'عربي' : 'FR'}</span>
+          <span
+            className={clsx('text-sm font-semibold', language === 'fr' && 'font-arabic')}
+          >
+            {language === 'fr' ? 'عربي' : 'FR'}
+          </span>
         </button>
 
         {user && canAccess('/dashboard') && (

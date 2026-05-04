@@ -82,12 +82,14 @@ const Login: React.FC = () => {
         <button
           type="button"
           onClick={() => setLanguage(language === 'fr' ? 'ar' : 'fr')}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#2a1e17] bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-sm text-slate-800 dark:text-slate-200 text-sm font-semibold uppercase shadow-sm hover:bg-slate-50 dark:hover:bg-[#1a1512] transition-all"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#2a1e17] bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-sm text-slate-800 dark:text-slate-200 text-sm font-semibold shadow-sm hover:bg-slate-50 dark:hover:bg-[#1a1512] transition-all normal-case"
           aria-label={t('language')}
           title={t('language')}
         >
           <Globe className="w-4 h-4 shrink-0" aria-hidden />
-          <span className="text-sm font-semibold">{language === 'fr' ? 'عربي' : 'FR'}</span>
+          <span className={clsx('text-sm font-semibold', language === 'fr' && 'font-arabic')}>
+            {language === 'fr' ? 'عربي' : 'FR'}
+          </span>
         </button>
       </div>
 

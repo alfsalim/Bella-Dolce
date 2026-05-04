@@ -1093,7 +1093,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         >
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
-            Waste Management
+            {t('wasteManagement')}
           </div>
         </button>
       </div>
@@ -1543,9 +1543,9 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       ) : activeTab === 'waste' ? (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Waste Management</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('wasteManagement')}</h2>
             <div className="text-sm text-slate-500 dark:text-slate-400">
-              Total Waste: <span className="font-bold text-red-600">{totalWasteUnitsAll} units</span>
+              {t('totalWaste')}: <span className="font-bold text-red-600">{totalWasteUnitsAll} {t('units')}</span>
             </div>
           </div>
           <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
@@ -1555,7 +1555,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   <tr className="text-left text-slate-400 dark:text-slate-600 text-xs font-bold uppercase tracking-widest border-b border-slate-100 dark:border-white/10">
                     <th className="px-8 py-5 whitespace-nowrap">{t('date')}</th>
                     <th className="px-8 py-5 whitespace-nowrap">{t('item')}</th>
-                    <th className="px-8 py-5 whitespace-nowrap">Waste Quantity</th>
+                    <th className="px-8 py-5 whitespace-nowrap">{t('wasteQuantity')}</th>
                     <th className="px-8 py-5 whitespace-nowrap">{t('reason')}</th>
                     <th className="px-8 py-5 whitespace-nowrap">{t('user')}</th>
                   </tr>
@@ -1585,7 +1585,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   {wasteMovements.length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-8 py-12 text-center text-slate-400 dark:text-slate-600 italic">
-                        No waste recorded
+                        {t('noWasteRecorded')}
                       </td>
                     </tr>
                   )}
