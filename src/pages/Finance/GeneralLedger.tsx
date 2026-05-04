@@ -22,7 +22,7 @@ import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
 
 const GeneralLedger: React.FC = () => {
-  const { formatCurrency, isRTL, tf } = useLanguage();
+  const { formatCurrency, isRTL, tf, t } = useLanguage();
   const [activeSubTab, setActiveSubTab] = useState('accounts');
   const [searchTerm, setSearchTerm] = useState('');
   const [accountsPage, setAccountsPage] = useState(1);
@@ -196,8 +196,8 @@ const GeneralLedger: React.FC = () => {
       {activeSubTab === 'journal' && (
         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <ArrowRightLeft className="w-16 h-16 mb-4 opacity-20" />
-          <p className="font-medium">Journal Entries Module coming soon</p>
-          <p className="text-sm">Real-time GL synchronization is active</p>
+          <p className="font-medium">{t('journalModuleSoon')}</p>
+          <p className="text-sm">{t('glRealtimeSyncNote')}</p>
         </div>
       )}
     </div>

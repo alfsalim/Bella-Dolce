@@ -3,9 +3,11 @@ import { db, collection, onSnapshot, query, where, limit, orderBy } from '../lib
 import { Bell } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const SystemAlerts: React.FC = () => {
   const { user, profile, loading } = useAuth();
+  const { t, isRTL } = useLanguage();
 
   useEffect(() => {
     if (loading || !user || !profile) return;
@@ -34,8 +36,8 @@ const SystemAlerts: React.FC = () => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const order = change.doc.data();
-          toast.custom((t) => (
-            <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-white dark:bg-slate-900 shadow-lg rounded-2xl pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
+          toast.custom((toastId) => (
+            <div className={`${toastId.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-white dark:bg-slate-900 shadow-lg rounded-2xl pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
               <div className="flex-1 w-0 p-4">
                 <div className="flex items-start">
                   <div className="flex-shrink-0 pt-0.5">
@@ -43,22 +45,26 @@ const SystemAlerts: React.FC = () => {
                       <Bell className="h-6 w-6 text-primary-600" />
                     </div>
                   </div>
-                  <div className="ml-3 flex-1">
+                  <div className={isRTL ? 'me-3 flex-1' : 'ms-3 flex-1'}>
                     <p className="text-sm font-bold text-slate-900 dark:text-slate-50">
-                      Nouvelle commande !
+                      {t('systemAlertNewOrderTitle')}
                     </p>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Une nouvelle commande de {order.customerName || 'Client'} vient d'arriver.
+                      {t('systemAlertNewOrderBody').replace(
+                        '{{customer}}',
+                        order.customerName || t('customer')
+                      )}
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="flex border-l border-slate-200 dark:border-slate-800">
+              <div className="flex border-s border-slate-200 dark:border-slate-800">
                 <button
-                  onClick={() => toast.dismiss(t.id)}
-                  className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-bold text-primary-600 hover:text-primary-500 focus:outline-none"
+                  type="button"
+                  onClick={() => toast.dismiss(toastId.id)}
+                  className="w-full border border-transparent rounded-none rounded-e-lg p-4 flex items-center justify-center text-sm font-bold text-primary-600 hover:text-primary-500 focus:outline-none"
                 >
-                  Fermer
+                  {t('alertClose')}
                 </button>
               </div>
             </div>
@@ -70,7 +76,7 @@ const SystemAlerts: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [user, profile, loading]);
+  }, [user, profile, loading, t, isRTL]);
 
   return null;
 };

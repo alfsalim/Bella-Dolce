@@ -43,6 +43,8 @@ interface InventoryProps {
 
 const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const { t, isRTL, tProduct, tCategory, currencyUnit } = useLanguage();
+  const tx = (key: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce((acc, [k, v]) => acc.replaceAll(`{{${k}}}`, v), t(key));
   const { profile: currentUserProfile } = useAuth();
   const prevActiveTabRef = useRef<'products' | 'materials' | 'activities' | 'waste' | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -312,18 +314,25 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         const qty = adjustmentData.quantity;
 
         if (!fromLoc || fromLoc === 'none' || !toLoc || toLoc === 'none') {
-          toast.error('Please select both source and destination locations.');
+          toast.error(t('adjustSelectLocations'));
           return;
         }
         if (fromLoc === toLoc) {
-          toast.error('Source and destination must be different.');
+          toast.error(t('adjustSourceDestDifferent'));
           return;
         }
 
         // Check source has enough
         const sourceAvailable = fromLoc === 'shop' ? (currentData.shopStock || 0) : (currentData.freezerStock || 0);
         if (qty > sourceAvailable) {
-          toast.error(`Not enough stock in ${fromLoc}: available ${sourceAvailable}, requested ${qty}`);
+          const locationLabel = fromLoc === 'shop' ? t('shop') : t('freezer');
+          toast.error(
+            tx('stockAdjustInsufficient', {
+              location: locationLabel,
+              available: String(sourceAvailable),
+              qty: String(qty),
+            })
+          );
           return;
         }
 
@@ -761,7 +770,13 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           const newTotal = newShop + newFrozen + existingWaste;
           if (newTotal !== originalStock) {
             toast.error(
-              `Total must stay at ${originalStock}. Shop ${newShop} + Frozen ${newFrozen} + Waste ${existingWaste} = ${newTotal}. Adjust values to sum to ${originalStock}.`
+              tx('stockTotalMismatchDetail', {
+                total: String(originalStock),
+                shop: String(newShop),
+                frozen: String(newFrozen),
+                waste: String(existingWaste),
+                current: String(newTotal),
+              })
             );
             return;
           }
@@ -2205,7 +2220,13 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             updatedStock = newShop + newFrozen + newWasteVal;
                             if (updatedStock !== originalStock) {
                               toast.error(
-                                `Total must stay at ${originalStock}. Current: ${updatedStock} (Shop ${newShop} + Frozen ${newFrozen} + Waste ${newWasteVal}). Adjust the values so they sum to ${originalStock}.`
+                                tx('stockTotalMismatchDetail', {
+                                  total: String(originalStock),
+                                  shop: String(newShop),
+                                  frozen: String(newFrozen),
+                                  waste: String(newWasteVal),
+                                  current: String(updatedStock),
+                                })
                               );
                               return;
                             }
@@ -2844,7 +2865,15 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       const computedStock = inventoryFormData.shopStock + inventoryFormData.freezerStock + inventoryFormData.wasteQuantity;
                       const originalStockAtSave = (selectedItemForInventory as any).stock || 0;
                       if (!isMaterial && Math.abs(computedStock - originalStockAtSave) > 0.001) {
-                        toast.error(`Total must stay at ${originalStockAtSave}. Current: ${computedStock} (Shop ${inventoryFormData.shopStock} + Frozen ${inventoryFormData.freezerStock} + Waste ${inventoryFormData.wasteQuantity}). Cannot save.`);
+                        toast.error(
+                          tx('stockTotalMismatchSave', {
+                            total: String(originalStockAtSave),
+                            shop: String(inventoryFormData.shopStock),
+                            frozen: String(inventoryFormData.freezerStock),
+                            waste: String(inventoryFormData.wasteQuantity),
+                            current: String(computedStock),
+                          })
+                        );
                         return;
                       }
                       const updateData = isMaterial

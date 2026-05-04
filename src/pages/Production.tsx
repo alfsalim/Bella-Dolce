@@ -34,6 +34,8 @@ import { PAGE_SIZE } from '../constants';
 
 const Production: React.FC = () => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
+  const tx = (key: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce((acc, [k, v]) => acc.replaceAll(`{{${k}}}`, v), t(key));
   const { profile } = useAuth();
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -242,7 +244,7 @@ const Production: React.FC = () => {
           
           if (count > 0) {
             await batchCleanup.commit();
-            toast.success(`Cleaned up ${count} unknown batches`);
+            toast.success(tx('productionUnknownBatchesCleaned', { count: String(count) }));
           }
         } catch (error) {
           console.error('Error cleaning unknown batches:', error);
@@ -1232,10 +1234,10 @@ const Production: React.FC = () => {
 
           <div className="card bg-slate-900 dark:bg-zinc-900 text-white border-slate-800 dark:border-white/10">
             <Zap className="w-10 h-10 mb-4 text-primary-400" />
-            <h3 className="text-lg font-bold mb-2">Recipe Optimization</h3>
-            <p className="text-slate-400 dark:text-slate-500 text-sm mb-4">Your "Croissant" recipe could be optimized for 15% less waste.</p>
-            <button className="w-full py-2 bg-primary-500/10 hover:bg-primary-500/20 text-primary-400 rounded-xl text-sm font-bold transition-all border border-primary-500/20">
-              View Insights
+            <h3 className="text-lg font-bold mb-2">{t('recipeOptimizationTitle')}</h3>
+            <p className="text-slate-400 dark:text-slate-500 text-sm mb-4">{t('recipeOptimizationDesc')}</p>
+            <button type="button" className="w-full py-2 bg-primary-500/10 hover:bg-primary-500/20 text-primary-400 rounded-xl text-sm font-bold transition-all border border-primary-500/20">
+              {t('viewInsights')}
             </button>
           </div>
         </div>

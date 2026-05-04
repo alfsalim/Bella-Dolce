@@ -28,10 +28,12 @@ import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
 import { format, formatDistanceToNow } from 'date-fns';
+import { fr as dateFnsFr, arSA as dateFnsArSA } from 'date-fns/locale';
 import Pagination from '../components/Pagination';
 
 const Users: React.FC = () => {
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, language, tRole } = useLanguage();
+  const dateLocale = language === 'ar' ? dateFnsArSA : dateFnsFr;
   const { profile: currentUserProfile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -241,6 +243,7 @@ const Users: React.FC = () => {
       case 'cashier': return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400';
       case 'baker': return 'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400';
       case 'delivery_guy': return 'bg-primary-100 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400';
+      case 'inventory': return 'bg-slate-100 text-slate-700 dark:bg-slate-900/20 dark:text-slate-300';
       default: return 'bg-slate-100 text-slate-600 dark:bg-slate-900/20 dark:text-slate-400';
     }
   };
@@ -310,7 +313,7 @@ const Users: React.FC = () => {
                     </td>
                     <td className="px-8 py-5">
                       <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {user.username ? `@${user.username}` : 'N/A'}
+                        {user.username ? `@${user.username}` : t('notAvailableShort')}
                       </span>
                     </td>
                     <td className="px-8 py-5">
@@ -319,13 +322,13 @@ const Users: React.FC = () => {
                         getRoleBadge(user.role)
                       )}>
                         {getRoleIcon(user.role)}
-                        {user.role}
+                        {tRole(user.role)}
                       </div>
                     </td>
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-medium">
                         <Calendar className="w-4 h-4 text-slate-300 dark:text-slate-700" />
-                        {user.createdAt ? format(new Date(user.createdAt), 'MMM dd, yyyy') : 'N/A'}
+                        {user.createdAt ? format(new Date(user.createdAt), 'MMM dd, yyyy', { locale: dateLocale }) : t('notAvailableShort')}
                       </div>
                     </td>
                     <td className="px-8 py-5 text-right">
@@ -333,7 +336,7 @@ const Users: React.FC = () => {
                         <button 
                           onClick={() => setSelectedUserForLogs(user)}
                           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400 transition-all"
-                          title={t('viewActivities') || 'View Activities'}
+                          title={t('viewActivities')}
                         >
                           <Activity className="w-5 h-5" />
                         </button>
@@ -345,7 +348,7 @@ const Users: React.FC = () => {
                               ? "text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" 
                               : "text-slate-400 dark:text-slate-600 hover:bg-slate-100 dark:hover:bg-[#1a1512]"
                           )}
-                          title={user.status === 'active' ? 'Disable User' : 'Activate User'}
+                          title={user.status === 'active' ? t('disableUser') : t('activateUser')}
                         >
                           {user.status === 'active' ? <UserCheck className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
                         </button>
@@ -355,7 +358,7 @@ const Users: React.FC = () => {
                             setIsEditModalOpen(true);
                           }}
                           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-[#1a1512] text-slate-400 dark:text-slate-600 transition-all"
-                          title="Edit User"
+                          title={t('editUserAction')}
                         >
                           <MoreVertical className="w-5 h-5" />
                         </button>
@@ -365,7 +368,7 @@ const Users: React.FC = () => {
                             setIsDeleteModalOpen(true);
                           }}
                           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 dark:text-red-500 transition-all"
-                          title="Delete User"
+                          title={t('deleteUserAction')}
                         >
                           <Trash2 className="w-5 h-5" />
                         </button>
@@ -406,7 +409,7 @@ const Users: React.FC = () => {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-400 dark:text-slate-600 italic">No activity logs found.</p>
+                <p className="text-sm text-slate-400 dark:text-slate-600 italic">{t('noAuditLogsEmpty')}</p>
               )}
             </div>
             {hasMoreLogs && (
@@ -452,7 +455,7 @@ const Users: React.FC = () => {
                   type="text" 
                   required
                   className="input" 
-                  placeholder="John Doe"
+                  placeholder={t('placeholderFullName')}
                   value={inviteData.name}
                   onChange={(e) => setInviteData({ ...inviteData, name: e.target.value })}
                 />
@@ -463,7 +466,7 @@ const Users: React.FC = () => {
                   type="text" 
                   required
                   className="input" 
-                  placeholder="johndoe"
+                  placeholder={t('placeholderUsername')}
                   value={inviteData.username}
                   onChange={(e) => setInviteData({ ...inviteData, username: e.target.value })}
                 />
@@ -486,11 +489,12 @@ const Users: React.FC = () => {
                   value={inviteData.role}
                   onChange={(e) => setInviteData({ ...inviteData, role: e.target.value as Role })}
                 >
-                  <option value="admin">Admin</option>
-                  <option value="manager">Manager</option>
-                  <option value="cashier">Cashier</option>
-                  <option value="baker">Baker</option>
-                  <option value="delivery_guy">Delivery Guy</option>
+                  <option value="admin">{tRole('admin')}</option>
+                  <option value="manager">{tRole('manager')}</option>
+                  <option value="cashier">{tRole('cashier')}</option>
+                  <option value="baker">{tRole('baker')}</option>
+                  <option value="delivery_guy">{tRole('delivery_guy')}</option>
+                  <option value="inventory">{tRole('inventory')}</option>
                 </select>
               </div>
               <div className="flex gap-3 pt-4">
@@ -534,35 +538,36 @@ const Users: React.FC = () => {
                   disabled={editingUser.role === 'admin'}
                   onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as Role })}
                 >
-                  <option value="admin">Admin</option>
-                  <option value="manager">Manager</option>
-                  <option value="cashier">Cashier</option>
-                  <option value="baker">Baker</option>
-                  <option value="delivery_guy">Delivery Guy</option>
-                  <option value="customer_business">Business Customer</option>
-                  <option value="customer_customers">Individual Customer</option>
+                  <option value="admin">{tRole('admin')}</option>
+                  <option value="manager">{tRole('manager')}</option>
+                  <option value="cashier">{tRole('cashier')}</option>
+                  <option value="baker">{tRole('baker')}</option>
+                  <option value="delivery_guy">{tRole('delivery_guy')}</option>
+                  <option value="inventory">{tRole('inventory')}</option>
+                  <option value="customer_business">{tRole('customer_business')}</option>
+                  <option value="customer_customers">{tRole('customer_customers')}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Status</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t('status')}</label>
                 <select 
                   className="input"
                   value={editingUser.status || 'active'}
                   onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value as 'active' | 'inactive' })}
                 >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="active">{t('userStatusActiveLabel')}</option>
+                  <option value="inactive">{t('userStatusInactiveLabel')}</option>
                 </select>
               </div>
 
               <div className="pt-4 border-t border-slate-100">
                 <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
                   <Lock className="w-4 h-4 text-slate-400" />
-                  Update Password
+                  {t('updatePasswordSection')}
                 </h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">New Password</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t('newPasswordLabel')}</label>
                     <input 
                       type="password" 
                       className="input" 
@@ -575,7 +580,7 @@ const Users: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Confirm New Password</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t('confirmNewPasswordLabel')}</label>
                     <input 
                       type="password" 
                       className="input" 
@@ -610,13 +615,15 @@ const Users: React.FC = () => {
                 <Trash2 className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Delete User</h2>
-                <p className="text-sm text-slate-500">This action cannot be undone.</p>
+                <h2 className="text-xl font-bold text-slate-900">{t('deleteUserTitle')}</h2>
+                <p className="text-sm text-slate-500">{t('deleteUserIrreversible')}</p>
               </div>
             </div>
             
             <p className="text-slate-600 mb-8">
-              Are you sure you want to delete <span className="font-bold text-slate-900">{userToDelete.name}</span> (@{userToDelete.username})?
+              {t('deleteUserConfirm')
+                .replace('{{name}}', userToDelete.name || '')
+                .replace('{{username}}', userToDelete.username || '')}
             </p>
 
             <div className="flex gap-3">
@@ -633,7 +640,7 @@ const Users: React.FC = () => {
                 disabled={userToDelete.role === 'admin'}
                 className="flex-1 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
               >
-                Delete User
+                {t('deleteUserButton')}
               </button>
             </div>
           </div>
@@ -670,7 +677,7 @@ const Users: React.FC = () => {
                         {log.action}
                       </span>
                       <span className="text-[10px] text-slate-400 font-bold">
-                        {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm')}
+                        {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm', { locale: dateLocale })}
                       </span>
                     </div>
                     <p className="text-sm text-slate-700 font-medium">{log.details}</p>
@@ -679,7 +686,7 @@ const Users: React.FC = () => {
               ) : (
                 <div className="text-center py-12">
                   <Activity className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                  <p className="text-slate-400 font-medium">No activities recorded for this user.</p>
+                  <p className="text-slate-400 font-medium">{t('noActivitiesForUser')}</p>
                 </div>
               )}
             </div>

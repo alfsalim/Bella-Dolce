@@ -50,8 +50,8 @@ const App: React.FC = () => {
     <BrowserRouter>
       <Toaster position="top-right" />
       <AuthProvider>
-        <SystemAlerts />
         <LanguageProvider>
+          <SystemAlerts />
           <CartProvider>
             <Routes>
               <Route path="/" element={<PublicLayout />}>

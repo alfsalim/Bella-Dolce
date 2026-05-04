@@ -28,9 +28,11 @@ import {
 import { db, collection, onSnapshot, query, orderBy, limit, where, handleFirestoreError, OperationType } from '../lib/firebase-compat';
 import { ProductionBatch, Sale, Product, RawMaterial, Order } from '../types';
 import { clsx } from 'clsx';
+import { format } from 'date-fns';
+import { fr as dateFnsFr, arSA as dateFnsArSA } from 'date-fns/locale';
 
 const Dashboard: React.FC = () => {
-  const { t, isRTL, tProduct, tCategory, currencyUnit } = useLanguage();
+  const { t, isRTL, tProduct, tCategory, currencyUnit, language } = useLanguage();
   const { profile } = useAuth();
   
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
@@ -190,11 +192,13 @@ const Dashboard: React.FC = () => {
     },
   ].filter(s => s.visible);
 
+  const dateLocale = language === 'ar' ? dateFnsArSA : dateFnsFr;
+
   // Real chart data from sales
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const date = new Date();
     date.setDate(date.getDate() - (6 - i));
-    const dayName = date.toLocaleDateString(undefined, { weekday: 'short' });
+    const dayName = format(date, 'EEE', { locale: dateLocale });
     const daySales = filteredSales.filter(s => {
       const saleDate = new Date(s.createdAt);
       return saleDate.toDateString() === date.toDateString();
@@ -259,8 +263,12 @@ const Dashboard: React.FC = () => {
                 <Tooltip 
                   contentStyle={{backgroundColor: 'var(--tooltip-bg, #09090b)', borderRadius: '16px', border: '1px solid var(--tooltip-border, rgba(255,255,255,0.1))', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.5)'}}
                   itemStyle={{color: '#d97706', fontWeight: 'bold'}}
+                  formatter={(value: number) => [
+                    `${value.toLocaleString(language === 'ar' ? 'ar-DZ' : 'fr-DZ')} ${currencyUnit}`,
+                    t('sales'),
+                  ]}
                 />
-                <Area type="monotone" dataKey="sales" stroke="#d97706" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
+                <Area type="monotone" dataKey="sales" name={t('sales')} stroke="#d97706" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -273,7 +281,7 @@ const Dashboard: React.FC = () => {
               <div key={batch.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-white/5 hover:border-amber-500/20 transition-all group">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-amber-500 uppercase tracking-widest">
-                    {tProduct(products.find(p => p.id === batch.productId) ?? { name: 'Product' })}
+                    {tProduct(products.find(p => p.id === batch.productId) ?? { name: t('product') })}
                   </span>
                   <div className={clsx(
                     "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",

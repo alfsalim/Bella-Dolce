@@ -9,10 +9,17 @@ export type ProductDisplayInput =
   | undefined
   | { name?: string | null; nameAr?: string | null };
 
+/** Role id → translation key when it differs from nav keys (e.g. `inventory` page vs inventory staff). */
+const ROLE_TRANSLATION_KEY: Record<string, string> = {
+  inventory: 'role_inventory',
+};
+
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  /** User/role labels; use for `UserProfile.role` and permission role ids. */
+  tRole: (roleId: string) => string;
   tf: (key: string) => string;
   tProduct: (input: ProductDisplayInput) => string;
   tCategory: (category: string) => string;
@@ -41,6 +48,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const t = (key: string) => {
     return TRANSLATIONS[language][key] || key;
+  };
+
+  const tRole = (roleId: string) => {
+    const key = ROLE_TRANSLATION_KEY[roleId] ?? roleId;
+    return TRANSLATIONS[language][key] || roleId;
   };
 
   const tf = (key: string) => {
@@ -89,6 +101,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       language, 
       setLanguage, 
       t, 
+      tRole,
       tf, 
       tProduct, 
       tCategory, 

@@ -40,7 +40,7 @@ const TopBar: React.FC<TopBarProps> = ({
   staffSidebarLayout = true,
   showNavMenu = true,
 }) => {
-  const { t, language, setLanguage, isRTL } = useLanguage();
+  const { t, tRole, language, setLanguage, isRTL } = useLanguage();
   const { user, profile, permissions, logout } = useAuth();
   const navigate = useNavigate();
   const searchWrapRef = useRef<HTMLDivElement>(null);
@@ -129,7 +129,7 @@ const TopBar: React.FC<TopBarProps> = ({
           )}
 
           {isPublic && (
-            <Link to="/" className="flex items-center group shrink-0" aria-label="Bella Dolce">
+            <Link to="/" className="flex items-center group shrink-0" aria-label={t('brandAriaHome')}>
               <div className={clsx(BRAND_LOGO_CHIP_CLASS, 'transition-transform group-hover:scale-105')}>
                 <BrandLogo imgClassName={BRAND_LOGO_MARK_IMG_CLASS} />
               </div>
@@ -234,7 +234,7 @@ const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={() => navigate('/dashboard')}
             className="w-11 h-11 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all"
-            title="Dashboard"
+            title={t('topBarDashboard')}
           >
             <LayoutDashboard className="w-5 h-5" />
           </button>
@@ -244,7 +244,7 @@ const TopBar: React.FC<TopBarProps> = ({
           <button
             onClick={() => navigate('/settings')}
             className="w-11 h-11 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all"
-            title="Settings"
+            title={t('topBarSettings')}
           >
             <SettingsIcon className="w-5 h-5" />
           </button>
@@ -255,8 +255,8 @@ const TopBar: React.FC<TopBarProps> = ({
         {user ? (
           <div className="flex items-center gap-3 pl-2">
             <div className="text-right hidden md:block">
-              <p className="text-sm font-bold text-slate-900 dark:text-white">{profile?.name || 'Bella Dolce'}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{profile?.role ? t(profile.role) : 'Paris, FR'}</p>
+              <p className="text-sm font-bold text-slate-900 dark:text-white">{profile?.name || t('topBarLocationFallback')}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{profile?.role ? tRole(profile.role) : t('topBarLocationFallback')}</p>
               {!showNavMenu && (
                 <button
                   onClick={logout}

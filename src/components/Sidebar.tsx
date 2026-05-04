@@ -18,7 +18,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { isRTL } = useLanguage();
+  const { isRTL, t } = useLanguage();
   const { logout, permissions } = useAuth();
 
   const filteredNavItems = getFilteredNavItems(permissions);
@@ -84,7 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           <BilingualLabel tKey="logout" className="font-medium" />
         </button>
         <div className="mt-4 px-4 text-[10px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-widest">
-          Version {APP_VERSION}
+          {t('sidebarVersion')} {APP_VERSION}
         </div>
       </div>
     </aside>
