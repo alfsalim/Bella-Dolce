@@ -1,6 +1,10 @@
 #!/bin/bash
 
 # ── Configuration ────────────────────────────────────────
+# Prisma: this app ships schema only — containers run `prisma db push` (see entrypoint.sh).
+# Do not add empty/placeholder migrations: they break `migrate deploy` (DB with only _prisma_migrations).
+# If prod ever had a bad migrate, `db push` on startup still materializes all tables from schema.prisma.
+
 IMAGE_NAME="bella-dolce2-bella-dolce2:latest"
 TAR_FILE="bella-dolce.tar"
 ZIP_FILE="bella-dolce-production.zip"
@@ -45,9 +49,9 @@ schema_sync() {
     else
         log_warn "Schema log not found — running manual db push as fallback..."
         if [ -n "$dhost" ]; then
-            DOCKER_HOST="$dhost" docker exec "$container" sh -c "npx prisma db push --accept-data-loss"
+            DOCKER_HOST="$dhost" docker exec "$container" sh -c "npx prisma db push --accept-data-loss --skip-generate"
         else
-            docker exec "$container" sh -c "npx prisma db push --accept-data-loss"
+            docker exec "$container" sh -c "npx prisma db push --accept-data-loss --skip-generate"
         fi
         [ $? -ne 0 ] && log_err "Schema push failed. Check: docker logs $container"
         log_ok "Schema pushed manually"

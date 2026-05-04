@@ -17,6 +17,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import BrandLogo, { BRAND_LOGO_CHIP_CLASS, BRAND_LOGO_MARK_IMG_CLASS } from './BrandLogo';
 import { authFetch, getAuthHeaders, parseJsonResponse, readApiErrorMessage } from '../lib/api-client';
 import toast from 'react-hot-toast';
+import { useStaffNotifications } from '../hooks/useStaffNotifications';
+import { SYSTEM_ALERTS_PREFERENCE_EVENT } from '../lib/systemAlertsPreference';
+
+/** Same operational roles as notification content; bell shows when Settings → system alerts is on. */
+const STAFF_NOTIFICATION_BELL_ROLES = ['admin', 'manager', 'cashier', 'baker', 'inventory'] as const;
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -41,19 +46,52 @@ const TopBar: React.FC<TopBarProps> = ({
   staffSidebarLayout = true,
   showNavMenu = true,
 }) => {
-  const { t, tRole, language, setLanguage, isRTL } = useLanguage();
+  const { t, tRole, tProduct, language, setLanguage, isRTL, currencyUnit } = useLanguage();
   const { user, profile, permissions, logout } = useAuth();
   const navigate = useNavigate();
   const searchWrapRef = useRef<HTMLDivElement>(null);
+  const notificationsWrapRef = useRef<HTMLDivElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<StaffSearchHit[]>([]);
-  const [orderAlertsEnabled, setOrderAlertsEnabled] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [systemAlertsEnabled, setSystemAlertsEnabled] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('systemAlerts') === 'true'
+  );
 
   const canAccess = (path: string) =>
     !!permissions && (permissions.includes('*') || permissions.includes(path));
+
+  useEffect(() => {
+    const sync = () => setSystemAlertsEnabled(localStorage.getItem('systemAlerts') === 'true');
+    sync();
+    window.addEventListener('storage', sync);
+    window.addEventListener(SYSTEM_ALERTS_PREFERENCE_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(SYSTEM_ALERTS_PREFERENCE_EVENT, sync);
+    };
+  }, []);
+
+  const showNotificationBell =
+    !isPublic &&
+    !!user &&
+    !!profile &&
+    systemAlertsEnabled &&
+    (STAFF_NOTIFICATION_BELL_ROLES as readonly string[]).includes(profile.role);
+
+  const { rows: staffNotificationRows, hasUnread: staffNotificationsUnread, markNotificationsSeen } =
+    useStaffNotifications({
+      userId: user?.uid,
+      profile,
+      canAccess,
+      t,
+      tProduct,
+      currencyUnit,
+      enabled: systemAlertsEnabled,
+    });
 
   const kindLabel = useCallback(
     (type: string) => {
@@ -109,13 +147,27 @@ const TopBar: React.FC<TopBarProps> = ({
   }, [searchOpen]);
 
   useEffect(() => {
-    const syncAlerts = () => {
-      setOrderAlertsEnabled(localStorage.getItem('systemAlerts') === 'true');
+    if (!notificationsOpen) return;
+    markNotificationsSeen();
+  }, [notificationsOpen, markNotificationsSeen]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (notificationsWrapRef.current && !notificationsWrapRef.current.contains(e.target as Node)) {
+        setNotificationsOpen(false);
+      }
     };
-    syncAlerts();
-    window.addEventListener('storage', syncAlerts);
-    return () => window.removeEventListener('storage', syncAlerts);
-  }, []);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNotificationsOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [notificationsOpen]);
 
   const onHitNavigate = (path: string) => {
     setSearchOpen(false);
@@ -265,22 +317,108 @@ const TopBar: React.FC<TopBarProps> = ({
 
         {user ? (
           <div className="flex items-center gap-3 pl-2">
-            {!isPublic && (canAccess('/settings') || canAccess('*')) && (
-              <button
-                type="button"
-                onClick={() => navigate('/settings')}
-                className="relative w-11 h-11 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all shrink-0"
-                title={t('topBarNotificationsHint')}
-                aria-label={t('topBarNotificationsHint')}
-              >
-                <Bell className="w-5 h-5" aria-hidden />
-                {orderAlertsEnabled ? (
-                  <span
-                    className="absolute top-2 end-2 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-zinc-900"
-                    aria-hidden
-                  />
-                ) : null}
-              </button>
+            {!isPublic && showNotificationBell && (
+              <div ref={notificationsWrapRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen((o) => !o)}
+                  className="relative w-11 h-11 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all"
+                  title={t('topBarNotificationsHint')}
+                  aria-label={t('topBarNotificationsHint')}
+                  aria-expanded={notificationsOpen}
+                  aria-haspopup="true"
+                >
+                  <Bell className="w-5 h-5" aria-hidden />
+                  {staffNotificationsUnread ? (
+                    <span
+                      className="absolute top-2 end-2 min-w-[8px] h-2 px-0.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-zinc-900"
+                      aria-hidden
+                    />
+                  ) : null}
+                </button>
+                {notificationsOpen && (
+                  <div
+                    role="menu"
+                    className={clsx(
+                      'absolute top-full mt-2 w-[min(100vw-2rem,22rem)] max-h-[min(70vh,24rem)] overflow-hidden flex flex-col rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl z-50',
+                      isRTL ? 'left-0' : 'right-0'
+                    )}
+                  >
+                    <div className="px-4 py-3 border-b border-slate-100 dark:border-white/10">
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{t('notificationsPanelTitle')}</p>
+                    </div>
+                    <div className="overflow-y-auto flex-1">
+                      {staffNotificationRows.length === 0 ? (
+                        <p className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                          {t('notificationsEmpty')}
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-slate-100 dark:divide-white/5">
+                          {staffNotificationRows.map((row) => {
+                            const toneTitle =
+                              row.tone === 'danger'
+                                ? 'text-red-600 dark:text-red-400'
+                                : row.tone === 'warning'
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-primary-600 dark:text-primary-400';
+                            return (
+                              <li key={row.id}>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="w-full text-start px-4 py-3 hover:bg-slate-50 dark:hover:bg-zinc-800/80 transition-colors"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setNotificationsOpen(false);
+                                    navigate(row.path);
+                                  }}
+                                >
+                                  <p className={clsx('text-sm font-bold leading-snug', toneTitle)}>
+                                    {row.title}
+                                  </p>
+                                  {row.subtitle ? (
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-snug break-words">
+                                      {row.subtitle}
+                                    </p>
+                                  ) : null}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="border-t border-slate-100 dark:border-white/10 p-2 flex flex-col gap-1">
+                      {canAccess('/orders') ? (
+                        <button
+                          type="button"
+                          className="w-full text-center text-sm font-bold text-primary-600 dark:text-primary-400 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800/80"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setNotificationsOpen(false);
+                            navigate('/orders');
+                          }}
+                        >
+                          {t('notificationsOpenOrders')}
+                        </button>
+                      ) : null}
+                      {canAccess('/dashboard') ? (
+                        <button
+                          type="button"
+                          className="w-full text-center text-sm font-semibold text-slate-600 dark:text-slate-400 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800/80"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setNotificationsOpen(false);
+                            navigate('/dashboard');
+                          }}
+                        >
+                          {t('notificationsOpenDashboard')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             <div className="text-right hidden md:block">
               <p className="text-sm font-bold text-slate-900 dark:text-white">{profile?.name || t('topBarLocationFallback')}</p>

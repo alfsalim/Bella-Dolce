@@ -111,7 +111,7 @@ if ($schemaLog) {
     Log-OK "Schema sync confirmed in startup logs"
 } else {
     Log-Warn "entrypoint.sh schema log not found - running manual push as fallback..."
-    docker exec $CONTAINER_NAME sh -c "npx prisma db push --accept-data-loss"
+    docker exec $CONTAINER_NAME sh -c "npx prisma db push --accept-data-loss --skip-generate"
     if ($LASTEXITCODE -ne 0) {
         Log-Error "Schema push failed. Run: docker logs $CONTAINER_NAME"
         exit 1

@@ -29,7 +29,8 @@ RUN mkdir -p /app/certs && \
       -subj "/CN=bella-dolce"
 
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+# Do not run npm install here: postinstall runs prisma generate before prisma/ is copied.
+# node_modules comes from the build stage (already includes prisma generate).
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server.ts ./

@@ -1,13 +1,21 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { db, collection, onSnapshot, query, where, limit, orderBy } from '../lib/firebase-compat';
 import { Bell } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { SYSTEM_ALERTS_PREFERENCE_EVENT } from '../lib/systemAlertsPreference';
 
 const SystemAlerts: React.FC = () => {
   const { user, profile, loading } = useAuth();
   const { t, isRTL } = useLanguage();
+  const [alertsPrefTick, setAlertsPrefTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setAlertsPrefTick((n) => n + 1);
+    window.addEventListener(SYSTEM_ALERTS_PREFERENCE_EVENT, bump);
+    return () => window.removeEventListener(SYSTEM_ALERTS_PREFERENCE_EVENT, bump);
+  }, []);
 
   useEffect(() => {
     if (loading || !user || !profile) return;
@@ -76,7 +84,7 @@ const SystemAlerts: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [user, profile, loading, t, isRTL]);
+  }, [user, profile, loading, t, isRTL, alertsPrefTick]);
 
   return null;
 };

@@ -18,6 +18,10 @@ import { compressImage } from '../lib/utils';
 import { PAGE_SIZE } from '../constants';
 import Pagination from '../components/Pagination';
 import { authFetch } from '../lib/api-client';
+import {
+  notifySystemAlertsPreferenceChanged,
+  SYSTEM_ALERTS_PREFERENCE_EVENT,
+} from '../lib/systemAlertsPreference';
 
 const Settings: React.FC = () => {
   const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole } = useLanguage();
@@ -46,8 +50,21 @@ const Settings: React.FC = () => {
     active: true,
     type: 'banner'
   });
+  const [systemAlertsOn, setSystemAlertsOn] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem('systemAlerts') === 'true'
+  );
 
   const isAdmin = profile?.role === 'admin';
+
+  useEffect(() => {
+    const sync = () => setSystemAlertsOn(localStorage.getItem('systemAlerts') === 'true');
+    window.addEventListener('storage', sync);
+    window.addEventListener(SYSTEM_ALERTS_PREFERENCE_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(SYSTEM_ALERTS_PREFERENCE_EVENT, sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (searchParams.get('tab') !== 'ai-manager') return;
@@ -772,19 +789,22 @@ const Settings: React.FC = () => {
                   <p className="text-xs text-zinc-500">{t('settingsOrderAlertsHelp')}</p>
                 </div>
                 <button 
+                  type="button"
                   onClick={() => {
-                    const current = localStorage.getItem('systemAlerts') === 'true';
-                    localStorage.setItem('systemAlerts', (!current).toString());
+                    const next = !systemAlertsOn;
+                    localStorage.setItem('systemAlerts', String(next));
+                    setSystemAlertsOn(next);
+                    notifySystemAlertsPreferenceChanged();
                     window.dispatchEvent(new Event('storage'));
                   }}
                   className={clsx(
                     "w-12 h-6 rounded-full relative transition-all",
-                    localStorage.getItem('systemAlerts') === 'true' ? "bg-amber-600" : "bg-slate-200 dark:bg-zinc-800"
+                    systemAlertsOn ? "bg-amber-600" : "bg-slate-200 dark:bg-zinc-800"
                   )}
                 >
                   <div className={clsx(
                     "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
-                    localStorage.getItem('systemAlerts') === 'true' ? "right-1" : "left-1"
+                    systemAlertsOn ? "right-1" : "left-1"
                   )}></div>
                 </button>
               </div>

@@ -6,6 +6,7 @@ import {
   updateDocInApi,
   deleteDocFromApi
 } from './api-client';
+import { recordStaffSystemError } from './systemErrorNotifications';
 
 export { auth, signInWithPopup, signOut, onAuthStateChanged } from './firebase-auth-only';
 
@@ -228,6 +229,11 @@ export enum OperationType {
 export function handleFirestoreError(error: any, operationType?: OperationType, collection?: string) {
   const msg = `Firestore error [${operationType}] on ${collection || 'unknown'}`;
   console.error(msg, error);
+  recordStaffSystemError({
+    operation: operationType,
+    collection: collection || 'unknown',
+    message: typeof error?.message === 'string' ? error.message : msg,
+  });
   return error;
 }
 
