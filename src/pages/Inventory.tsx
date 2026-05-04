@@ -1099,82 +1099,93 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       </div>
 
       {(activeTab === 'products' || activeTab === 'materials') && (
-        <div className="card flex flex-wrap items-center gap-2 py-3 px-3 border-slate-100 dark:border-white/10">
-          <div className="relative flex-1 min-w-[200px] max-w-xl">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 w-4 h-4 pointer-events-none" />
-            <input
-              type="text"
-              placeholder={t('search')}
-              className="input pl-10 pr-3 py-2 text-sm bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 w-full rounded-xl"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">
-            <input
-              type="checkbox"
-              className="w-4 h-4 rounded border-slate-300 dark:border-white/10 text-primary-600 focus:ring-primary-500"
-              checked={showDisabled}
-              onChange={(e) => setShowDisabled(e.target.checked)}
-            />
-            {t('showDisabled') || 'Show disabled'}
-          </label>
-          {activeTab === 'products' && (
-            <select
-              className="input py-2 px-3 text-sm font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl min-w-[118px]"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as 'All' | 'Regular' | 'Pack' | 'RawMaterial')}
+        <div className="card flex flex-col gap-3 py-3 px-3 border-slate-100 dark:border-white/10">
+          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 w-4 h-4 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={t('search')}
+                className="input pl-10 pr-3 py-2 text-sm bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 w-full rounded-xl"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="btn-secondary py-2 px-3 text-sm inline-flex items-center justify-center gap-1.5 shrink-0 rounded-xl sm:w-auto w-full"
             >
-              <option value="All">{t('all')}</option>
-              <option value="Regular">{t('regular')}</option>
-              <option value="Pack">{t('pack')}</option>
-              <option value="RawMaterial">{t('rawMaterial')}</option>
+              <Filter className="w-4 h-4" />
+              {t('reset')}
+            </button>
+          </div>
+          <div
+            className={clsx(
+              'grid gap-2 items-center border-t border-slate-100 dark:border-white/10 pt-3',
+              activeTab === 'products'
+                ? 'grid-cols-2 md:grid-cols-4'
+                : 'grid-cols-2 sm:grid-cols-3'
+            )}
+          >
+            <label className="col-span-2 sm:col-span-1 inline-flex items-center gap-2 cursor-pointer select-none text-[11px] font-bold text-slate-600 dark:text-slate-400 min-w-0">
+              <input
+                type="checkbox"
+                className="w-3.5 h-3.5 shrink-0 rounded border-slate-300 dark:border-white/10 text-primary-600 focus:ring-primary-500"
+                checked={showDisabled}
+                onChange={(e) => setShowDisabled(e.target.checked)}
+              />
+              <span className="truncate">{t('showDisabled') || 'Show disabled'}</span>
+            </label>
+            {activeTab === 'products' && (
+              <select
+                className="input h-9 py-0 pl-2 pr-7 text-xs font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-lg w-full min-w-0"
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as 'All' | 'Regular' | 'Pack' | 'RawMaterial')}
+              >
+                <option value="All">{t('all')}</option>
+                <option value="Regular">{t('regular')}</option>
+                <option value="Pack">{t('pack')}</option>
+                <option value="RawMaterial">{t('rawMaterial')}</option>
+              </select>
+            )}
+            <select
+              className="input h-9 py-0 pl-2 pr-7 text-xs font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-lg w-full min-w-0"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+            >
+              <option value="all">{t('allCategories')}</option>
+              {activeTab === 'products'
+                ? CATEGORIES.filter((c) => !['flour', 'dairy', 'sugar', 'liquid', 'other_material'].includes(c)).map((cat) => (
+                    <option key={cat} value={cat}>
+                      {tCategory(cat)}
+                    </option>
+                  ))
+                : ['flour', 'dairy', 'sugar', 'liquid', 'other_material', 'cooking', 'maintenance', 'cleaning', 'others'].map((cat) => (
+                    <option key={cat} value={cat}>
+                      {tCategory(cat)}
+                    </option>
+                  ))}
             </select>
-          )}
-          <select
-            className="input py-2 px-3 text-sm font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl min-w-[130px]"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-          >
-            <option value="all">{t('allCategories')}</option>
-            {activeTab === 'products'
-              ? CATEGORIES.filter((c) => !['flour', 'dairy', 'sugar', 'liquid', 'other_material'].includes(c)).map((cat) => (
-                  <option key={cat} value={cat}>
-                    {tCategory(cat)}
-                  </option>
-                ))
-              : ['flour', 'dairy', 'sugar', 'liquid', 'other_material', 'cooking', 'maintenance', 'cleaning', 'others'].map((cat) => (
-                  <option key={cat} value={cat}>
-                    {tCategory(cat)}
-                  </option>
-                ))}
-          </select>
-          <select
-            className="input py-2 px-3 text-sm font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl min-w-[120px]"
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-          >
-            <option value="all">{t('allStatuses')}</option>
-            {activeTab === 'products'
-              ? ['active', 'none', 'frozen', 'ordered', 'requested', 'cancelled'].map((status) => (
-                  <option key={status} value={status}>
-                    {status === 'active' ? t('empStatusActive') : t(status)}
-                  </option>
-                ))
-              : ['none', 'requested', 'ordered', 'cancelled'].map((status) => (
-                  <option key={status} value={status}>
-                    {t(status)}
-                  </option>
-                ))}
-          </select>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="btn-secondary py-2 px-3 text-sm inline-flex items-center gap-1.5 shrink-0 rounded-xl"
-          >
-            <Filter className="w-4 h-4" />
-            {t('reset')}
-          </button>
+            <select
+              className="input h-9 py-0 pl-2 pr-7 text-xs font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-lg w-full min-w-0 col-span-2 sm:col-span-1"
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+            >
+              <option value="all">{t('allStatuses')}</option>
+              {activeTab === 'products'
+                ? ['active', 'none', 'frozen', 'ordered', 'requested', 'cancelled'].map((status) => (
+                    <option key={status} value={status}>
+                      {status === 'active' ? t('empStatusActive') : t(status)}
+                    </option>
+                  ))
+                : ['none', 'requested', 'ordered', 'cancelled'].map((status) => (
+                    <option key={status} value={status}>
+                      {t(status)}
+                    </option>
+                  ))}
+            </select>
+          </div>
         </div>
       )}
 
