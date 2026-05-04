@@ -226,7 +226,9 @@ const POS: React.FC = () => {
                   <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
                 </div>
                 <div className="flex items-center justify-between mt-4 gap-2">
-                  <span className="text-xl font-bold text-primary-600 dark:text-primary-400">{product.sellingPrice.toLocaleString()}</span>
+                  <span className="text-xl font-bold text-primary-600 dark:text-primary-400">
+                    {product.sellingPrice.toLocaleString()} {currencyUnit}
+                  </span>
                   <div className="w-12 h-12 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90">
                     <Plus className="w-6 h-6" />
                   </div>

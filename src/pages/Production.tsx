@@ -323,8 +323,8 @@ const Production: React.FC = () => {
     if (!window.confirm(t('confirmDeleteBatch') || 'Are you sure you want to delete this batch?')) return;
 
     try {
-      // 1. Revert ingredients if batch was active (deducted stock)
-      if (batch.status === 'started') {
+      // 1. Revert ingredients if materials were deducted (started or completed)
+      if (batch.status === 'started' || batch.status === 'completed') {
         for (const ing of batch.ingredients || []) {
           const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
           const rawMaterialSnap = await getDoc(rawMaterialRef);
@@ -620,8 +620,8 @@ const Production: React.FC = () => {
 
         const batchId = batchRef.id;
 
-        // If created with active status, deduct stock immediately
-        if (initialStatus === 'started') {
+        // If created as started or completed, deduct raw materials immediately
+        if (initialStatus === 'started' || initialStatus === 'completed') {
           for (const ing of newBatch.ingredients || []) {
             const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
             const rawMaterialSnap = await getDoc(rawMaterialRef);

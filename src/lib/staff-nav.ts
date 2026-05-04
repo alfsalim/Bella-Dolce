@@ -39,16 +39,28 @@ export function isStaffRole(role: string | undefined | null): boolean {
   return !!role && !CUSTOMER_ROLES.includes(role);
 }
 
+/** Finance module (incl. Paie): full finance access or procurement-only (supplier-facing parity). */
+export function staffCanAccessFinanceNav(permissions: string[]): boolean {
+  if (permissions.includes('*')) return true;
+  return permissions.includes('/finance') || permissions.includes('/procurement');
+}
+
 export function getFilteredNavItems(permissions: string[] | null): AppNavItem[] {
   if (!permissions) return [];
   if (permissions.includes('*')) return [...APP_NAV_ITEMS];
-  return APP_NAV_ITEMS.filter((item) => permissions.includes(item.path));
+  return APP_NAV_ITEMS.filter((item) => {
+    if (item.path === '/finance') return staffCanAccessFinanceNav(permissions);
+    return permissions.includes(item.path);
+  });
 }
 
 /** Whether the current path is allowed for this user's permission paths (incl. common sub-routes). */
 export function pathnameAllowedForStaffPermissions(pathname: string, permissions: string[] | null): boolean {
   if (!permissions?.length) return false;
   if (permissions.includes('*')) return true;
+  if (pathname === '/finance' || pathname.startsWith('/finance/')) {
+    if (staffCanAccessFinanceNav(permissions)) return true;
+  }
   for (const p of permissions) {
     if (pathname === p || pathname.startsWith(`${p}/`)) return true;
   }

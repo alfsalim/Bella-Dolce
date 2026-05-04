@@ -312,7 +312,8 @@ const COLLECTION_ROUTE_MAP: Record<string, string> = {
 };
 
 // Collections that are always admin-only regardless of rolePermissions
-const ADMIN_ONLY_COLLECTIONS = new Set(['users', 'rolePermissions', 'system']);
+// `users`: reads allowed for finance / procurement / settings (sanitized); see requireCollectionAccess.
+const ADMIN_ONLY_COLLECTIONS = new Set(['rolePermissions', 'system']);
 
 const PUBLIC_GET_COLLECTIONS: string[] = ['products', 'promotions', 'settings'];
 const PUBLIC_POST_COLLECTIONS: string[] = ['orders', 'customers', 'activityLogs'];
@@ -330,6 +331,15 @@ async function canReadCollectionForSearch(userRole: string, collection: string):
   if (allowedPaths.includes('*') || allowedPaths.includes(routeRequired)) return true;
   // Expenses view in finance reads the same rows as procurement (purchases → SupplierInvoice)
   if (collection === 'purchases' && allowedPaths.includes('/finance')) return true;
+  // Paie / payroll uses financialEmployees; procurement staff use same supplier-facing access pattern
+  if (collection === 'financialEmployees' && allowedPaths.includes('/procurement')) return true;
+  // User list (sanitized) for paie onboarding: finance or procurement without /settings
+  if (
+    collection === 'users' &&
+    (allowedPaths.includes('/finance') || allowedPaths.includes('/procurement'))
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -884,6 +894,26 @@ async function startServer() {
       return next();
     }
 
+    // users: sanitized list / get for finance & paie onboarding, procurement parity, or settings; mutations admin-only
+    if (collection === 'users') {
+      if (method !== 'GET') {
+        return res.status(403).json({ error: 'Forbidden: admin only' });
+      }
+      return getCachedAllowedPaths(userRole)
+        .then((allowedPaths) => {
+          if (allowedPaths.includes('*')) return next();
+          if (
+            allowedPaths.includes('/settings') ||
+            allowedPaths.includes('/finance') ||
+            allowedPaths.includes('/procurement')
+          ) {
+            return next();
+          }
+          return res.status(403).json({ error: 'Forbidden: insufficient role' });
+        })
+        .catch(() => res.status(403).json({ error: 'Forbidden: could not verify permissions' }));
+    }
+
     // Admin-only collections — no regular user access
     if (ADMIN_ONLY_COLLECTIONS.has(collection)) {
       return res.status(403).json({ error: 'Forbidden: admin only' });
@@ -903,6 +933,13 @@ async function startServer() {
         collection === 'purchases' &&
         method === 'GET' &&
         allowedPaths.includes('/finance')
+      ) {
+        return next();
+      }
+      // Paie: financialEmployees readable/writable with procurement access (same staff as suppliers)
+      if (
+        collection === 'financialEmployees' &&
+        allowedPaths.includes('/procurement')
       ) {
         return next();
       }

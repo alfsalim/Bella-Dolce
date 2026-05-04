@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -43,12 +44,16 @@ import {
   isAfter,
   isWithinInterval,
 } from 'date-fns';
+import { fr as dateFnsFr, arSA as dateFnsArSA } from 'date-fns/locale';
 import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase-compat';
 import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
 import { clsx } from 'clsx';
 import Pagination from '../components/Pagination';
+import { downloadReportsPdf } from '../lib/reports-pdf';
 
 const REPORTS_PAGE_SIZE = 100;
+/** Activities list uses a smaller page size so pagination is usable with typical log volumes. */
+const ACTIVITIES_PAGE_SIZE = 25;
 const LINE_ITEMS_PREVIEW = 3;
 
 function parseSaleItems(sale: Sale): (SaleItem & { name?: string })[] {
@@ -60,7 +65,8 @@ function parseSaleItems(sale: Sale): (SaleItem & { name?: string })[] {
 }
 
 const Reports: React.FC = () => {
-  const { t, tProduct, tCategory, currencyUnit } = useLanguage();
+  const { t, tProduct, tCategory, currencyUnit, isRTL, language } = useLanguage();
+  const dateLocale = language === 'ar' ? dateFnsArSA : dateFnsFr;
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'analytics' | 'sales' | 'activities'>('analytics');
 
@@ -225,6 +231,13 @@ const Reports: React.FC = () => {
     return '—';
   };
 
+  const getPaymentLabel = useCallback((method: string) => {
+    if (method === 'cash') return t('cash');
+    if (method === 'card') return t('card');
+    if (method === 'mobile') return t('mobile');
+    return method || '—';
+  }, [t]);
+
   const productReportRows = useMemo(() => {
     const map = new Map<string, { productId: string; quantity: number; revenue: number; saleCount: number }>();
     for (const sale of reportSalesByDate) {
@@ -283,11 +296,11 @@ const Reports: React.FC = () => {
     return inRange && activityMatchesSearch(a);
   });
 
-  const activityTotalPages = Math.ceil(filteredActivities.length / REPORTS_PAGE_SIZE) || 1;
+  const activityTotalPages = Math.ceil(filteredActivities.length / ACTIVITIES_PAGE_SIZE) || 1;
   const safeActivityPage = Math.min(activityPage, activityTotalPages);
   const paginatedActivities = filteredActivities.slice(
-    (safeActivityPage - 1) * REPORTS_PAGE_SIZE,
-    safeActivityPage * REPORTS_PAGE_SIZE
+    (safeActivityPage - 1) * ACTIVITIES_PAGE_SIZE,
+    safeActivityPage * ACTIVITIES_PAGE_SIZE
   );
 
   const getPaymentIcon = (method: string) => {
@@ -376,7 +389,7 @@ const Reports: React.FC = () => {
       cumulativeOrders += ordersCount;
 
       return {
-        name: format(date, 'MMM dd'),
+        name: format(date, 'd MMM', { locale: dateLocale }),
         revenue: isCumulative ? cumulativeRevenue : revenue,
         orders: isCumulative ? cumulativeOrders : ordersCount
       };
@@ -405,41 +418,315 @@ const Reports: React.FC = () => {
 
   const COLORS = ['#3b82f6', '#10b981', '#ef4444', '#f59e0b', '#8b5cf6'];
 
+  const pdfLabels = useMemo(
+    () =>
+      ({
+        reports: t('reports'),
+        analytics: t('analytics'),
+        salesReport: t('salesReport'),
+        activities: t('activities'),
+        reportPdfFilteredNote: t('reportPdfFilteredNote'),
+        orderReport: t('orderReport'),
+        totalRevenue: t('totalRevenue'),
+        profit: t('profit'),
+        costs: t('costs'),
+        avgOrderValue: t('avgOrderValue'),
+        totalOrders: t('totalOrders'),
+        fulfilled: t('fulfilled'),
+        fulfillmentRate: t('fulfillmentRate'),
+        cancelled: t('cancelled'),
+        orderSummary: t('orderSummary'),
+        daily: t('daily'),
+        weekly: t('weekly'),
+        monthly: t('monthly'),
+        unfulfilledOrders: t('unfulfilledOrders'),
+        delayedOrders: t('delayedOrders'),
+        orderStatusDistribution: t('orderStatusDistribution'),
+        salesTrends: t('salesTrends'),
+        reportPdfDailyBreakdown: t('reportPdfDailyBreakdown'),
+        revenue: t('revenue'),
+        orders: t('orders'),
+        salesByCategory: t('salesByCategory'),
+        units: t('units'),
+        topSellers: t('topSellers'),
+        inventoryConsumption: t('inventoryConsumption'),
+        material: t('material'),
+        stock: t('stock'),
+        salesContainingProduct: t('salesContainingProduct'),
+        quantity: t('quantity'),
+        timestamp: t('timestamp'),
+        cashier: t('cashier'),
+        payment: t('payment'),
+        products: t('products'),
+        amount: t('amount'),
+        records: t('records'),
+        reportPdfSubTabTransactions: t('reportPdfSubTabTransactions'),
+        reportPdfSubTabByProduct: t('reportPdfSubTabByProduct'),
+        fromDate: t('fromDate'),
+        toDate: t('toDate'),
+        search: t('search'),
+        cash: t('cash'),
+        card: t('card'),
+        mobile: t('mobile'),
+      }) as Record<string, string>,
+    [t]
+  );
+
+  const handleExportPdf = useCallback(async () => {
+    if (loading) {
+      toast.error(t('loading'));
+      return;
+    }
+    const toastId = toast.loading(t('exportGenerating'));
+    const filename = `BellaDolce-report-${activeTab}-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`;
+
+    const timePresetLabel =
+      timeFilter === 'day'
+        ? t('day')
+        : timeFilter === 'week'
+          ? t('week')
+          : timeFilter === 'month'
+            ? t('month')
+            : t('year');
+    const periodLine = `${t('fromDate')}: ${format(new Date(analyticsStart), 'PP', { locale: dateLocale })} — ${t('toDate')}: ${format(new Date(analyticsEnd), 'PP', { locale: dateLocale })}`;
+    const presetLine = `${t('reportPdfPresetTime')}: ${timePresetLabel}`;
+
+    try {
+      if (activeTab === 'analytics') {
+        await downloadReportsPdf({
+          filename,
+          isRTL,
+          currencyUnit,
+          labels: pdfLabels,
+          mode: 'analytics',
+          analytics: {
+            periodLine,
+            presetLine,
+            kpi: {
+              totalRevenue,
+              totalProfit,
+              totalCosts,
+              avgOrderValue,
+            },
+            orders: {
+              totalOrdersCount,
+              fulfilledOrdersCount,
+              fulfillmentRate,
+              cancelledOrdersCount,
+              unfulfilledOrdersCount,
+              delayedOrdersCount,
+              fulfilledTodayCount: fulfilledToday.length,
+              totalFulfilledToday,
+              fulfilledThisWeekCount: fulfilledThisWeek.length,
+              totalFulfilledThisWeek,
+              fulfilledThisMonthCount: fulfilledThisMonth.length,
+              totalFulfilledThisMonth,
+            },
+            orderStatusRows: orderStatusData.map((d) => ({ label: d.name, value: d.value })),
+            chartRows: chartData.map((d) => ({
+              dayLabel: d.name,
+              revenue: d.revenue,
+              orders: d.orders,
+            })),
+            categories: categoryData.map((c) => ({ label: tCategory(c.name), count: c.value })),
+            topSellers: topSellers.map((product, i) => ({
+              rank: i + 1,
+              name: tProduct(product),
+              category: tCategory(product.category),
+              units: product.unitsSold,
+            })),
+            inventoryRows: inventoryConsumption.map((item) => ({
+              name: tProduct(item.material),
+              consumption: item.consumption.toFixed(1),
+              stock: item.stock,
+            })),
+          },
+        });
+      } else if (activeTab === 'sales') {
+        const salesPeriodNote = `${t('fromDate')}: ${format(new Date(reportStart), 'PP', { locale: dateLocale })} — ${t('toDate')}: ${format(new Date(reportEnd), 'PP', { locale: dateLocale })}`;
+        if (salesSubTab === 'transactions') {
+          if (transactionsListSales.length === 0) {
+            toast.error(t('reportExportEmpty'), { id: toastId });
+            return;
+          }
+          const cashierLabel =
+            selectedCashier === 'all'
+              ? t('allCashiers')
+              : cashiers.find((c) => c.id === selectedCashier)?.name || t('cashier');
+          const filterNote = `${salesPeriodNote} · ${t('cashier')}: ${cashierLabel}`;
+          await downloadReportsPdf({
+            filename,
+            isRTL,
+            currencyUnit,
+            labels: pdfLabels,
+            mode: 'sales_transactions',
+            salesTransactions: {
+              sales: transactionsListSales,
+              filterNote,
+              getLineItemLabel,
+              getPaymentLabel,
+              formatSaleDate: (iso: string) => format(new Date(iso), 'PP', { locale: dateLocale }),
+              formatSaleTime: (iso: string) => format(new Date(iso), 'HH:mm:ss'),
+            },
+          });
+        } else {
+          if (productReportRows.length === 0) {
+            toast.error(t('reportExportEmpty'), { id: toastId });
+            return;
+          }
+          const productNote =
+            productFilterIds.length > 0
+              ? `${salesPeriodNote} · ${t('products')}: ${productFilterIds.length}`
+              : salesPeriodNote;
+          await downloadReportsPdf({
+            filename,
+            isRTL,
+            currencyUnit,
+            labels: pdfLabels,
+            mode: 'sales_by_product',
+            salesByProduct: {
+              rows: productReportRows.map((row) => {
+                const p = products.find((x) => x.id === row.productId);
+                const name = p
+                  ? tProduct(p)
+                  : getLineItemLabel({
+                      productId: row.productId,
+                      quantity: row.quantity,
+                      price: row.quantity ? row.revenue / row.quantity : 0,
+                    });
+                return {
+                  name,
+                  quantity: row.quantity,
+                  revenue: row.revenue,
+                  saleCount: row.saleCount,
+                };
+              }),
+              filterNote: productNote,
+            },
+          });
+        }
+      } else {
+        if (filteredActivities.length === 0) {
+          toast.error(t('reportExportEmpty'), { id: toastId });
+          return;
+        }
+        const actPeriod = `${t('fromDate')}: ${format(new Date(reportStart), 'PP', { locale: dateLocale })} — ${t('toDate')}: ${format(new Date(reportEnd), 'PP', { locale: dateLocale })}`;
+        const filterNote = activitySearch.trim()
+          ? `${actPeriod} · ${t('search')}: ${activitySearch.trim()}`
+          : actPeriod;
+        await downloadReportsPdf({
+          filename,
+          isRTL,
+          currencyUnit,
+          labels: pdfLabels,
+          mode: 'activities',
+          activities: {
+            logs: filteredActivities,
+            filterNote,
+            formatLogTime: (iso: string) => format(new Date(iso), 'PPp', { locale: dateLocale }),
+          },
+        });
+      }
+      toast.success(t('pdfDownloaded'), { id: toastId });
+    } catch (e) {
+      console.error(e);
+      toast.error(t('pdfError'), { id: toastId });
+    }
+  }, [
+    loading,
+    t,
+    activeTab,
+    salesSubTab,
+    isRTL,
+    currencyUnit,
+    pdfLabels,
+    dateLocale,
+    analyticsStart,
+    analyticsEnd,
+    timeFilter,
+    chartData,
+    orderStatusData,
+    categoryData,
+    topSellers,
+    inventoryConsumption,
+    totalRevenue,
+    totalProfit,
+    totalCosts,
+    avgOrderValue,
+    totalOrdersCount,
+    fulfilledOrdersCount,
+    fulfillmentRate,
+    cancelledOrdersCount,
+    unfulfilledOrdersCount,
+    delayedOrdersCount,
+    fulfilledToday,
+    totalFulfilledToday,
+    fulfilledThisWeek,
+    totalFulfilledThisWeek,
+    fulfilledThisMonth,
+    totalFulfilledThisMonth,
+    reportStart,
+    reportEnd,
+    transactionsListSales,
+    selectedCashier,
+    cashiers,
+    productReportRows,
+    productFilterIds,
+    products,
+    filteredActivities,
+    activitySearch,
+    getLineItemLabel,
+    getPaymentLabel,
+    tProduct,
+    tCategory,
+  ]);
+
   return (
     <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('reports')}</h1>
           <p className="text-slate-500 dark:text-zinc-500 font-medium">{t('reportsDesc')}</p>
         </div>
-        <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
-          <button 
-            onClick={() => setActiveTab('analytics')}
-            className={clsx(
-              "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-              activeTab === 'analytics' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            )}
-          >
-            {t('analytics') || 'Analytics'}
-          </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <button
-            onClick={() => setActiveTab('sales')}
-            className={clsx(
-              "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-              activeTab === 'sales' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            )}
+            type="button"
+            onClick={handleExportPdf}
+            disabled={loading}
+            className="px-6 py-2.5 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
           >
-            {t('salesReport') || 'Sales Log'}
+            <Download className="w-4 h-4" />
+            {t('exportPDF')}
           </button>
-          <button
-            onClick={() => setActiveTab('activities')}
-            className={clsx(
-              "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-              activeTab === 'activities' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            )}
-          >
-            {t('activities') || 'Activities'}
-          </button>
+          <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
+            <button 
+              onClick={() => setActiveTab('analytics')}
+              className={clsx(
+                "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+                activeTab === 'analytics' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {t('analytics')}
+            </button>
+            <button
+              onClick={() => setActiveTab('sales')}
+              className={clsx(
+                "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+                activeTab === 'sales' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {t('salesReport')}
+            </button>
+            <button
+              onClick={() => setActiveTab('activities')}
+              className={clsx(
+                "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+                activeTab === 'activities' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {t('activities')}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -474,10 +761,6 @@ const Reports: React.FC = () => {
                 />
               </div>
             </div>
-            <button className="px-6 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2">
-              <Download className="w-4 h-4" />
-              {t('exportPDF')}
-            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
@@ -1023,7 +1306,7 @@ const Reports: React.FC = () => {
                                 )}
                               >
                                 {getPaymentIcon(sale.paymentMethod)}
-                                {sale.paymentMethod}
+                                {getPaymentLabel(sale.paymentMethod)}
                               </div>
                             </td>
                             <td className="px-8 py-5">
@@ -1076,6 +1359,7 @@ const Reports: React.FC = () => {
                   currentPage={safeTransactionPage}
                   totalPages={transactionTotalPages}
                   onPageChange={setTransactionPage}
+                  variant="footer"
                 />
               </div>
             </div>
@@ -1152,6 +1436,7 @@ const Reports: React.FC = () => {
                   currentPage={safeProductReportPage}
                   totalPages={productReportTotalPages}
                   onPageChange={setProductReportPage}
+                  variant="footer"
                 />
               </div>
             </div>
@@ -1256,11 +1541,11 @@ const Reports: React.FC = () => {
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                 {t('showing') || 'Showing'}{' '}
                 <span className="text-slate-900 dark:text-white">
-                  {filteredActivities.length === 0 ? 0 : (safeActivityPage - 1) * REPORTS_PAGE_SIZE + 1}
+                  {filteredActivities.length === 0 ? 0 : (safeActivityPage - 1) * ACTIVITIES_PAGE_SIZE + 1}
                 </span>{' '}
                 to{' '}
                 <span className="text-slate-900 dark:text-white">
-                  {Math.min(safeActivityPage * REPORTS_PAGE_SIZE, filteredActivities.length)}
+                  {Math.min(safeActivityPage * ACTIVITIES_PAGE_SIZE, filteredActivities.length)}
                 </span>{' '}
                 {t('of') || 'of'}{' '}
                 <span className="text-slate-900 dark:text-white">{filteredActivities.length}</span>{' '}
@@ -1270,6 +1555,7 @@ const Reports: React.FC = () => {
                 currentPage={safeActivityPage}
                 totalPages={activityTotalPages}
                 onPageChange={setActivityPage}
+                variant="footer"
               />
             </div>
           </div>

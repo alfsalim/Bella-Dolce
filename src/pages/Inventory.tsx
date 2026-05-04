@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   Package, 
@@ -44,17 +44,21 @@ interface InventoryProps {
 const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const { t, isRTL, tProduct, tCategory, currencyUnit } = useLanguage();
   const { profile: currentUserProfile } = useAuth();
+  const prevActiveTabRef = useRef<'products' | 'materials' | 'activities' | 'waste' | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
   const [productsPage, setProductsPage] = useState(1);
   const [materialsPage, setMaterialsPage] = useState(1);
-  const [totalProductsPages, setTotalProductsPages] = useState(1);
-  const [totalMaterialsPages, setTotalMaterialsPages] = useState(1);
 
   const [activeTab, setActiveTab] = useState<'products' | 'materials' | 'activities' | 'waste'>(defaultTab || 'products');
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [movementsPage, setMovementsPage] = useState(1);
   const [totalMovementsPages, setTotalMovementsPages] = useState(1);
+  /** Waste tab uses its own query/pagination (reason=waste only), not the global movements feed. */
+  const [wasteMovements, setWasteMovements] = useState<StockMovement[]>([]);
+  const [wastePage, setWastePage] = useState(1);
+  const [totalWastePages, setTotalWastePages] = useState(1);
+  const [totalWasteUnitsAll, setTotalWasteUnitsAll] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -367,40 +371,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   };
 
   useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        let productsQ = query(collection(db, 'products'));
-        if (selectedCategory !== 'all') {
-          productsQ = query(productsQ, where('category', '==', selectedCategory));
-        }
-        if (selectedStatus !== 'all') {
-          productsQ = query(productsQ, where('status', '==', selectedStatus));
-        }
-        // Note: typeFilter is harder to apply server-side if it's based on isPack boolean
-        // but we can try if we want strict server-side filtering.
-        // For now, let's keep it simple.
-
-        const materialsQ = query(collection(db, 'rawMaterials'));
-        // Materials only have status filter in the UI
-        let filteredMaterialsQ = materialsQ;
-        if (selectedStatus !== 'all') {
-          filteredMaterialsQ = query(materialsQ, where('status', '==', selectedStatus));
-        }
-
-        const [productsSnapshot, materialsSnapshot] = await Promise.all([
-          getCountFromServer(productsQ),
-          getCountFromServer(filteredMaterialsQ)
-        ]);
-        
-        setTotalProductsPages(Math.ceil(productsSnapshot.data().count / PAGE_SIZE));
-        setTotalMaterialsPages(Math.ceil(materialsSnapshot.data().count / PAGE_SIZE));
-      } catch (error) {
-        console.error('Error fetching counts:', error);
-      }
-    };
-    fetchCounts();
-
-    let productsQ = query(collection(db, 'products'), orderBy('name'), limit(PAGE_SIZE * productsPage));
+    let productsQ = query(collection(db, 'products'), orderBy('name'), limit(QUERY_MAX_ITEMS));
     if (selectedCategory !== 'all') {
       productsQ = query(productsQ, where('category', '==', selectedCategory));
     }
@@ -409,34 +380,34 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     }
 
     const unsubscribeProducts = onSnapshot(productsQ, (snapshot) => {
-      const allProducts = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return { 
-          id: doc.id, 
+      const allProducts = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
           ...data,
           shopStock: data.shopStock || 0,
           freezerStock: data.freezerStock || 0
         } as Product;
       });
-      const startIndex = (productsPage - 1) * PAGE_SIZE;
-      setProducts(allProducts.slice(startIndex, startIndex + PAGE_SIZE));
+      setProducts(allProducts);
     }, (error) => handleFirestoreError(error, OperationType.GET, 'products'));
 
     let unsubscribeMaterials = () => {};
     if (currentUserProfile) {
-      let materialsQ = query(collection(db, 'rawMaterials'), orderBy('name'), limit(PAGE_SIZE * materialsPage));
+      let materialsQ = query(collection(db, 'rawMaterials'), orderBy('name'), limit(QUERY_MAX_ITEMS));
+      if (selectedCategory !== 'all') {
+        materialsQ = query(materialsQ, where('category', '==', selectedCategory));
+      }
       if (selectedStatus !== 'all') {
         materialsQ = query(materialsQ, where('status', '==', selectedStatus));
       }
 
       unsubscribeMaterials = onSnapshot(materialsQ, async (snapshot) => {
-        const allMaterials = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial));
-        const startIndex = (materialsPage - 1) * PAGE_SIZE;
-        const currentMaterials = allMaterials.slice(startIndex, startIndex + PAGE_SIZE);
-        setMaterials(currentMaterials);
+        const allMaterials = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as RawMaterial));
+        setMaterials(allMaterials);
 
-        // Populate random brands for materials that don't have one
-        const materialsWithoutBrand = currentMaterials.filter(m => !m.brand);
+        const maxBrandFill = 10;
+        const materialsWithoutBrand = allMaterials.filter((m) => !m.brand).slice(0, maxBrandFill);
         if (materialsWithoutBrand.length > 0) {
           const randomBrands = ['Nestlé', 'Danone', 'Unilever', 'P&G', 'General Mills', 'Kraft Heinz', 'Mars', 'Mondelez', 'PepsiCo', 'Coca-Cola'];
           for (const material of materialsWithoutBrand) {
@@ -444,7 +415,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
             try {
               await updateDoc(doc(db, 'rawMaterials', material.id), { brand: randomBrand });
             } catch (error) {
-              console.error("Error updating material brand:", error);
+              console.error('Error updating material brand:', error);
             }
           }
         }
@@ -471,7 +442,51 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       unsubscribeMaterials();
       unsubscribeMovements();
     };
-  }, [productsPage, materialsPage, movementsPage, PAGE_SIZE, currentUserProfile, selectedCategory, selectedStatus]);
+  }, [movementsPage, PAGE_SIZE, currentUserProfile, selectedCategory, selectedStatus, QUERY_MAX_ITEMS]);
+
+  useEffect(() => {
+    if (activeTab === 'waste' && prevActiveTabRef.current !== 'waste') {
+      setWastePage(1);
+    }
+    prevActiveTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!currentUserProfile || activeTab !== 'waste') return;
+
+    const wasteQ = query(
+      collection(db, 'stockMovements'),
+      where('reason', '==', 'waste'),
+      orderBy('timestamp', 'desc'),
+      limit(PAGE_SIZE * wastePage)
+    );
+
+    const unsub = onSnapshot(
+      wasteQ,
+      (snapshot) => {
+        const allRows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as StockMovement));
+        const startIndex = (wastePage - 1) * PAGE_SIZE;
+        setWasteMovements(allRows.slice(startIndex, startIndex + PAGE_SIZE));
+
+        const countQ = query(collection(db, 'stockMovements'), where('reason', '==', 'waste'));
+        void getCountFromServer(countQ).then((countSnapshot) => {
+          const c = countSnapshot.data().count;
+          setTotalWastePages(Math.max(1, Math.ceil(c / PAGE_SIZE)));
+        });
+
+        void getDocs(countQ).then((sumSnap) => {
+          const sum = sumSnap.docs.reduce(
+            (acc, d) => acc + (Number((d.data() as StockMovement).quantity) || 0),
+            0
+          );
+          setTotalWasteUnitsAll(sum);
+        });
+      },
+      (error) => handleFirestoreError(error, OperationType.GET, 'stockMovements')
+    );
+
+    return () => unsub();
+  }, [currentUserProfile, activeTab, wastePage, PAGE_SIZE]);
 
   useEffect(() => {
     localStorage.setItem('inventoryViewMode', viewMode);
@@ -636,38 +651,73 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     setShowDisabled(false);
   };
 
-  const filteredProducts = products.filter(p => {
-    const isRawMaterial = p.category === 'raw_material' || p.itemType === 'material';
-    
-    // Soft delete filtering
-    if (p.disabled && !showDisabled) return false;
-    
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         p.category.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesType = typeFilter === 'All' ? !isRawMaterial :
-                       (typeFilter === 'Pack' && p.isPack) ||
-                       (typeFilter === 'Regular' && !p.isPack && !isRawMaterial) ||
-                       (typeFilter === 'RawMaterial' && isRawMaterial);
+  useEffect(() => {
+    setProductsPage(1);
+    setMaterialsPage(1);
+  }, [selectedCategory, selectedStatus, searchTerm, typeFilter, showDisabled, activeTab]);
 
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
+  const filteredProducts = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return products.filter((p) => {
+      const isRawMaterial = p.category === 'raw_material' || p.itemType === 'material';
+      if (p.disabled && !showDisabled) return false;
+      const matchesSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.category && p.category.toLowerCase().includes(q));
+      const matchesType =
+        typeFilter === 'All'
+          ? !isRawMaterial
+          : (typeFilter === 'Pack' && !!p.isPack) ||
+            (typeFilter === 'Regular' && !p.isPack && !isRawMaterial) ||
+            (typeFilter === 'RawMaterial' && isRawMaterial);
+      const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
+      const effectiveStatus = (p.status as string | undefined) ?? 'active';
+      const matchesStatus = selectedStatus === 'all' || effectiveStatus === selectedStatus;
 
-    return matchesSearch && matchesType && matchesCategory && matchesStatus;
-  });
+      return matchesSearch && matchesType && matchesCategory && matchesStatus;
+    });
+  }, [products, searchTerm, typeFilter, selectedCategory, selectedStatus, showDisabled]);
 
-  const filteredMaterials = materials.filter(m => {
-    // Soft delete filtering
-    if (m.disabled && !showDisabled) return false;
-    
-    const matchesSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         m.category.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesCategory = selectedCategory === 'all' || m.category === selectedCategory;
-    const matchesStatus = selectedStatus === 'all' || m.status === selectedStatus;
+  const filteredMaterials = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return materials.filter((m) => {
+      if (m.disabled && !showDisabled) return false;
+      const matchesSearch =
+        !q ||
+        m.name.toLowerCase().includes(q) ||
+        (m.category && m.category.toLowerCase().includes(q));
+      const matchesCategory = selectedCategory === 'all' || m.category === selectedCategory;
+      const effectiveStatus = m.status ?? 'none';
+      const matchesStatus = selectedStatus === 'all' || effectiveStatus === selectedStatus;
 
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [materials, searchTerm, selectedCategory, selectedStatus, showDisabled]);
+
+  const totalProductsPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const totalMaterialsPages = Math.max(1, Math.ceil(filteredMaterials.length / PAGE_SIZE));
+
+  const safeProductsPage = Math.min(productsPage, totalProductsPages);
+  const safeMaterialsPage = Math.min(materialsPage, totalMaterialsPages);
+
+  const visibleProducts = useMemo(
+    () =>
+      filteredProducts.slice(
+        (safeProductsPage - 1) * PAGE_SIZE,
+        safeProductsPage * PAGE_SIZE
+      ),
+    [filteredProducts, safeProductsPage, PAGE_SIZE]
+  );
+
+  const visibleMaterials = useMemo(
+    () =>
+      filteredMaterials.slice(
+        (safeMaterialsPage - 1) * PAGE_SIZE,
+        safeMaterialsPage * PAGE_SIZE
+      ),
+    [filteredMaterials, safeMaterialsPage, PAGE_SIZE]
+  );
 
   const [formData, setFormData] = useState({
     name: '',
@@ -1048,84 +1098,91 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         </button>
       </div>
 
-      <div className="card flex flex-col lg:flex-row items-stretch lg:items-center gap-4 py-4 border-slate-100 dark:border-white/10">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 w-5 h-5" />
-          <input 
-            type="text" 
-            placeholder={t('search')} 
-            className="input pl-12 bg-slate-50/50 dark:bg-zinc-900/50 border-none w-full" 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 bg-slate-50/50 dark:bg-zinc-900/50 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-white/10 transition-all">
-            <input 
-              type="checkbox" 
+      {(activeTab === 'products' || activeTab === 'materials') && (
+        <div className="card flex flex-wrap items-center gap-2 py-3 px-3 border-slate-100 dark:border-white/10">
+          <div className="relative flex-1 min-w-[200px] max-w-xl">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 w-4 h-4 pointer-events-none" />
+            <input
+              type="text"
+              placeholder={t('search')}
+              className="input pl-10 pr-3 py-2 text-sm bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 w-full rounded-xl"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">
+            <input
+              type="checkbox"
               className="w-4 h-4 rounded border-slate-300 dark:border-white/10 text-primary-600 focus:ring-primary-500"
               checked={showDisabled}
               onChange={(e) => setShowDisabled(e.target.checked)}
             />
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{t('showDisabled') || 'Show Disabled'}</span>
+            {t('showDisabled') || 'Show disabled'}
           </label>
-          <select 
-            className="input py-2 bg-slate-50/50 dark:bg-zinc-900/50 border-none text-sm font-bold min-w-[140px]"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as any)}
-          >
-            <option value="All">{t('all')}</option>
-            <option value="Regular">{t('regular')}</option>
-            <option value="Pack">{t('pack')}</option>
-            <option value="RawMaterial">{t('rawMaterial')}</option>
-          </select>
-          <select 
-            className="input py-2 bg-slate-50/50 dark:bg-zinc-900/50 border-none text-sm font-bold min-w-[140px]"
+          {activeTab === 'products' && (
+            <select
+              className="input py-2 px-3 text-sm font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl min-w-[118px]"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as 'All' | 'Regular' | 'Pack' | 'RawMaterial')}
+            >
+              <option value="All">{t('all')}</option>
+              <option value="Regular">{t('regular')}</option>
+              <option value="Pack">{t('pack')}</option>
+              <option value="RawMaterial">{t('rawMaterial')}</option>
+            </select>
+          )}
+          <select
+            className="input py-2 px-3 text-sm font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl min-w-[130px]"
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
           >
             <option value="all">{t('allCategories')}</option>
-            {activeTab === 'products' ? (
-              CATEGORIES.filter(c => !['flour', 'dairy', 'sugar', 'liquid', 'other_material'].includes(c)).map(cat => (
-                <option key={cat} value={cat}>{tCategory(cat)}</option>
-              ))
-            ) : (
-              ['flour', 'dairy', 'sugar', 'liquid', 'other_material', 'cooking', 'maintenance', 'cleaning', 'others'].map(cat => (
-                <option key={cat} value={cat}>{tCategory(cat)}</option>
-              ))
-            )}
+            {activeTab === 'products'
+              ? CATEGORIES.filter((c) => !['flour', 'dairy', 'sugar', 'liquid', 'other_material'].includes(c)).map((cat) => (
+                  <option key={cat} value={cat}>
+                    {tCategory(cat)}
+                  </option>
+                ))
+              : ['flour', 'dairy', 'sugar', 'liquid', 'other_material', 'cooking', 'maintenance', 'cleaning', 'others'].map((cat) => (
+                  <option key={cat} value={cat}>
+                    {tCategory(cat)}
+                  </option>
+                ))}
           </select>
-          <select 
-            className="input py-2 bg-slate-50/50 dark:bg-[#0a0a0a]/50 border-none text-sm font-bold min-w-[140px]"
+          <select
+            className="input py-2 px-3 text-sm font-semibold bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl min-w-[120px]"
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
           >
             <option value="all">{t('allStatuses')}</option>
-            {activeTab === 'products' ? (
-              ['none', 'frozen', 'ordered', 'requested', 'cancelled'].map(status => (
-                <option key={status} value={status}>{t(status)}</option>
-              ))
-            ) : (
-              ['none', 'requested', 'ordered', 'cancelled'].map(status => (
-                <option key={status} value={status}>{t(status)}</option>
-              ))
-            )}
+            {activeTab === 'products'
+              ? ['active', 'none', 'frozen', 'ordered', 'requested', 'cancelled'].map((status) => (
+                  <option key={status} value={status}>
+                    {status === 'active' ? t('empStatusActive') : t(status)}
+                  </option>
+                ))
+              : ['none', 'requested', 'ordered', 'cancelled'].map((status) => (
+                  <option key={status} value={status}>
+                    {t(status)}
+                  </option>
+                ))}
           </select>
-          <button 
+          <button
+            type="button"
             onClick={resetFilters}
-            className="btn-secondary gap-2 w-full sm:w-auto justify-center"
+            className="btn-secondary py-2 px-3 text-sm inline-flex items-center gap-1.5 shrink-0 rounded-xl"
           >
             <Filter className="w-4 h-4" />
             {t('reset')}
           </button>
         </div>
-      </div>
+      )}
 
       {activeTab === 'products' ? (
         viewMode === 'card' ? (
           <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredProducts.map((product) => (
+            {visibleProducts.map((product) => (
                 <div key={product.id}
                   onClick={() => {
                     setSelectedProduct(product);
@@ -1295,7 +1352,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           </div>
           <div className="mt-8">
             <Pagination 
-              currentPage={productsPage}
+              currentPage={safeProductsPage}
               totalPages={totalProductsPages}
               onPageChange={setProductsPage}
             />
@@ -1315,7 +1372,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-white/10">
-                  {filteredProducts.map((product) => (
+                  {visibleProducts.map((product) => (
                     <tr key={product.id}
                       onClick={() => openInventoryModal(product)}
                       className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer"
@@ -1392,7 +1449,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
               </table>
             </div>
             <Pagination 
-              currentPage={productsPage}
+              currentPage={safeProductsPage}
               totalPages={totalProductsPages}
               onPageChange={setProductsPage}
             />
@@ -1477,7 +1534,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">Waste Management</h2>
             <div className="text-sm text-slate-500 dark:text-slate-400">
-              Total Waste: <span className="font-bold text-red-600">{movements.filter(m => m.reason === 'waste').reduce((sum, m) => sum + (m.quantity || 0), 0)} units</span>
+              Total Waste: <span className="font-bold text-red-600">{totalWasteUnitsAll} units</span>
             </div>
           </div>
           <div className="card p-0 overflow-hidden border-slate-100 dark:border-white/10">
@@ -1493,7 +1550,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-white/10">
-                  {movements.filter(m => m.reason === 'waste').map((movement) => (
+                  {wasteMovements.map((movement) => (
                     <tr key={movement.id} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all">
                       <td className="px-8 py-5 font-semibold text-slate-400 dark:text-slate-600 text-sm whitespace-nowrap">
                         {movement.timestamp ? (typeof movement.timestamp === 'string' ? format(new Date(movement.timestamp), 'MMM dd, HH:mm') : format(movement.timestamp.toDate(), 'MMM dd, HH:mm')) : '-'}
@@ -1514,7 +1571,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       </td>
                     </tr>
                   ))}
-                  {movements.filter(m => m.reason === 'waste').length === 0 && (
+                  {wasteMovements.length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-8 py-12 text-center text-slate-400 dark:text-slate-600 italic">
                         No waste recorded
@@ -1525,9 +1582,9 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
               </table>
             </div>
             <Pagination
-              currentPage={movementsPage}
-              totalPages={totalMovementsPages}
-              onPageChange={setMovementsPage}
+              currentPage={wastePage}
+              totalPages={totalWastePages}
+              onPageChange={setWastePage}
             />
           </div>
         </div>
@@ -1535,7 +1592,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         viewMode === 'card' ? (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredMaterials.map((material) => (
+              {visibleMaterials.map((material) => (
                 <div key={material.id} className="card group hover:shadow-xl transition-all duration-300 border-slate-100 dark:border-white/10 p-0 overflow-hidden bg-white dark:bg-zinc-900">
                   <div className="relative h-40">
                     <img 
@@ -1606,7 +1663,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
               ))}
             </div>
             <Pagination 
-              currentPage={materialsPage}
+              currentPage={safeMaterialsPage}
               totalPages={totalMaterialsPages}
               onPageChange={setMaterialsPage}
             />
@@ -1626,7 +1683,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-white/10">
-              {filteredMaterials.map((material) => (
+              {visibleMaterials.map((material) => (
                 <tr key={material.id} className="group hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-all">
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
@@ -1719,7 +1776,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           </table>
         </div>
         <Pagination 
-          currentPage={materialsPage}
+          currentPage={safeMaterialsPage}
           totalPages={totalMaterialsPages}
           onPageChange={setMaterialsPage}
         />
