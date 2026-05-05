@@ -26,11 +26,11 @@ import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
 
 const BUDGET_MOCK_ITEMS = [
-    { name: 'Matières Premières', budget: 1200000, actual: 1150000, variance: 50000, color: 'emerald' },
-    { name: 'Main d\'œuvre', budget: 850000, actual: 865000, variance: -15000, color: 'rose' },
-    { name: 'Énergie & Eau', budget: 120000, actual: 145000, variance: -25000, color: 'rose' },
-    { name: 'Marketing & Pub', budget: 50000, actual: 42000, variance: 8000, color: 'emerald' },
-    { name: 'Maintenance', budget: 80000, actual: 75000, variance: 5000, color: 'emerald' }
+    { nameKey: 'budgetCategoryRawMaterials', budget: 1200000, actual: 1150000, variance: 50000, color: 'emerald' },
+    { nameKey: 'budgetCategoryLabor', budget: 850000, actual: 865000, variance: -15000, color: 'rose' },
+    { nameKey: 'budgetCategoryEnergyWater', budget: 120000, actual: 145000, variance: -25000, color: 'rose' },
+    { nameKey: 'budgetCategoryMarketingPub', budget: 50000, actual: 42000, variance: 8000, color: 'emerald' },
+    { nameKey: 'budgetCategoryMaintenance', budget: 80000, actual: 75000, variance: 5000, color: 'emerald' }
   ];
 
 const Budgeting: React.FC = () => {
@@ -96,12 +96,12 @@ const Budgeting: React.FC = () => {
               const percentage = (item.actual / item.budget) * 100;
               return (
                 <div 
-                  key={item.name}
+                  key={item.nameKey}
                   className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm"
                 >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white">{item.name}</h4>
+                      <h4 className="font-bold text-slate-900 dark:text-white">{tf(item.nameKey)}</h4>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{tf('budgetMonthlyAllocation')}</p>
                     </div>
                     <div className="flex items-center gap-8">

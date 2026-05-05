@@ -5,7 +5,7 @@ import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, addDoc, set
 import { UserProfile, ActivityLog, Role, RolePermission, Promotion, Product, RawMaterial } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { DEFAULT_PERMISSIONS } from '../lib/seedData';
-import { Settings as SettingsIcon, Users as UsersIcon, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X, Database, Sparkles } from 'lucide-react';
+import { Settings as SettingsIcon, Users as UsersIcon, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X, Database, Sparkles, Filter } from 'lucide-react';
 import UsersPage from './Users';
 import AIManager from './AIManager';
 import { clsx } from 'clsx';
@@ -22,12 +22,18 @@ import {
   notifySystemAlertsPreferenceChanged,
   SYSTEM_ALERTS_PREFERENCE_EVENT,
 } from '../lib/systemAlertsPreference';
+import {
+  ItemCategoryConfig,
+  buildItemCategoryConfigFromLegacy,
+  getDefaultItemCategoryConfig,
+  sanitizeItemCategoryConfig,
+} from '../lib/itemCategories';
 
 const Settings: React.FC = () => {
-  const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole } = useLanguage();
+  const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole, tCategory } = useLanguage();
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'aiManager' | 'data'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'aiManager' | 'data'>('general');
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -53,6 +59,9 @@ const Settings: React.FC = () => {
   const [systemAlertsOn, setSystemAlertsOn] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('systemAlerts') === 'true'
   );
+  const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
+  const [newProductCategory, setNewProductCategory] = useState('');
+  const [newRawMaterialCategory, setNewRawMaterialCategory] = useState('');
 
   const isAdmin = profile?.role === 'admin';
 
@@ -205,6 +214,33 @@ const Settings: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'logs') setLogsPage(1);
   }, [activeTab]);
+
+  useEffect(() => {
+    const categoriesRef = doc(db, 'settings', 'item_categories');
+    const unsubscribe = onSnapshot(
+      categoriesRef,
+      async (snapshot) => {
+        if (snapshot.exists()) {
+          const sanitized = sanitizeItemCategoryConfig(snapshot.data());
+          setItemCategoryConfig(sanitized);
+          return;
+        }
+
+        const fallback = getDefaultItemCategoryConfig();
+        setItemCategoryConfig(fallback);
+        if (!isAdmin) return;
+
+        const legacySnap = await getDoc(doc(db, 'settings', 'categories'));
+        const migrated = buildItemCategoryConfigFromLegacy(legacySnap.exists() ? legacySnap.data().list : undefined);
+        await setDoc(categoriesRef, migrated, { merge: true });
+      },
+      (error) => {
+        console.error('Failed to load item categories config', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   useEffect(() => {
     const totalPages = Math.ceil(logs.length / PAGE_SIZE) || 1;
@@ -618,6 +654,77 @@ const Settings: React.FC = () => {
     return order.indexOf(a.id) - order.indexOf(b.id);
   });
 
+  const normalizeCategoryName = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+
+  const updateItemCategoryConfig = async (next: ItemCategoryConfig) => {
+    const sanitized = sanitizeItemCategoryConfig(next);
+    await setDoc(doc(db, 'settings', 'item_categories'), sanitized, { merge: true });
+    setItemCategoryConfig(sanitized);
+  };
+
+  const addCategoryByType = async (type: 'product' | 'rawMaterial') => {
+    const input = type === 'product' ? newProductCategory : newRawMaterialCategory;
+    const normalized = normalizeCategoryName(input);
+    if (!normalized) return toast.error(t('categoryValidationEmpty'));
+
+    const existing = itemCategoryConfig[type].map((cat) => cat.toLowerCase());
+    if (existing.includes(normalized)) return toast.error(t('categoryValidationDuplicate'));
+
+    try {
+      await updateItemCategoryConfig({
+        ...itemCategoryConfig,
+        [type]: [...itemCategoryConfig[type], normalized],
+      });
+      if (type === 'product') setNewProductCategory('');
+      else setNewRawMaterialCategory('');
+      toast.success(t('categorySaved'));
+    } catch (error) {
+      console.error('Error adding category:', error);
+      toast.error(t('errorAddingCategory'));
+    }
+  };
+
+  const renameCategoryByType = async (type: 'product' | 'rawMaterial', oldValue: string) => {
+    const input = window.prompt(t('renameCategoryPrompt') || 'Rename category', oldValue);
+    if (input == null) return;
+    const normalized = normalizeCategoryName(input);
+    if (!normalized) return toast.error(t('categoryValidationEmpty'));
+
+    const siblingList = itemCategoryConfig[type].filter((cat) => cat !== oldValue).map((cat) => cat.toLowerCase());
+    if (siblingList.includes(normalized)) return toast.error(t('categoryValidationDuplicate'));
+
+    try {
+      await updateItemCategoryConfig({
+        ...itemCategoryConfig,
+        [type]: itemCategoryConfig[type].map((cat) => (cat === oldValue ? normalized : cat)),
+      });
+      toast.success(t('categorySaved'));
+    } catch (error) {
+      console.error('Error renaming category:', error);
+      toast.error(t('errorSavingCategory'));
+    }
+  };
+
+  const deleteCategoryByType = async (type: 'product' | 'rawMaterial', value: string) => {
+    if (!window.confirm(t('confirmDelete'))) return;
+    if (itemCategoryConfig[type].length <= 1) return toast.error(t('categoryValidationKeepOne'));
+
+    try {
+      await updateItemCategoryConfig({
+        ...itemCategoryConfig,
+        [type]: itemCategoryConfig[type].filter((cat) => cat !== value),
+      });
+      toast.success(t('categoryDeleted'));
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      toast.error(t('errorSavingCategory'));
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -688,6 +795,20 @@ const Settings: React.FC = () => {
           <ImageIcon className="w-4 h-4" />
           {t('promotions')}
         </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'categories'
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Filter className="w-4 h-4" />
+            {t('categoryManagement')}
+          </button>
+        )}
         {isAdmin && (
           <button
             onClick={() => setActiveTab('aiManager')}
@@ -762,7 +883,7 @@ const Settings: React.FC = () => {
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none space-y-6">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Bell className="w-5 h-5 text-amber-500" />
-              {t('systemAlerts')}
+              {t('settingsDisplayAndNotifications')}
             </h2>
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-black rounded-2xl border border-slate-100 dark:border-white/5">
@@ -1157,6 +1278,71 @@ const Settings: React.FC = () => {
               </motion.div>
             </div>
           )}
+        </div>
+      )}
+      {activeTab === 'categories' && isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none space-y-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('productCategories')}</h2>
+            <div className="flex gap-3">
+              <input
+                className="input flex-1"
+                value={newProductCategory}
+                onChange={(e) => setNewProductCategory(e.target.value)}
+                placeholder={t('newCategoryName')}
+              />
+              <button type="button" className="btn-primary gap-2" onClick={() => addCategoryByType('product')}>
+                <Plus className="w-4 h-4" />
+                {t('add')}
+              </button>
+            </div>
+            <div className="space-y-2 max-h-[380px] overflow-y-auto pr-2">
+              {itemCategoryConfig.product.map((cat) => (
+                <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
+                  <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => renameCategoryByType('product', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button type="button" onClick={() => deleteCategoryByType('product', cat)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none space-y-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('rawMaterialCategories')}</h2>
+            <div className="flex gap-3">
+              <input
+                className="input flex-1"
+                value={newRawMaterialCategory}
+                onChange={(e) => setNewRawMaterialCategory(e.target.value)}
+                placeholder={t('newCategoryName')}
+              />
+              <button type="button" className="btn-primary gap-2" onClick={() => addCategoryByType('rawMaterial')}>
+                <Plus className="w-4 h-4" />
+                {t('add')}
+              </button>
+            </div>
+            <div className="space-y-2 max-h-[380px] overflow-y-auto pr-2">
+              {itemCategoryConfig.rawMaterial.map((cat) => (
+                <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
+                  <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => renameCategoryByType('rawMaterial', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button type="button" onClick={() => deleteCategoryByType('rawMaterial', cat)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
       {activeTab === 'aiManager' && isAdmin && <AIManager embedded />}

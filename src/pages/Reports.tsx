@@ -1347,7 +1347,7 @@ const Reports: React.FC = () => {
                   <span className="text-slate-900 dark:text-white">
                     {totalTransactionCount === 0 ? 0 : (safeTransactionPage - 1) * REPORTS_PAGE_SIZE + 1}
                   </span>{' '}
-                  to{' '}
+                  {t('rangeTo')}{' '}
                   <span className="text-slate-900 dark:text-white">
                     {Math.min(safeTransactionPage * REPORTS_PAGE_SIZE, totalTransactionCount)}
                   </span>{' '}
@@ -1424,7 +1424,7 @@ const Reports: React.FC = () => {
                   <span className="text-slate-900 dark:text-white">
                     {productReportRows.length === 0 ? 0 : (safeProductReportPage - 1) * REPORTS_PAGE_SIZE + 1}
                   </span>{' '}
-                  to{' '}
+                  {t('rangeTo')}{' '}
                   <span className="text-slate-900 dark:text-white">
                     {Math.min(safeProductReportPage * REPORTS_PAGE_SIZE, productReportRows.length)}
                   </span>{' '}
@@ -1514,7 +1514,7 @@ const Reports: React.FC = () => {
                       <div className="flex items-center justify-between mb-1 gap-2">
                         <p className="font-bold text-slate-900 dark:text-white truncate">{log.userName}</p>
                         <p className="text-xs text-zinc-500 font-medium shrink-0">
-                          {log.timestamp ? format(new Date(log.timestamp), 'MMM dd, HH:mm') : 'N/A'}
+                          {log.timestamp ? format(new Date(log.timestamp), 'MMM dd, HH:mm', { locale: dateLocale }) : t('notAvailableShort')}
                         </p>
                       </div>
                       <p className="text-sm text-zinc-400 break-words">
@@ -1543,7 +1543,7 @@ const Reports: React.FC = () => {
                 <span className="text-slate-900 dark:text-white">
                   {filteredActivities.length === 0 ? 0 : (safeActivityPage - 1) * ACTIVITIES_PAGE_SIZE + 1}
                 </span>{' '}
-                to{' '}
+                {t('rangeTo')}{' '}
                 <span className="text-slate-900 dark:text-white">
                   {Math.min(safeActivityPage * ACTIVITIES_PAGE_SIZE, filteredActivities.length)}
                 </span>{' '}

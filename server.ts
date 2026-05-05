@@ -1378,6 +1378,11 @@ async function startServer() {
       if (collection === 'rawMaterials') {
         if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
         else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
+        // Keep only fields supported by Prisma RawMaterial model.
+        const allowedRawMaterialFields = ['id', 'name', 'category', 'unit', 'stock', 'currentStock', 'wasteQuantity', 'minStock', 'status', 'imageUrl', 'brand', 'expiryDate', 'disabled', 'createdAt', 'updatedAt'];
+        Object.keys(dataToSave).forEach((key) => {
+          if (!allowedRawMaterialFields.includes(key)) delete dataToSave[key];
+        });
       }
 
       if (collection === 'fixedAssets') {
@@ -1471,6 +1476,11 @@ async function startServer() {
       if (collection === 'rawMaterials') {
         if (dataToSave.stock !== undefined) dataToSave.currentStock = dataToSave.stock;
         else if (dataToSave.currentStock !== undefined) dataToSave.stock = dataToSave.currentStock;
+        // Keep only fields supported by Prisma RawMaterial model.
+        const allowedRawMaterialFields = ['name', 'category', 'unit', 'stock', 'currentStock', 'wasteQuantity', 'minStock', 'status', 'imageUrl', 'brand', 'expiryDate', 'disabled', 'createdAt', 'updatedAt'];
+        Object.keys(dataToSave).forEach((key) => {
+          if (!allowedRawMaterialFields.includes(key)) delete dataToSave[key];
+        });
       }
 
       if (collection === 'fixedAssets') {

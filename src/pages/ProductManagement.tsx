@@ -11,6 +11,8 @@ import { CATEGORIES, PAGE_SIZE } from '../constants';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
 
+const RAW_MATERIAL_ONLY_CATEGORIES = ['raw_material', 'cooking', 'maintenance', 'cleaning', 'kitchen', 'others'];
+
 const ProductManagement: React.FC = () => {
   const { t, tProduct, tCategory, isRTL, currencyUnit } = useLanguage();
   const { profile: currentUserProfile } = useAuth();
@@ -65,6 +67,18 @@ const ProductManagement: React.FC = () => {
     stock: 0,
     minStock: 10,
     itemType: 'product'
+  });
+
+  const buildRawMaterialPayload = (data: any) => ({
+    name: data.name || '',
+    category: data.category || 'cooking',
+    unit: data.unit || 'kg',
+    imageUrl: data.imageUrl || '',
+    brand: data.brand || null,
+    expiryDate: data.expiryDate || null,
+    minStock: Number(data.minStock || 0),
+    status: data.status || 'none',
+    disabled: !!data.disabled
   });
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -250,7 +264,9 @@ const ProductManagement: React.FC = () => {
       const currentEditingId = editingProduct?.id || editingMaterial?.id;
 
       if (currentEditingId) {
-        const dataToSave = isMaterial ? (() => { const { itemType, ...rest } = formData; return rest; })() : formData;
+        const dataToSave = isMaterial
+          ? buildRawMaterialPayload(formData)
+          : formData;
         await setDoc(doc(db, collectionName, currentEditingId), dataToSave, { merge: true });
         
         // If it's a material that is ALSO used as a product, sync them
@@ -265,7 +281,6 @@ const ProductManagement: React.FC = () => {
                 category: formData.category,
                 unit: formData.unit,
                 imageUrl: formData.imageUrl,
-                stock: formData.stock,
                 minStock: formData.minStock
               }, { merge: true });
             }
@@ -281,8 +296,12 @@ const ProductManagement: React.FC = () => {
           );
         }
       } else {
+        const dataToCreate = isMaterial
+          ? buildRawMaterialPayload(formData)
+          : formData;
+
         const itemRef = await addDoc(collection(db, collectionName), {
-          ...formData,
+          ...dataToCreate,
           createdAt: new Date().toISOString()
         });
 
@@ -534,10 +553,10 @@ const ProductManagement: React.FC = () => {
             >
               <option value="All">{t('allCategories')}</option>
               {activeTab === 'products' 
-                ? dynamicCategories.filter(cat => !['raw_material', 'cooking', 'maintenance', 'cleaning', 'others'].includes(cat)).map(cat => (
+                ? dynamicCategories.filter(cat => !RAW_MATERIAL_ONLY_CATEGORIES.includes(cat)).map(cat => (
                     <option key={cat} value={cat}>{tCategory(cat)}</option>
                   ))
-                : ['cooking', 'maintenance', 'cleaning', 'others'].map(cat => (
+                : ['cooking', 'maintenance', 'cleaning', 'kitchen', 'others'].map(cat => (
                     <option key={cat} value={cat}>{tCategory(cat)}</option>
                   ))
               }
@@ -623,7 +642,6 @@ const ProductManagement: React.FC = () => {
                                 setEditingProduct(null);
                                 setFormData({
                                   ...material,
-                                  stock: material.currentStock || 0,
                                   itemType: 'material'
                                 } as any);
                               }
@@ -828,7 +846,6 @@ const ProductManagement: React.FC = () => {
                                       category: product.category || '',
                                       sellingPrice: product.sellingPrice || 0,
                                       costPrice: product.costPrice || 0,
-                                      stock: product.stock || 0,
                                       minStock: product.minStock || 0,
                                       unit: product.unit || 'g',
                                       description: product.description || '',
@@ -843,7 +860,6 @@ const ProductManagement: React.FC = () => {
                                       name: material.name || '',
                                       nameAr: material.nameAr || '',
                                       category: material.category || '',
-                                      stock: material.currentStock || 0,
                                       minStock: material.minStock || 0,
                                       unit: material.unit || 'g',
                                       brand: material.brand || 'Generic',
@@ -953,10 +969,10 @@ const ProductManagement: React.FC = () => {
                   >
                     <option value="">{t('selectCategory')}</option>
                     {(formData.itemType === 'material' || formData.category === 'raw_material')
-                      ? ['cooking', 'maintenance', 'cleaning', 'others'].map(cat => (
+                      ? ['cooking', 'maintenance', 'cleaning', 'kitchen', 'others'].map(cat => (
                         <option key={cat} value={cat}>{tCategory(cat)}</option>
                       ))
-                      : dynamicCategories.filter(c => c !== 'raw_material').map(cat => (
+                      : dynamicCategories.filter(c => !RAW_MATERIAL_ONLY_CATEGORIES.includes(c)).map(cat => (
                         <option key={cat} value={cat}>{tCategory(cat)}</option>
                       ))
                     }
@@ -985,18 +1001,6 @@ const ProductManagement: React.FC = () => {
                       />
                     </div>
                   </>
-                )}
-                {(formData.itemType === 'material' || formData.category === 'raw_material') && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('currentStock') || 'Current Stock'} <span className="text-red-500">*</span></label>
-                    <input 
-                      type="number" 
-                      required
-                      className="input" 
-                      value={formData.stock || 0}
-                      onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
-                    />
-                  </div>
                 )}
                 {(formData.itemType === 'material' || formData.category === 'raw_material') && (
                   <div className="space-y-2">
@@ -1274,7 +1278,7 @@ const ProductManagement: React.FC = () => {
               </div>
 
               <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                {dynamicCategories.filter(c => c !== 'raw_material').map((cat) => (
+                {dynamicCategories.filter(c => !RAW_MATERIAL_ONLY_CATEGORIES.includes(c)).map((cat) => (
                   <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
                     <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
                     <button 
