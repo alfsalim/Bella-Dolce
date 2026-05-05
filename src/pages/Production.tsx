@@ -64,6 +64,19 @@ const Production: React.FC = () => {
     return localISOTime;
   };
 
+  const normalizedProductBuckets = (product: Partial<Product>) => {
+    const total = Number(product.stock || 0);
+    const freezer = Number(product.freezerStock || 0);
+    const waste = Number(product.wasteQuantity || 0);
+    const hasShop = typeof product.shopStock === 'number' && Number.isFinite(product.shopStock);
+    const shop = hasShop ? Number(product.shopStock) : Math.max(0, total - freezer - waste);
+    return {
+      shop: Math.max(0, shop),
+      freezer: Math.max(0, freezer),
+      waste: Math.max(0, waste),
+    };
+  };
+
   const [newBatch, setNewBatch] = useState<{
     productId: string;
     recipeId: string;
@@ -333,7 +346,7 @@ const Production: React.FC = () => {
           if (rawMaterialSnap.exists()) {
             const currentStock = rawMaterialSnap.data().currentStock || 0;
             const newStock = currentStock + ing.quantity;
-            await updateDoc(rawMaterialRef, { currentStock: newStock });
+            await updateDoc(rawMaterialRef, { currentStock: newStock, stock: newStock });
             
             await addDoc(collection(db, 'stockMovements'), {
               itemId: ing.materialId,
@@ -364,11 +377,12 @@ const Production: React.FC = () => {
           const currentStock = product.stock || 0;
           const newStock = Math.max(0, currentStock - qty);
           
+          const buckets = normalizedProductBuckets(product);
           const updateFields: any = { stock: newStock };
           if (location === 'shop') {
-            updateFields.shopStock = Math.max(0, (product.shopStock || 0) - qty);
+            updateFields.shopStock = Math.max(0, buckets.shop - qty);
           } else {
-            updateFields.freezerStock = Math.max(0, (product.freezerStock || 0) - qty);
+            updateFields.freezerStock = Math.max(0, buckets.freezer - qty);
           }
           
           await updateDoc(productRef, updateFields);
@@ -433,7 +447,7 @@ const Production: React.FC = () => {
               if (rawMaterialSnap.exists()) {
                 const currentStock = rawMaterialSnap.data().currentStock || 0;
                 const newStock = currentStock + ingredient.quantity;
-                await updateDoc(rawMaterialRef, { currentStock: newStock });
+                await updateDoc(rawMaterialRef, { currentStock: newStock, stock: newStock });
                 
                 await addDoc(collection(db, 'stockMovements'), {
                   itemId: ingredient.materialId,
@@ -460,7 +474,7 @@ const Production: React.FC = () => {
             if (rawMaterialSnap.exists()) {
               const currentStock = rawMaterialSnap.data().currentStock || 0;
               const newStock = Math.max(0, currentStock - ingredient.quantity);
-              await updateDoc(rawMaterialRef, { currentStock: newStock });
+              await updateDoc(rawMaterialRef, { currentStock: newStock, stock: newStock });
               
               await addDoc(collection(db, 'stockMovements'), {
                 itemId: ingredient.materialId,
@@ -502,7 +516,7 @@ const Production: React.FC = () => {
               if (rawMaterialSnap.exists()) {
                 const currentStock = rawMaterialSnap.data().currentStock || 0;
                 const newStock = Math.max(0, currentStock - diff);
-                await updateDoc(rawMaterialRef, { currentStock: newStock });
+                await updateDoc(rawMaterialRef, { currentStock: newStock, stock: newStock });
                 
                 // Record movement for the adjustment
                 await addDoc(collection(db, 'stockMovements'), {
@@ -537,6 +551,7 @@ const Production: React.FC = () => {
             
             if (!wasCompleted && isNowCompleted) {
               // Now completed -> Add stock
+              const buckets = normalizedProductBuckets(product);
               const currentStock = product.stock || 0;
               const newTotalStock = currentStock + qty;
               const updateFields: any = { 
@@ -544,9 +559,9 @@ const Production: React.FC = () => {
                 status: location === 'freezer' ? 'frozen' : 'none'
               };
               if (location === 'shop') {
-                updateFields.shopStock = (product.shopStock || 0) + qty;
+                updateFields.shopStock = buckets.shop + qty;
               } else {
-                updateFields.freezerStock = (product.freezerStock || 0) + qty;
+                updateFields.freezerStock = buckets.freezer + qty;
               }
               await updateDoc(productRef, updateFields);
               
@@ -567,15 +582,16 @@ const Production: React.FC = () => {
               });
             } else if (wasCompleted && !isNowCompleted) {
               // Status moved away from completed -> Revert stock
+              const buckets = normalizedProductBuckets(product);
               const currentStock = product.stock || 0;
               const newTotalStock = Math.max(0, currentStock - qty);
               const updateFields: any = { stock: newTotalStock };
               
               const oldLocation = (selectedBatch as any).location || 'shop';
               if (oldLocation === 'shop') {
-                updateFields.shopStock = Math.max(0, (product.shopStock || 0) - qty);
+                updateFields.shopStock = Math.max(0, buckets.shop - qty);
               } else {
-                updateFields.freezerStock = Math.max(0, (product.freezerStock || 0) - qty);
+                updateFields.freezerStock = Math.max(0, buckets.freezer - qty);
               }
               await updateDoc(productRef, updateFields);
               
@@ -633,7 +649,7 @@ const Production: React.FC = () => {
             if (rawMaterialSnap.exists()) {
               const currentStock = rawMaterialSnap.data().currentStock || 0;
               const newStock = Math.max(0, currentStock - ing.quantity);
-              await updateDoc(rawMaterialRef, { currentStock: newStock });
+              await updateDoc(rawMaterialRef, { currentStock: newStock, stock: newStock });
               
               // Record movement
               await addDoc(collection(db, 'stockMovements'), {
@@ -661,8 +677,9 @@ const Production: React.FC = () => {
             const productRef = doc(db, 'products', product.id);
             const location = newBatch.location || 'shop';
             const qty = Number(newBatch.plannedQty);
-            const newShopStock = location === 'shop' ? (product.shopStock || 0) + qty : (product.shopStock || 0);
-            const newFrozenStock = location === 'freezer' ? (product.freezerStock || 0) + qty : (product.freezerStock || 0);
+            const buckets = normalizedProductBuckets(product);
+            const newShopStock = location === 'shop' ? buckets.shop + qty : buckets.shop;
+            const newFrozenStock = location === 'freezer' ? buckets.freezer + qty : buckets.freezer;
 
             const updateFields: any = {
               stock: (product.stock || 0) + qty,
@@ -745,7 +762,7 @@ const Production: React.FC = () => {
             if (rawMaterialSnap.exists()) {
               const currentStock = rawMaterialSnap.data().currentStock || 0;
               const newStock = Math.max(0, currentStock - ing.quantity);
-              await updateDoc(rawMaterialRef, { currentStock: newStock });
+              await updateDoc(rawMaterialRef, { currentStock: newStock, stock: newStock });
               
               // Record movement
               await addDoc(collection(db, 'stockMovements'), {
@@ -783,9 +800,10 @@ const Production: React.FC = () => {
           const dist = distribution || { shop: batch.plannedQty, frozen: 0, waste: 0 };
           // stock = shopStock + freezerStock + wasteQuantity (invariant)
           // Production adds to all three; waste goes to wasteQuantity, not lost
-          const newShopStock = (product.shopStock || 0) + dist.shop;
-          const newFrozenStock = (product.freezerStock || 0) + dist.frozen;
-          const newWasteQuantity = (product.wasteQuantity || 0) + dist.waste;
+          const buckets = normalizedProductBuckets(product);
+          const newShopStock = buckets.shop + dist.shop;
+          const newFrozenStock = buckets.freezer + dist.frozen;
+          const newWasteQuantity = buckets.waste + dist.waste;
           const newTotalStock = newShopStock + newFrozenStock + newWasteQuantity;
 
           // Determine status: frozen only if ALL sellable stock is in freezer
@@ -871,7 +889,7 @@ const Production: React.FC = () => {
               if (rawMaterialSnap.exists()) {
                 const currentStock = rawMaterialSnap.data().currentStock || 0;
                 const newStock = currentStock + ingredient.quantity;
-                await updateDoc(rawMaterialRef, { currentStock: newStock });
+                await updateDoc(rawMaterialRef, { currentStock: newStock, stock: newStock });
 
                 // Record movement
                 await addDoc(collection(db, 'stockMovements'), {

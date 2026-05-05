@@ -2115,6 +2115,39 @@ async function startServer() {
         });
       }
 
+      // Normalize legacy product stock buckets once at startup:
+      // if shopStock was never populated, derive it from total stock.
+      try {
+        const allProducts = await prisma.product.findMany({
+          select: {
+            id: true,
+            stock: true,
+            shopStock: true as any,
+            freezerStock: true as any,
+            wasteQuantity: true as any,
+          } as any,
+        } as any);
+        for (const p of allProducts as any[]) {
+          const total = Number(p.stock || 0);
+          const freezer = Number(p.freezerStock || 0);
+          const waste = Number(p.wasteQuantity || 0);
+          const hasShop = typeof p.shopStock === "number" && Number.isFinite(p.shopStock);
+          const shop = hasShop ? Number(p.shopStock) : Math.max(0, total - freezer - waste);
+          const normalizedTotal = Math.max(0, shop) + Math.max(0, freezer) + Math.max(0, waste);
+          await prisma.product.update({
+            where: { id: p.id },
+            data: {
+              shopStock: Math.max(0, shop),
+              freezerStock: Math.max(0, freezer),
+              wasteQuantity: Math.max(0, waste),
+              stock: normalizedTotal,
+            } as any,
+          });
+        }
+      } catch (e) {
+        console.warn("Product stock normalization skipped:", (e as Error).message);
+      }
+
       // Seed sample customers if none exist
       const customerCount = await prisma.customer.count();
       if (customerCount === 0) {

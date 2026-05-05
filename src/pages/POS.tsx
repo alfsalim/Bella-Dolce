@@ -38,6 +38,16 @@ const POS: React.FC = () => {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
+    if (!product) return 0;
+    const hasShopStock = typeof product.shopStock === 'number' && Number.isFinite(product.shopStock);
+    if (hasShopStock) return Math.max(0, product.shopStock as number);
+    const total = Number(product.stock || 0);
+    const freezer = Number(product.freezerStock || 0);
+    const waste = Number(product.wasteQuantity || 0);
+    return Math.max(0, total - freezer - waste);
+  };
+
   const handleProductImageError = (e: React.SyntheticEvent<HTMLImageElement>, seed: string) => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="100%" height="100%" fill="#e2e8f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#64748b" font-size="20" font-family="Arial, sans-serif">${seed || 'Product'}</text></svg>`;
     const fallback = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -76,7 +86,7 @@ const POS: React.FC = () => {
   });
 
   const addToCart = (product: Product) => {
-    if ((product.shopStock || 0) <= 0) return;
+    if (getShopSellableStock(product) <= 0) return;
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       if (existing) {
@@ -98,7 +108,7 @@ const POS: React.FC = () => {
     setCart(prev => prev.map(item => {
       if (item.productId === productId) {
         const product = products.find(p => p.id === productId);
-        const maxStock = product?.shopStock || 0;
+        const maxStock = getShopSellableStock(product);
         const newQty = Math.max(1, Math.min(maxStock, item.quantity + delta));
         return { ...item, quantity: newQty };
       }
@@ -110,7 +120,7 @@ const POS: React.FC = () => {
     setCart(prev => prev.map(item => {
       if (item.productId === productId) {
         const product = products.find(p => p.id === productId);
-        const maxStock = product?.shopStock || 0;
+        const maxStock = getShopSellableStock(product);
         const newQty = Math.max(1, Math.min(maxStock, value));
         return { ...item, quantity: newQty };
       }
@@ -153,7 +163,8 @@ const POS: React.FC = () => {
           const productSnap = await getDoc(productRef);
           if (productSnap.exists()) {
             const data = productSnap.data();
-            const newShopStock = Math.max(0, (data.shopStock || 0) - item.quantity);
+            const currentShopStock = getShopSellableStock(data as Partial<Product>);
+            const newShopStock = Math.max(0, currentShopStock - item.quantity);
             const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
             await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
           }
@@ -234,7 +245,7 @@ const POS: React.FC = () => {
             <button
               key={product.id}
               onClick={() => addToCart(product)}
-              disabled={(product.shopStock || 0) <= 0}
+              disabled={getShopSellableStock(product) <= 0}
               className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col h-full min-h-[320px] disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
                 <div className="h-48 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
@@ -246,7 +257,7 @@ const POS: React.FC = () => {
                     onError={(e) => handleProductImageError(e, product.name)}
                   />
                   <div className={`absolute top-2 left-2 px-2 py-1 rounded-lg text-xs font-bold text-white shadow-sm ${(product.shopStock || 0) <= 0 ? 'bg-red-500' : (product.shopStock || 0) < 5 ? 'bg-amber-500' : 'bg-emerald-500'}`}>
-                    {t('stock')}: {product.shopStock || 0}
+                    {t('stock')}: {getShopSellableStock(product)}
                   </div>
                   <div className="absolute inset-0 bg-primary-600/0 group-hover:bg-primary-600/20 transition-all flex items-center justify-center">
                     <Plus className="text-white opacity-0 group-hover:opacity-100 w-8 h-8 drop-shadow-lg" />
@@ -304,7 +315,7 @@ const POS: React.FC = () => {
             {cart.length > 0 ? cart.map((item) => {
               const product = products.find(p => p.id === item.productId);
               return (
-                <div key={item.productId} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-[#0f0a07] rounded-xl border border-slate-100 dark:border-[#2a1e17]">
+                <div key={item.productId} className="flex items-start gap-2 p-3 bg-slate-50 dark:bg-[#0f0a07] rounded-xl border border-slate-100 dark:border-[#2a1e17]">
                   <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-[#1a1512] overflow-hidden flex-shrink-0">
                     <img
                       src={product?.imageUrl || `https://picsum.photos/seed/${product?.name}/100/100`}
@@ -315,41 +326,45 @@ const POS: React.FC = () => {
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{product ? tProduct(product) : ''}</h4>
-                    <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1 whitespace-nowrap">{(item.price * item.quantity).toLocaleString()} {currencyUnit}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{product ? tProduct(product) : ''}</h4>
+                      <p className="text-sm font-bold text-primary-600 dark:text-primary-400 whitespace-nowrap">{(item.price * item.quantity).toLocaleString()} {currencyUnit}</p>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1 bg-white dark:bg-black rounded-lg p-1.5 border border-slate-200 dark:border-[#2a1e17] shrink-0">
+                        <button
+                          onClick={() => updateQuantity(item.productId, -1)}
+                          className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg"
+                        >
+                          <Minus className="w-5 h-5" />
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={Math.max(1, getShopSellableStock(product))}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const next = Number.parseInt(e.target.value, 10);
+                            if (Number.isFinite(next)) setQuantity(item.productId, next);
+                          }}
+                          className="w-12 h-10 text-center text-sm font-bold text-slate-900 dark:text-white bg-transparent rounded-md border border-slate-200 dark:border-[#2a1e17] focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                        <button
+                          onClick={() => updateQuantity(item.productId, 1)}
+                          disabled={getShopSellableStock(product) <= item.quantity}
+                          className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => removeFromCart(item.productId)}
+                        className="w-10 h-10 flex items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all font-bold shrink-0"
+                      >
+                        <Trash2 className="w-6 h-6" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 bg-white dark:bg-black rounded-lg p-1.5 border border-slate-200 dark:border-[#2a1e17] shrink-0">
-                    <button
-                      onClick={() => updateQuantity(item.productId, -1)}
-                      className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg"
-                    >
-                      <Minus className="w-5 h-5" />
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={product?.shopStock || 1}
-                      value={item.quantity}
-                      onChange={(e) => {
-                        const next = Number.parseInt(e.target.value, 10);
-                        if (Number.isFinite(next)) setQuantity(item.productId, next);
-                      }}
-                      className="w-12 h-10 text-center text-sm font-bold text-slate-900 dark:text-white bg-transparent rounded-md border border-slate-200 dark:border-[#2a1e17] focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                    <button
-                      onClick={() => updateQuantity(item.productId, 1)}
-                      disabled={(product?.shopStock || 0) <= item.quantity}
-                      className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => removeFromCart(item.productId)}
-                    className="w-10 h-10 flex items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all font-bold shrink-0"
-                  >
-                    <Trash2 className="w-6 h-6" />
-                  </button>
                 </div>
               );
             }) : (
