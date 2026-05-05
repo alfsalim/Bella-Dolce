@@ -1405,8 +1405,17 @@ async function startServer() {
       if (!model) return res.status(404).json({ error: `Collection ${collection} not found` });
 
       const parsedWhereRaw = parseWhereQuery(where);
-      const parsedWhere =
+      let parsedWhere =
         parsedWhereRaw != null ? deepNormalizePrismaWhere(parsedWhereRaw) : undefined;
+      const includeDisabled =
+        req.query.includeDisabled === '1' ||
+        req.query.includeDisabled === 'true';
+      if (collection === 'rawMaterials' && !includeDisabled) {
+        parsedWhere = {
+          ...((parsedWhere as Record<string, unknown> | undefined) || {}),
+          disabled: false,
+        };
+      }
       let takeLimit: number | undefined;
       if (take !== undefined && String(take).length > 0) {
         const n = parseInt(String(take), 10);
@@ -1904,6 +1913,164 @@ async function startServer() {
     }
     return Math.max(0, Math.round(value * 100) / 100);
   }
+
+  function normalizeRawMaterialKey(value: string | null | undefined): string {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  }
+
+  /** Merge duplicate RawMaterial rows and hide deleted/duplicate rows from operational flows. Admin only. */
+  app.post("/api/admin/cleanup-raw-materials", requireAuth, async (req: any, res) => {
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ error: "Admin only" });
+    }
+
+    const dryRun = req.query.dryRun === "1" || req.query.dryRun === "true" || req.body?.dryRun !== false;
+
+    try {
+      const prisma = getPrisma();
+      const materials = await prisma.rawMaterial.findMany({
+        orderBy: [{ disabled: "asc" }, { updatedAt: "desc" }, { createdAt: "desc" }],
+      });
+      const groups = new Map<string, typeof materials>();
+
+      for (const m of materials) {
+        const key = [
+          normalizeRawMaterialKey(m.name),
+          normalizeRawMaterialKey(m.unit),
+          normalizeRawMaterialKey(m.category),
+        ].join("|");
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(m);
+      }
+
+      const duplicateGroups = [...groups.values()].filter((rows) => rows.length > 1);
+      const summary: {
+        key: string;
+        keepId: string;
+        keepName: string;
+        duplicateIds: string[];
+      }[] = [];
+      let updatedPurchases = 0;
+      let updatedStockMovements = 0;
+      let updatedRecipes = 0;
+      let updatedBatches = 0;
+      let disabledDuplicates = 0;
+
+      for (const rows of duplicateGroups) {
+        const activeRows = rows.filter((m) => !m.disabled);
+        const keep = activeRows[0] || rows[0];
+        const duplicates = rows.filter((m) => m.id !== keep.id);
+        const duplicateIds = new Set(duplicates.map((m) => m.id));
+
+        summary.push({
+          key: [
+            normalizeRawMaterialKey(keep.name),
+            normalizeRawMaterialKey(keep.unit),
+            normalizeRawMaterialKey(keep.category),
+          ].join("|"),
+          keepId: keep.id,
+          keepName: keep.name,
+          duplicateIds: [...duplicateIds],
+        });
+
+        if (dryRun) continue;
+
+        await prisma.$transaction(async (tx) => {
+          const invoices = await tx.supplierInvoice.findMany();
+          for (const inv of invoices) {
+            const details = parseDbJsonField<Record<string, unknown>>(inv.amountHT, {});
+            const materialId = typeof details.materialId === "string" ? details.materialId : "";
+            if (!duplicateIds.has(materialId)) continue;
+            details.materialId = keep.id;
+            details.materialName = keep.name;
+            details.unit = keep.unit;
+            await tx.supplierInvoice.update({
+              where: { id: inv.id },
+              data: { amountHT: JSON.stringify(details) },
+            });
+            updatedPurchases += 1;
+          }
+
+          const stockResult = await tx.stockMovement.updateMany({
+            where: { itemId: { in: [...duplicateIds] }, itemType: "material" },
+            data: { itemId: keep.id, itemName: keep.name },
+          });
+          updatedStockMovements += stockResult.count;
+
+          const recipes = await tx.recipe.findMany();
+          for (const recipe of recipes) {
+            const rawIngredients = parseDbJsonField<unknown>(recipe.ingredients, []);
+            if (!Array.isArray(rawIngredients)) continue;
+            let changed = false;
+            const nextIngredients = rawIngredients.map((ing: any) => {
+              if (ing && duplicateIds.has(String(ing.materialId || ""))) {
+                changed = true;
+                return { ...ing, materialId: keep.id };
+              }
+              return ing;
+            });
+            if (!changed) continue;
+            await tx.recipe.update({
+              where: { id: recipe.id },
+              data: { ingredients: JSON.stringify(nextIngredients) },
+            });
+            updatedRecipes += 1;
+          }
+
+          const batches = await tx.productionBatch.findMany();
+          for (const batch of batches) {
+            const rawIngredients = parseDbJsonField<unknown>(batch.ingredients, []);
+            if (!Array.isArray(rawIngredients)) continue;
+            let changed = false;
+            const nextIngredients = rawIngredients.map((ing: any) => {
+              if (ing && duplicateIds.has(String(ing.materialId || ""))) {
+                changed = true;
+                return { ...ing, materialId: keep.id };
+              }
+              return ing;
+            });
+            if (!changed) continue;
+            await tx.productionBatch.update({
+              where: { id: batch.id },
+              data: { ingredients: JSON.stringify(nextIngredients) },
+            });
+            updatedBatches += 1;
+          }
+
+          const stockSum = rows
+            .filter((m) => !m.disabled)
+            .reduce((sum, m) => sum + (Number(m.currentStock) || 0), 0);
+          const stock = normalizeReconciledStock(keep.unit, stockSum);
+          await tx.rawMaterial.update({
+            where: { id: keep.id },
+            data: { currentStock: stock, stock, disabled: false, updatedAt: new Date() },
+          });
+          const disabledResult = await tx.rawMaterial.updateMany({
+            where: { id: { in: [...duplicateIds] } },
+            data: { disabled: true, currentStock: 0, stock: 0, updatedAt: new Date() },
+          });
+          disabledDuplicates += disabledResult.count;
+        });
+      }
+
+      res.json({
+        dryRun,
+        duplicateGroups: summary.length,
+        duplicates: summary,
+        updatedPurchases,
+        updatedStockMovements,
+        updatedRecipes,
+        updatedBatches,
+        disabledDuplicates,
+        note: dryRun ? "Dry run only. Send { dryRun: false } to apply." : "Cleanup applied.",
+      });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
 
   /** Align raw material stock with sum(purchases) − consumption from completed batches × recipes; refresh batch ingredient snapshots. Admin/manager only. */
   app.post("/api/admin/reconcile-raw-inventory", requireAuth, async (req: any, res) => {

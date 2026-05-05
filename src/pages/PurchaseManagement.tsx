@@ -61,6 +61,7 @@ interface RawMaterial {
   name: string;
   currentStock: number;
   unit: string;
+  disabled?: boolean;
 }
 
 const PurchaseManagement: React.FC = () => {
@@ -153,7 +154,7 @@ const PurchaseManagement: React.FC = () => {
       });
       if (!response.ok) throw new Error('Failed to fetch materials');
       const data = await response.json();
-      setMaterials(data || []);
+      setMaterials((data || []).filter((m: RawMaterial) => !m.disabled));
     } catch (error) {
       console.error('Error fetching materials:', error);
     }

@@ -424,10 +424,21 @@ const ProductManagement: React.FC = () => {
   }, [products, materials, searchTerm, categoryFilter, typeFilter, activeTab, showDisabled]);
 
   const paginatedItems = useMemo(() => {
-    const page = activeTab === 'products' ? productsPage : materialsPage;
+    const requestedPage = activeTab === 'products' ? productsPage : materialsPage;
+    const page = Math.min(requestedPage, Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE)));
     const startIndex = (page - 1) * PAGE_SIZE;
     return filteredItems.slice(startIndex, startIndex + PAGE_SIZE);
   }, [filteredItems, productsPage, materialsPage, PAGE_SIZE, activeTab]);
+  const filteredTotalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(activeTab === 'products' ? productsPage : materialsPage, filteredTotalPages);
+
+  useEffect(() => {
+    if (activeTab === 'products') {
+      setProductsPage((page) => Math.min(page, filteredTotalPages));
+    } else {
+      setMaterialsPage((page) => Math.min(page, filteredTotalPages));
+    }
+  }, [activeTab, filteredTotalPages]);
 
   const resetFilters = () => {
     setSearchTerm('');
@@ -766,8 +777,8 @@ const ProductManagement: React.FC = () => {
             })}
           </div>
           <Pagination 
-            currentPage={activeTab === 'products' ? productsPage : materialsPage}
-            totalPages={activeTab === 'products' ? totalProductsPages : totalMaterialsPages}
+            currentPage={safeCurrentPage}
+            totalPages={filteredTotalPages}
             onPageChange={activeTab === 'products' ? setProductsPage : setMaterialsPage}
           />
         </div>
@@ -925,8 +936,8 @@ const ProductManagement: React.FC = () => {
             </table>
           </div>
           <Pagination 
-            currentPage={activeTab === 'products' ? productsPage : materialsPage}
-            totalPages={activeTab === 'products' ? totalProductsPages : totalMaterialsPages}
+            currentPage={safeCurrentPage}
+            totalPages={filteredTotalPages}
             onPageChange={activeTab === 'products' ? setProductsPage : setMaterialsPage}
           />
         </div>

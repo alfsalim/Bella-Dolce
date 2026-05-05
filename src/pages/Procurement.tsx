@@ -44,6 +44,7 @@ interface RawMaterial {
   name: string;
   currentStock: number;
   unit: string;
+  disabled?: boolean;
 }
 
 const Procurement: React.FC = () => {
@@ -108,7 +109,7 @@ const Procurement: React.FC = () => {
       });
       if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const data = await response.json();
-      setMaterials(data || []);
+      setMaterials((data || []).filter((m: RawMaterial) => !m.disabled));
     } catch (error) {
       console.error('Error fetching materials:', error);
       const message = error instanceof Error ? error.message : 'Failed to load raw materials';
