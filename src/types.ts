@@ -70,6 +70,7 @@ export interface RawMaterial {
   nameAr?: string;
   category: string;
   unit: string;
+  description?: string;
   currentStock: number;
   stock?: number;
   wasteQuantity?: number; // waste tracked separately

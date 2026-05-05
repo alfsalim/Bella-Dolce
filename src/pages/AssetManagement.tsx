@@ -118,6 +118,20 @@ const AssetManagement: React.FC = () => {
     }
   }, [tf]);
 
+  const upsertAssetInState = useCallback((row: FixedAssetDbRow) => {
+    setAssets((prev) => {
+      const idx = prev.findIndex((a) => a.id === row.id);
+      if (idx === -1) return [row, ...prev];
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...row };
+      return next;
+    });
+  }, []);
+
+  const removeAssetFromState = useCallback((id: string) => {
+    setAssets((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   useEffect(() => {
     void fetchAssets();
   }, [fetchAssets]);
@@ -199,6 +213,33 @@ const AssetManagement: React.FC = () => {
       console.error(e);
     }
   }, [fetchAssets]);
+
+  const syncAssetMaintenanceSnapshotFromList = useCallback(
+    async (asset: FixedAssetDbRow, list: FixedAssetMaintenanceRow[]) => {
+      const sorted = [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const last = sorted[0]?.date;
+      const nextDue = sorted.find((x) => x.nextDueDate)?.nextDueDate;
+      const body: Record<string, unknown> = {
+        lastMaintenanceAt: last ? String(last).slice(0, 10) : null,
+        nextMaintenanceAt: nextDue ? String(nextDue).slice(0, 10) : null,
+      };
+
+      // Optimistic: update list view immediately
+      upsertAssetInState({
+        ...asset,
+        lastMaintenanceAt: body.lastMaintenanceAt as any,
+        nextMaintenanceAt: body.nextMaintenanceAt as any,
+      });
+
+      const put = await authFetch(`/api/db/fixedAssets/${asset.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (!put.ok) throw new Error(await readApiErrorMessage(put));
+    },
+    [upsertAssetInState]
+  );
 
   const loadMaintenances = useCallback(async (asset: FixedAssetDbRow) => {
     setMaintenanceAsset(asset);
@@ -295,6 +336,8 @@ const AssetManagement: React.FC = () => {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        const row = await parseJsonResponse<FixedAssetDbRow>(res);
+        upsertAssetInState(row);
       } else {
         const res = await authFetch('/api/db/fixedAssets', {
           method: 'POST',
@@ -302,10 +345,11 @@ const AssetManagement: React.FC = () => {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        const row = await parseJsonResponse<FixedAssetDbRow>(res);
+        upsertAssetInState(row);
       }
       toast.success(tf('assetSaved'));
       setAssetModalOpen(false);
-      void fetchAssets();
     } catch (e) {
       console.error(e);
       toast.error(t('errorAddingCategory') || 'Error');
@@ -315,12 +359,14 @@ const AssetManagement: React.FC = () => {
   const deleteAsset = async (a: FixedAssetDbRow) => {
     if (!confirm(t('confirmDelete'))) return;
     try {
+      removeAssetFromState(a.id);
       const res = await authFetch(`/api/db/fixedAssets/${a.id}`, { method: 'DELETE', headers: getAuthHeaders() });
       if (!res.ok) throw new Error(await readApiErrorMessage(res));
       toast.success(tf('assetDeleted'));
-      void fetchAssets();
     } catch (e) {
       console.error(e);
+      // In case of failure, refresh.
+      void fetchAssets();
       toast.error(t('purchaseSaveFailed') || 'Error');
     }
   };
@@ -458,6 +504,8 @@ const AssetManagement: React.FC = () => {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        const row = await parseJsonResponse<FixedAssetMaintenanceRow>(res);
+        setMaintenances((prev) => prev.map((m) => (m.id === row.id ? row : m)));
       } else {
         const res = await authFetch('/api/db/fixedAssetMaintenances', {
           method: 'POST',
@@ -465,6 +513,8 @@ const AssetManagement: React.FC = () => {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(await readApiErrorMessage(res));
+        const row = await parseJsonResponse<FixedAssetMaintenanceRow>(res);
+        setMaintenances((prev) => [row, ...prev]);
       }
       toast.success(tf('assetSaved'));
       setEditingMaint(null);
@@ -474,8 +524,11 @@ const AssetManagement: React.FC = () => {
         cost: '',
         nextDueDate: defaultNextDue,
       });
-      await loadMaintenances(maintenanceAsset);
-      await syncAssetMaintenanceSnapshot(maintenanceAsset.id);
+      // Optimistic snapshot sync using local list (no extra fetch)
+      const nextList = editingMaint
+        ? maintenances.map((m) => (m.id === editingMaint.id ? ({ ...m, ...(payload as any) } as any) : m))
+        : ([{ id: '__new__', ...(payload as any) } as any, ...maintenances] as any);
+      await syncAssetMaintenanceSnapshotFromList(maintenanceAsset, nextList as FixedAssetMaintenanceRow[]);
     } catch (e) {
       console.error(e);
       toast.error(t('errorAddingCategory') || 'Error');
@@ -485,16 +538,20 @@ const AssetManagement: React.FC = () => {
   const deleteMaintenance = async (m: FixedAssetMaintenanceRow) => {
     if (!maintenanceAsset || !confirm(t('confirmDelete'))) return;
     try {
+      setMaintenances((prev) => prev.filter((x) => x.id !== m.id));
       const res = await authFetch(`/api/db/fixedAssetMaintenances/${m.id}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error(await readApiErrorMessage(res));
       toast.success(tf('assetDeleted'));
-      await loadMaintenances(maintenanceAsset);
-      await syncAssetMaintenanceSnapshot(maintenanceAsset.id);
+      await syncAssetMaintenanceSnapshotFromList(
+        maintenanceAsset,
+        maintenances.filter((x) => x.id !== m.id)
+      );
     } catch (e) {
       console.error(e);
+      await loadMaintenances(maintenanceAsset);
       toast.error(t('purchaseSaveFailed') || 'Error');
     }
   };

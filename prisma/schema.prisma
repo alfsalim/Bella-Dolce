@@ -65,6 +65,7 @@ model RawMaterial {
   wasteQuantity Float    @default(0)
   minStock      Float    @default(0)
   status        String   @default("none")
+  description   String?
   imageUrl      String?
   brand         String?
   expiryDate    String?

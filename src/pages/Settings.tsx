@@ -81,7 +81,10 @@ const Settings: React.FC = () => {
     minStock: 0,
     imageUrl: '',
     brand: '',
+    description: '',
   });
+
+  const UNIT_OPTIONS = ['g', 'kg', 'ml', 'l', 'pcs'] as const;
 
   const isAdmin = profile?.role === 'admin';
   const isSettingsSection = location.pathname.startsWith('/settings');
@@ -877,6 +880,7 @@ const Settings: React.FC = () => {
       name: consumableFormData.name?.trim() || '',
       category: consumableFormData.category || itemCategoryConfig.consumable[0] || 'cleaning',
       unit: consumableFormData.unit || 'pcs',
+      description: consumableFormData.description?.trim() || '',
       minStock: Number(consumableFormData.minStock || 0),
       imageUrl: consumableFormData.imageUrl || '',
       brand: consumableFormData.brand || '',
@@ -891,13 +895,13 @@ const Settings: React.FC = () => {
 
     try {
       if (editingConsumable?.id) {
-        await setDoc(doc(db, 'rawMaterials', editingConsumable.id), payload as any, { merge: true });
+        await updateDoc(doc(db, 'rawMaterials', editingConsumable.id), { ...payload, updatedAt: new Date().toISOString() } as any);
       } else {
-        await addDoc(collection(db, 'rawMaterials'), { ...payload, createdAt: new Date().toISOString() } as any);
+        await addDoc(collection(db, 'rawMaterials'), { ...payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as any);
       }
       setIsConsumableModalOpen(false);
       setEditingConsumable(null);
-      setConsumableFormData({ name: '', category: itemCategoryConfig.consumable[0] || 'cleaning', unit: 'pcs', minStock: 0, imageUrl: '', brand: '' });
+      setConsumableFormData({ name: '', category: itemCategoryConfig.consumable[0] || 'cleaning', unit: 'pcs', minStock: 0, imageUrl: '', brand: '', description: '' });
       toast.success(t('categorySaved'));
     } catch (error) {
       console.error('Error saving consumable', error);
@@ -1727,7 +1731,7 @@ const Settings: React.FC = () => {
               className="btn-primary gap-2"
               onClick={() => {
                 setEditingConsumable(null);
-                setConsumableFormData({ name: '', category: itemCategoryConfig.consumable[0] || 'cleaning', unit: 'pcs', minStock: 0, imageUrl: '', brand: '' });
+                setConsumableFormData({ name: '', category: itemCategoryConfig.consumable[0] || 'cleaning', unit: 'pcs', minStock: 0, imageUrl: '', brand: '', description: '' });
                 setIsConsumableModalOpen(true);
               }}
             >
@@ -1742,6 +1746,7 @@ const Settings: React.FC = () => {
                   <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('name')}</th>
                   <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('category')}</th>
                   <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('unit')}</th>
+                  <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('description')}</th>
                   <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('minStock')}</th>
                   <th className="text-right px-6 py-3 text-xs uppercase text-slate-500">{t('actions')}</th>
                 </tr>
@@ -1752,6 +1757,9 @@ const Settings: React.FC = () => {
                     <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200">{item.name}</td>
                     <td className="px-6 py-4">{tCategory(item.category)}</td>
                     <td className="px-6 py-4">{item.unit}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300 max-w-[420px] truncate" title={item.description || ''}>
+                      {item.description || '—'}
+                    </td>
                     <td className="px-6 py-4">{item.minStock || 0}</td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-2">
@@ -1786,7 +1794,23 @@ const Settings: React.FC = () => {
                     <select className="input" value={consumableFormData.category || ''} onChange={(e) => setConsumableFormData({ ...consumableFormData, category: e.target.value })}>
                       {itemCategoryConfig.consumable.map((cat) => <option key={cat} value={cat}>{tCategory(cat)}</option>)}
                     </select>
-                    <input className="input" placeholder={t('unit')} value={consumableFormData.unit || ''} onChange={(e) => setConsumableFormData({ ...consumableFormData, unit: e.target.value })} />
+                    <select
+                      className="input"
+                      value={consumableFormData.unit || 'pcs'}
+                      onChange={(e) => setConsumableFormData({ ...consumableFormData, unit: e.target.value })}
+                    >
+                      {UNIT_OPTIONS.map((u) => (
+                        <option key={u} value={u}>
+                          {u}
+                        </option>
+                      ))}
+                    </select>
+                    <textarea
+                      className="input min-h-[90px]"
+                      placeholder={t('description')}
+                      value={consumableFormData.description || ''}
+                      onChange={(e) => setConsumableFormData({ ...consumableFormData, description: e.target.value })}
+                    />
                     <input type="number" className="input" placeholder={t('minStock')} value={consumableFormData.minStock || 0} onChange={(e) => setConsumableFormData({ ...consumableFormData, minStock: Number(e.target.value) })} />
                   </div>
                   <div className="p-6 bg-slate-50 dark:bg-black flex gap-3">
