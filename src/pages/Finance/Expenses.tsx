@@ -286,18 +286,9 @@ const Expenses: React.FC = () => {
     const payload: Record<string, unknown> = {
       code,
       name: assetForm.name.trim(),
-      category: assetForm.category,
-      location: assetForm.location.trim() || null,
       acquisitionDate: assetForm.acquisitionDate,
       acquisitionCost: cost,
       usefulLifeYears: Number(assetForm.usefulLifeYears) || 5,
-      salvageValue: Number(assetForm.salvageValue) || 0,
-      depreciationMethod: assetForm.depreciationMethod,
-      notes: assetForm.notes.trim() || null,
-      maintenanceNotes: assetForm.maintenanceNotes.trim() || null,
-      status: assetForm.status,
-      lastMaintenanceAt: assetForm.lastMaintenanceAt || null,
-      nextMaintenanceAt: assetForm.nextMaintenanceAt || null,
     };
 
     try {

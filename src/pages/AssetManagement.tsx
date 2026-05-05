@@ -34,17 +34,9 @@ const AssetManagement: React.FC = () => {
   const [assetForm, setAssetForm] = useState({
     code: '',
     name: '',
-    category: 'other',
-    location: '',
     acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
     acquisitionCost: '' as string | number,
     usefulLifeYears: 5,
-    salvageValue: 0,
-    depreciationMethod: 'LINEAR',
-    notes: '',
-    lastMaintenanceAt: '',
-    nextMaintenanceAt: '',
-    maintenanceNotes: '',
     status: 'IN_SERVICE',
   });
 
@@ -116,17 +108,9 @@ const AssetManagement: React.FC = () => {
     setAssetForm({
       code: '',
       name: '',
-      category: 'other',
-      location: '',
       acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
       acquisitionCost: '',
       usefulLifeYears: 5,
-      salvageValue: 0,
-      depreciationMethod: 'LINEAR',
-      notes: '',
-      lastMaintenanceAt: '',
-      nextMaintenanceAt: '',
-      maintenanceNotes: '',
       status: 'IN_SERVICE',
     });
     setAssetModalOpen(true);
@@ -137,17 +121,9 @@ const AssetManagement: React.FC = () => {
     setAssetForm({
       code: a.code,
       name: a.name,
-      category: ASSET_CATEGORIES.includes(a.category as any) ? (a.category as any) : 'other',
-      location: a.location ?? '',
       acquisitionDate: formatApiDate(a.acquisitionDate) === '—' ? format(new Date(), 'yyyy-MM-dd') : formatApiDate(a.acquisitionDate),
       acquisitionCost: a.acquisitionCost,
       usefulLifeYears: a.usefulLifeYears ?? 5,
-      salvageValue: a.salvageValue ?? 0,
-      depreciationMethod: a.depreciationMethod ?? 'LINEAR',
-      notes: a.notes ?? '',
-      lastMaintenanceAt: a.lastMaintenanceAt ? formatApiDate(a.lastMaintenanceAt) : '',
-      nextMaintenanceAt: a.nextMaintenanceAt ? formatApiDate(a.nextMaintenanceAt) : '',
-      maintenanceNotes: a.maintenanceNotes ?? '',
       status: ASSET_STATUSES.includes(a.status as any) ? (a.status as any) : 'IN_SERVICE',
     });
     setAssetModalOpen(true);
@@ -163,18 +139,9 @@ const AssetManagement: React.FC = () => {
     const payload: Record<string, unknown> = {
       code,
       name: assetForm.name.trim(),
-      category: assetForm.category,
-      location: assetForm.location.trim() || null,
       acquisitionDate: assetForm.acquisitionDate,
       acquisitionCost: cost,
       usefulLifeYears: Number(assetForm.usefulLifeYears) || 5,
-      salvageValue: Number(assetForm.salvageValue) || 0,
-      depreciationMethod: assetForm.depreciationMethod,
-      notes: assetForm.notes.trim() || null,
-      maintenanceNotes: assetForm.maintenanceNotes.trim() || null,
-      status: assetForm.status,
-      lastMaintenanceAt: assetForm.lastMaintenanceAt || null,
-      nextMaintenanceAt: assetForm.nextMaintenanceAt || null,
     };
 
     try {
@@ -292,9 +259,81 @@ const AssetManagement: React.FC = () => {
               </button>
             </div>
             <div className="p-4 space-y-3">
-              <input className="input w-full" placeholder={tf('assetName')} value={assetForm.name} onChange={(e) => setAssetForm((f) => ({ ...f, name: e.target.value }))} />
-              <input className="input w-full" placeholder={tf('assetCode')} value={assetForm.code} onChange={(e) => setAssetForm((f) => ({ ...f, code: e.target.value }))} />
-              <input className="input w-full" type="number" min={0} placeholder={tf('assetAcquisitionCost')} value={assetForm.acquisitionCost} onChange={(e) => setAssetForm((f) => ({ ...f, acquisitionCost: e.target.value }))} />
+              <div className="space-y-1">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {tf('assetName')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  className="input w-full"
+                  value={assetForm.name}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{tf('assetCode')}</label>
+                <input
+                  className="input w-full"
+                  placeholder="AST-..."
+                  value={assetForm.code}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, code: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">{tf('assetAcquisitionDate')}</label>
+                <input
+                  className="input w-full"
+                  type="date"
+                  value={assetForm.acquisitionDate}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, acquisitionDate: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {tf('assetAcquisitionCost')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  className="input w-full"
+                  type="number"
+                  min={0}
+                  value={assetForm.acquisitionCost}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, acquisitionCost: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {tf('assetUsefulLifeYears')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  className="input w-full"
+                  type="number"
+                  min={1}
+                  value={assetForm.usefulLifeYears}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, usefulLifeYears: Number(e.target.value) || 5 }))}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {tf('assetStatus')} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  className="input w-full"
+                  value={assetForm.status}
+                  onChange={(e) => setAssetForm((f) => ({ ...f, status: e.target.value }))}
+                >
+                  {ASSET_STATUSES.map((s) => (
+                    <option key={s} value={s}>{statusTf(s)}</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex justify-end gap-2">
                 <button type="button" className="btn-secondary" onClick={() => setAssetModalOpen(false)}>{t('cancel')}</button>
                 <button type="button" className="btn-primary" onClick={() => void saveAsset()}>{t('save')}</button>

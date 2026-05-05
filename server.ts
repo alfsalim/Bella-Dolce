@@ -226,7 +226,7 @@ function prepareFinancialEmployeeForPrisma(body: Record<string, any>, explicitId
   };
 }
 
-const FIXED_ASSET_PRISMA_FIELDS = [
+const FIXED_ASSET_CANDIDATE_FIELDS = [
   "code",
   "name",
   "category",
@@ -243,6 +243,11 @@ const FIXED_ASSET_PRISMA_FIELDS = [
   "acquisitionDate",
 ] as const;
 
+const fixedAssetRuntimeFields = new Set(
+  (Prisma.dmmf.datamodel.models.find((m) => m.name === "FixedAsset")?.fields ?? [])
+    .map((f) => f.name)
+);
+
 function prepareFixedAssetForPrisma(raw: Record<string, any>) {
   const num = (v: unknown, d: number) => {
     const n = Number(v);
@@ -253,30 +258,77 @@ function prepareFixedAssetForPrisma(raw: Record<string, any>) {
     return Number.isFinite(n) ? n : d;
   };
   const out: Record<string, any> = {};
-  for (const key of FIXED_ASSET_PRISMA_FIELDS) {
-    if (key in raw && raw[key] !== undefined) out[key] = raw[key];
+  const has = (field: string) => fixedAssetRuntimeFields.has(field);
+  for (const key of FIXED_ASSET_CANDIDATE_FIELDS) {
+    if (has(key) && key in raw && raw[key] !== undefined) out[key] = raw[key];
   }
-  out.acquisitionCost = num(out.acquisitionCost ?? raw.acquisitionCost, 0);
-  out.usefulLifeYears = int(out.usefulLifeYears ?? raw.usefulLifeYears, 5);
-  out.salvageValue = num(out.salvageValue ?? raw.salvageValue, 0);
-  out.name = String(out.name ?? raw.name ?? "");
-  out.code = String(out.code ?? raw.code ?? "").trim();
-  out.category = String(out.category ?? raw.category ?? "other");
-  if (out.location != null && out.location !== "") out.location = String(out.location);
-  else delete out.location;
-  out.depreciationMethod = String(out.depreciationMethod ?? raw.depreciationMethod ?? "LINEAR");
-  if (out.notes != null && out.notes !== "") out.notes = String(out.notes);
-  else delete out.notes;
-  if (out.maintenanceNotes != null && out.maintenanceNotes !== "") out.maintenanceNotes = String(out.maintenanceNotes);
-  else delete out.maintenanceNotes;
-  out.status = String(out.status ?? raw.status ?? "IN_SERVICE");
-  if (out.acquisitionDate) out.acquisitionDate = new Date(out.acquisitionDate);
-  else out.acquisitionDate = new Date();
-  if (out.lastMaintenanceAt) out.lastMaintenanceAt = new Date(out.lastMaintenanceAt);
-  else delete out.lastMaintenanceAt;
-  if (out.nextMaintenanceAt) out.nextMaintenanceAt = new Date(out.nextMaintenanceAt);
-  else delete out.nextMaintenanceAt;
+  if (has("acquisitionCost")) out.acquisitionCost = num(out.acquisitionCost ?? raw.acquisitionCost, 0);
+  if (has("usefulLifeYears")) out.usefulLifeYears = int(out.usefulLifeYears ?? raw.usefulLifeYears, 5);
+  if (has("name")) out.name = String(out.name ?? raw.name ?? "");
+  if (has("code")) out.code = String(out.code ?? raw.code ?? "").trim();
+  if (has("status")) out.status = String(out.status ?? raw.status ?? "IN_SERVICE");
+  if (has("acquisitionDate")) {
+    if (out.acquisitionDate) out.acquisitionDate = new Date(out.acquisitionDate);
+    else out.acquisitionDate = new Date();
+  }
+  if (has("category")) out.category = String(out.category ?? raw.category ?? "other");
+  if (has("salvageValue")) out.salvageValue = num(out.salvageValue ?? raw.salvageValue, 0);
+  if (has("depreciationMethod")) out.depreciationMethod = String(out.depreciationMethod ?? raw.depreciationMethod ?? "LINEAR");
+  if (has("location")) {
+    if (out.location != null && out.location !== "") out.location = String(out.location);
+    else delete out.location;
+  }
+  if (has("notes")) {
+    if (out.notes != null && out.notes !== "") out.notes = String(out.notes);
+    else delete out.notes;
+  }
+  if (has("maintenanceNotes")) {
+    if (out.maintenanceNotes != null && out.maintenanceNotes !== "") out.maintenanceNotes = String(out.maintenanceNotes);
+    else delete out.maintenanceNotes;
+  }
+  if (has("lastMaintenanceAt")) {
+    if (out.lastMaintenanceAt) out.lastMaintenanceAt = new Date(out.lastMaintenanceAt);
+    else delete out.lastMaintenanceAt;
+  }
+  if (has("nextMaintenanceAt")) {
+    if (out.nextMaintenanceAt) out.nextMaintenanceAt = new Date(out.nextMaintenanceAt);
+    else delete out.nextMaintenanceAt;
+  }
   return out;
+}
+
+async function createWithUnknownArgRetry(model: any, data: Record<string, any>) {
+  const payload = { ...data };
+  for (let i = 0; i < 20; i++) {
+    try {
+      return await model.create({ data: payload });
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      const m = msg.match(/Unknown argument `([^`]+)`/);
+      if (!m) throw e;
+      const badKey = m[1];
+      if (!(badKey in payload)) throw e;
+      delete payload[badKey];
+    }
+  }
+  throw new Error("Failed to create fixed asset: too many unknown arguments.");
+}
+
+async function updateWithUnknownArgRetry(model: any, id: string, data: Record<string, any>) {
+  const payload = { ...data };
+  for (let i = 0; i < 20; i++) {
+    try {
+      return await model.update({ where: { id }, data: payload });
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      const m = msg.match(/Unknown argument `([^`]+)`/);
+      if (!m) throw e;
+      const badKey = m[1];
+      if (!(badKey in payload)) throw e;
+      delete payload[badKey];
+    }
+  }
+  throw new Error("Failed to update fixed asset: too many unknown arguments.");
 }
 
 /** Prisma DateTime filters reject bare YYYY-MM-DD; normalize at any depth (Express query shapes vary). */
@@ -1499,7 +1551,9 @@ async function startServer() {
         if (rowId) dataToSave.id = rowId;
       }
 
-      const data = await model.create({ data: dataToSave });
+      const data = collection === 'fixedAssets'
+        ? await createWithUnknownArgRetry(model, dataToSave)
+        : await model.create({ data: dataToSave });
       const result = unwrapDataIfNeeded(collection, data);
 
       // For purchases, return original data merged with saved data
@@ -1608,14 +1662,18 @@ async function startServer() {
       const existing = await model.findUnique({ where: { id } });
       let data;
       if (existing) {
-        data = await model.update({
-          where: { id },
-          data: dataToSave
-        });
+        data = collection === 'fixedAssets'
+          ? await updateWithUnknownArgRetry(model, id, dataToSave)
+          : await model.update({
+              where: { id },
+              data: dataToSave
+            });
       } else {
-        data = await model.create({
-          data: { ...dataToSave, id }
-        });
+        data = collection === 'fixedAssets'
+          ? await createWithUnknownArgRetry(model, { ...dataToSave, id })
+          : await model.create({
+              data: { ...dataToSave, id }
+            });
       }
       const result = unwrapDataIfNeeded(collection, data);
 

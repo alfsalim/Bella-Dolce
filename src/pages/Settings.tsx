@@ -358,6 +358,12 @@ const Settings: React.FC = () => {
   const handleSavePromo = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const toIsoDateTime = (value?: string) => {
+        const raw = (value || format(addDays(new Date(), 7), 'yyyy-MM-dd')).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T00:00:00.000Z`;
+        const d = new Date(raw);
+        return Number.isNaN(d.getTime()) ? `${format(addDays(new Date(), 7), 'yyyy-MM-dd')}T00:00:00.000Z` : d.toISOString();
+      };
       if (promoFormData.type === 'campaign') {
         const rows = promoFormData.productPrices || [];
         if (!promoFormData.name || rows.length === 0) {
@@ -382,17 +388,44 @@ const Settings: React.FC = () => {
         }
       }
 
+      const buildPromotionPayload = () => {
+        const expiryDate = toIsoDateTime(promoFormData.expiryDate);
+        if (promoFormData.type === 'campaign') {
+          return {
+            title: promoFormData.name || '',
+            description: JSON.stringify({
+              campaignName: promoFormData.name || '',
+              description: promoFormData.description || '',
+              productIds: promoFormData.productIds || [],
+              productPrices: promoFormData.productPrices || [],
+            }),
+            imageUrl: '',
+            expiryDate,
+            active: promoFormData.active !== false,
+            type: 'campaign' as const,
+          };
+        }
+        return {
+          title: promoFormData.title || '',
+          description: promoFormData.description || '',
+          imageUrl: promoFormData.imageUrl || '',
+          expiryDate,
+          active: promoFormData.active !== false,
+          type: (promoFormData.type || 'banner') as 'banner' | 'popup',
+        };
+      };
+
+      const payload = buildPromotionPayload();
+
       if (editingPromo) {
         await updateDoc(doc(db, 'promotions', editingPromo.id), {
-          ...promoFormData,
-          updatedAt: new Date().toISOString()
+          ...payload,
         });
         toast.success(t('promoUpdated'));
       } else {
         await addDoc(collection(db, 'promotions'), {
-          ...promoFormData,
+          ...payload,
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
         });
         toast.success(t('promoAdded'));
       }

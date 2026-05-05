@@ -261,8 +261,8 @@ const Production: React.FC = () => {
     const unsubscribeMaterials = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
       const mats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       setRawMaterials(prev => {
-        // Only kitchen raw materials are valid recipe ingredients.
-        const newMats = mats.filter(m => !m.disabled && String(m.category || '').toLowerCase() === 'kitchen');
+        // Ingredient selector must show all usable raw materials from inventory.
+        const newMats = mats.filter(m => !m.disabled);
         return newMats;
       });
     }, (error) => handleFirestoreError(error, OperationType.GET, 'rawMaterials'));
@@ -404,9 +404,12 @@ const Production: React.FC = () => {
   const handleAddBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBatch.productId || !newBatch.plannedQty) return;
+    const effectiveIngredients = (newBatch.ingredients && newBatch.ingredients.length > 0)
+      ? newBatch.ingredients
+      : (isEditingBatch ? (selectedBatch?.ingredients || []) : []);
 
     // Validate ingredients for non-cancelled batches
-    if (newBatch.ingredients.length === 0 && newBatch.status !== 'cancelled') {
+    if (effectiveIngredients.length === 0 && newBatch.status !== 'cancelled') {
       toast.error(t('ingredientsRequired') || 'At least one ingredient is required to start production');
       return;
     }
@@ -451,7 +454,7 @@ const Production: React.FC = () => {
           }
         } else if (!wasActive && isNowActive) {
           // Deducting stock (Non-active -> Active)
-          for (const ingredient of newBatch.ingredients) {
+          for (const ingredient of effectiveIngredients) {
             const rawMaterialRef = doc(db, 'rawMaterials', ingredient.materialId);
             const rawMaterialSnap = await getDoc(rawMaterialRef);
             if (rawMaterialSnap.exists()) {
@@ -479,7 +482,7 @@ const Production: React.FC = () => {
           // Adjusting stock if quantities or ingredients changed
           // We calculate the net difference per material to record accurate movements
           const oldIngredients = selectedBatch.ingredients || [];
-          const newIngredients = newBatch.ingredients || [];
+          const newIngredients = effectiveIngredients || [];
           
           // Get all material IDs involved
           const allMaterialIds = Array.from(new Set([
@@ -601,7 +604,7 @@ const Production: React.FC = () => {
           productId: newBatch.productId,
           recipeId: recipe?.id || '',
           plannedQty: Number(newBatch.plannedQty),
-          ingredients: newBatch.ingredients,
+          ingredients: effectiveIngredients,
           status: newBatch.status || selectedBatch.status,
           startDate: new Date(newBatch.startDate || Date.now()).toISOString(),
           location: newBatch.location || 'shop'
@@ -613,7 +616,7 @@ const Production: React.FC = () => {
           productId: newBatch.productId,
           recipeId: recipe?.id || '',
           plannedQty: Number(newBatch.plannedQty),
-          ingredients: newBatch.ingredients,
+          ingredients: effectiveIngredients,
           status: initialStatus,
           startDate: new Date(newBatch.startDate || Date.now()).toISOString(),
           createdBy: profile?.name || 'Unknown',
@@ -624,7 +627,7 @@ const Production: React.FC = () => {
 
         // If created as started or completed, deduct raw materials immediately
         if (initialStatus === 'started' || initialStatus === 'completed') {
-          for (const ing of newBatch.ingredients || []) {
+          for (const ing of effectiveIngredients || []) {
             const rawMaterialRef = doc(db, 'rawMaterials', ing.materialId);
             const rawMaterialSnap = await getDoc(rawMaterialRef);
             if (rawMaterialSnap.exists()) {

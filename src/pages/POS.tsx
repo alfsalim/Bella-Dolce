@@ -38,6 +38,14 @@ const POS: React.FC = () => {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  const handleProductImageError = (e: React.SyntheticEvent<HTMLImageElement>, seed: string) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="100%" height="100%" fill="#e2e8f0"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#64748b" font-size="20" font-family="Arial, sans-serif">${seed || 'Product'}</text></svg>`;
+    const fallback = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    if (e.currentTarget.src !== fallback) {
+      e.currentTarget.src = fallback;
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
@@ -92,6 +100,18 @@ const POS: React.FC = () => {
         const product = products.find(p => p.id === productId);
         const maxStock = product?.shopStock || 0;
         const newQty = Math.max(1, Math.min(maxStock, item.quantity + delta));
+        return { ...item, quantity: newQty };
+      }
+      return item;
+    }));
+  };
+
+  const setQuantity = (productId: string, value: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.productId === productId) {
+        const product = products.find(p => p.id === productId);
+        const maxStock = product?.shopStock || 0;
+        const newQty = Math.max(1, Math.min(maxStock, value));
         return { ...item, quantity: newQty };
       }
       return item;
@@ -223,6 +243,7 @@ const POS: React.FC = () => {
                     alt={product.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     referrerPolicy="no-referrer"
+                    onError={(e) => handleProductImageError(e, product.name)}
                   />
                   <div className={`absolute top-2 left-2 px-2 py-1 rounded-lg text-xs font-bold text-white shadow-sm ${(product.shopStock || 0) <= 0 ? 'bg-red-500' : (product.shopStock || 0) < 5 ? 'bg-amber-500' : 'bg-emerald-500'}`}>
                     {t('stock')}: {product.shopStock || 0}
@@ -236,8 +257,8 @@ const POS: React.FC = () => {
                   <h3 className="font-bold text-slate-900 dark:text-white text-base mb-2 line-clamp-2" title={tProduct(product)}>{tProduct(product)}</h3>
                   <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
                 </div>
-                <div className="flex items-center justify-between mt-4 gap-2">
-                  <div className="flex flex-col">
+                <div className="flex items-end justify-between mt-4 gap-2">
+                  <div className="flex flex-col min-w-0 overflow-hidden">
                     {activePromotion && (
                       <span className="text-xs line-through text-slate-400 dark:text-slate-500">
                         {product.sellingPrice.toLocaleString()} {currencyUnit}
@@ -250,13 +271,13 @@ const POS: React.FC = () => {
                       {effectivePrice.toLocaleString()} {currencyUnit}
                     </span>
                     {activePromotion && (
-                      <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider">
+                      <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider truncate">
                         {activePromotion.campaignName}
                       </span>
                     )}
                   </div>
-                  <div className="w-12 h-12 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90">
-                    <Plus className="w-6 h-6" />
+                  <div className="w-10 h-10 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90 shrink-0">
+                    <Plus className="w-5 h-5" />
                   </div>
                 </div>
               </div>
@@ -283,30 +304,41 @@ const POS: React.FC = () => {
             {cart.length > 0 ? cart.map((item) => {
               const product = products.find(p => p.id === item.productId);
               return (
-                <div key={item.productId} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-[#0f0a07] rounded-xl border border-slate-100 dark:border-[#2a1e17]">
+                <div key={item.productId} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-[#0f0a07] rounded-xl border border-slate-100 dark:border-[#2a1e17]">
                   <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-[#1a1512] overflow-hidden flex-shrink-0">
                     <img
                       src={product?.imageUrl || `https://picsum.photos/seed/${product?.name}/100/100`}
                       alt={product?.name}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={(e) => handleProductImageError(e, product?.name || 'product')}
                     />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{product ? tProduct(product) : ''}</h4>
-                    <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">{(item.price * item.quantity).toLocaleString()} {currencyUnit}</p>
+                    <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1 whitespace-nowrap">{(item.price * item.quantity).toLocaleString()} {currencyUnit}</p>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-black rounded-lg p-2 border border-slate-200 dark:border-[#2a1e17]">
+                  <div className="flex items-center gap-1 bg-white dark:bg-black rounded-lg p-1.5 border border-slate-200 dark:border-[#2a1e17] shrink-0">
                     <button
                       onClick={() => updateQuantity(item.productId, -1)}
                       className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg"
                     >
                       <Minus className="w-5 h-5" />
                     </button>
-                    <span className="text-sm font-bold w-8 text-center text-slate-900 dark:text-white">{item.quantity}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={product?.shopStock || 1}
+                      value={item.quantity}
+                      onChange={(e) => {
+                        const next = Number.parseInt(e.target.value, 10);
+                        if (Number.isFinite(next)) setQuantity(item.productId, next);
+                      }}
+                      className="w-12 h-10 text-center text-sm font-bold text-slate-900 dark:text-white bg-transparent rounded-md border border-slate-200 dark:border-[#2a1e17] focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
                     <button
                       onClick={() => updateQuantity(item.productId, 1)}
-                      disabled={(product?.stock || 0) <= item.quantity}
+                      disabled={(product?.shopStock || 0) <= item.quantity}
                       className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Plus className="w-5 h-5" />
@@ -314,7 +346,7 @@ const POS: React.FC = () => {
                   </div>
                   <button
                     onClick={() => removeFromCart(item.productId)}
-                    className="w-12 h-12 flex items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all font-bold"
+                    className="w-10 h-10 flex items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all font-bold shrink-0"
                   >
                     <Trash2 className="w-6 h-6" />
                   </button>
