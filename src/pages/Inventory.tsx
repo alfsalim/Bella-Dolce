@@ -1367,6 +1367,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         }}
                         className="p-2 text-slate-400 hover:text-white hover:bg-primary-600 dark:hover:bg-primary-500 rounded-lg transition-all duration-200 border border-transparent hover:border-primary-600 dark:hover:border-primary-500"
                         title={t('edit')}
+                        aria-label={t('edit')}
                       >
                         <Edit className="w-4 h-4" />
                       </button>

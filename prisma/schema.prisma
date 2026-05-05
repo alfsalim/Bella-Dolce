@@ -259,23 +259,39 @@ model SupplierInvoice {
 }
 
 model FixedAsset {
-  id                 String    @id @default(uuid())
-  code               String    @unique
+  id                 String                   @id @default(uuid())
+  code               String                   @unique
   name               String
-  category           String    @default("other")
+  category           String                   @default("other")
   location           String?
   acquisitionCost    Float
-  usefulLifeYears    Int       @default(5)
-  salvageValue       Float     @default(0)
-  depreciationMethod String    @default("LINEAR")
+  usefulLifeYears    Int                      @default(5)
+  salvageValue       Float                    @default(0)
+  depreciationMethod String                 @default("LINEAR")
   notes              String?
   lastMaintenanceAt  DateTime?
   nextMaintenanceAt  DateTime?
   maintenanceNotes   String?
-  status             String    @default("IN_SERVICE")
-  acquisitionDate    DateTime  @default(now())
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  status             String                   @default("IN_SERVICE")
+  acquisitionDate    DateTime                 @default(now())
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  maintenances       FixedAssetMaintenance[]
+}
+
+model FixedAssetMaintenance {
+  id           String    @id @default(uuid())
+  fixedAssetId String
+  asset        FixedAsset @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+  date         DateTime
+  description  String    @default("")
+  cost         Float     @default(0)
+  nextDueDate  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([fixedAssetId])
+  @@index([date])
 }
 
 model DailyCashReconciliation {

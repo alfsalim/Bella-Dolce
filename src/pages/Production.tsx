@@ -1064,6 +1064,7 @@ const Production: React.FC = () => {
                             }}
                             className="p-2 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-all"
                             title={t('edit')}
+                            aria-label={t('edit')}
                           >
                             <Edit2 className="w-5 h-5" />
                           </button>
@@ -1072,6 +1073,7 @@ const Production: React.FC = () => {
                               onClick={() => handleDeleteBatch(batch)} 
                               className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
                               title={t('delete')}
+                              aria-label={t('delete')}
                             >
                               <Trash2 className="w-5 h-5" />
                             </button>

@@ -21,14 +21,16 @@ export type AppNavItem = {
 /** Canonical staff sidebar nav: order must match UX priority for default landing paths. */
 export const APP_NAV_ITEMS: AppNavItem[] = [
   { icon: LayoutDashboard, tKey: 'dashboard', path: '/dashboard' },
+  // Requested top-to-bottom order
+  { icon: ChefHat, tKey: 'recipesAndProducts', path: '/product-management' },
+  { icon: Truck, tKey: 'procurementAndSuppliers', path: '/procurement' },
   { icon: ChefHat, tKey: 'production', path: '/production' },
   { icon: Package, tKey: 'inventory', path: '/inventory' },
-  { icon: Truck, tKey: 'procurementAndSuppliers', path: '/procurement' },
-  { icon: Users, tKey: 'customers', path: '/customers' },
-  { icon: ChefHat, tKey: 'recipesAndProducts', path: '/product-management' },
   { icon: ShoppingCart, tKey: 'pos', path: '/pos' },
-  { icon: ShoppingCart, tKey: 'businessStore', path: '/b2b' },
   { icon: ClipboardList, tKey: 'orders', path: '/orders' },
+  // Remaining sections (kept after core workflow)
+  { icon: Users, tKey: 'customers', path: '/customers' },
+  { icon: ShoppingCart, tKey: 'businessStore', path: '/b2b' },
   { icon: Wallet, tKey: 'finance', path: '/finance' },
   { icon: BarChart3, tKey: 'reports', path: '/reports' },
   { icon: ShieldCheck, tKey: 'administration', path: '/administration' },

@@ -67,7 +67,30 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={clsx("w-5 h-5", isActive ? "text-white" : "text-slate-400 group-hover:text-primary-600")} />
+                  {item.path === '/b2b' ? (
+                    <span className="relative inline-flex">
+                      <item.icon
+                        className={clsx(
+                          'w-5 h-5',
+                          isActive ? 'text-white' : 'text-slate-400 group-hover:text-primary-600'
+                        )}
+                      />
+                      <span
+                        className={clsx(
+                          'absolute -top-1 -right-1 z-10 w-3.5 h-3.5 rounded-full text-[9px] font-black flex items-center justify-center leading-none',
+                          // Neutral badge: readable, non-orange, sits above icon.
+                          isActive
+                            ? 'bg-white/15 border border-white/70 text-white'
+                            : 'bg-slate-100/90 dark:bg-zinc-900/90 border border-slate-300/60 dark:border-white/20 text-slate-500 dark:text-slate-300'
+                        )}
+                        aria-hidden="true"
+                      >
+                        B
+                      </span>
+                    </span>
+                  ) : (
+                    <item.icon className={clsx('w-5 h-5', isActive ? 'text-white' : 'text-slate-400 group-hover:text-primary-600')} />
+                  )}
                   <BilingualLabel tKey={item.tKey} className="font-medium" />
                 </>
               )}

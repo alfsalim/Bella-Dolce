@@ -3,14 +3,15 @@ import { Search, Link2, ExternalLink, Truck, FileText, Plus, Pencil, Trash2, X }
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
-import { FixedAssetDbRow } from '../../types';
+import { FixedAssetDbRow, FixedAssetMaintenanceRow } from '../../types';
 import { clsx } from 'clsx';
 import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
 import { authFetch, getAuthHeaders, parseJsonResponse, readApiErrorMessage } from '../../lib/api-client';
 import { toast } from 'react-hot-toast';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { db, collection, onSnapshot } from '../../lib/firebase-compat';
+import { useAuth } from '../../contexts/AuthContext';
 
 type PurchaseExpenseRow = {
   id: string;
@@ -62,6 +63,7 @@ const ASSET_STATUSES = ['IN_SERVICE', 'IDLE', 'DISPOSED'] as const;
 
 const Expenses: React.FC = () => {
   const { formatCurrency, isRTL, tf, t } = useLanguage();
+  const { profile } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'invoices' | 'assets'>('invoices');
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoicePage, setInvoicePage] = useState(1);
@@ -91,6 +93,10 @@ const Expenses: React.FC = () => {
     maintenanceNotes: '',
     status: 'IN_SERVICE',
   });
+
+  const [assetMaintFrom, setAssetMaintFrom] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [assetMaintTo, setAssetMaintTo] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [assetMaintenancesPeriod, setAssetMaintenancesPeriod] = useState<FixedAssetMaintenanceRow[]>([]);
 
   const fetchPurchases = useCallback(async () => {
     setPurchasesLoading(true);
@@ -131,6 +137,28 @@ const Expenses: React.FC = () => {
     }
   }, [tf]);
 
+  const fetchAssetMaintenancesPeriod = useCallback(async () => {
+    if (activeSubTab !== 'assets') return;
+    try {
+      const where = {
+        AND: [
+          { date: { gte: `${assetMaintFrom}T00:00:00.000Z` } },
+          { date: { lte: `${assetMaintTo}T23:59:59.999Z` } },
+        ],
+      };
+      const res = await authFetch(
+        `/api/db/fixedAssetMaintenances?where=${encodeURIComponent(JSON.stringify(where))}&take=5000`,
+        { headers: getAuthHeaders() }
+      );
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const data = await parseJsonResponse<FixedAssetMaintenanceRow[]>(res);
+      setAssetMaintenancesPeriod(data);
+    } catch (e) {
+      console.error(e);
+      setAssetMaintenancesPeriod([]);
+    }
+  }, [activeSubTab, assetMaintFrom, assetMaintTo]);
+
   useEffect(() => {
     void fetchPurchases();
   }, [fetchPurchases]);
@@ -150,6 +178,10 @@ const Expenses: React.FC = () => {
   useEffect(() => {
     if (activeSubTab === 'assets') void fetchAssets();
   }, [activeSubTab, fetchAssets]);
+
+  useEffect(() => {
+    void fetchAssetMaintenancesPeriod();
+  }, [fetchAssetMaintenancesPeriod]);
 
   useEffect(() => {
     setInvoicePage(1);
@@ -207,6 +239,26 @@ const Expenses: React.FC = () => {
   const assetTotalPages = Math.max(1, Math.ceil(filteredAssets.length / PAGE_SIZE));
   const safeAssetPage = Math.min(assetPage, assetTotalPages);
   const paginatedAssets = filteredAssets.slice((safeAssetPage - 1) * PAGE_SIZE, safeAssetPage * PAGE_SIZE);
+
+  const assetFinanceTotals = useMemo(() => {
+    let annual = 0;
+    for (const a of filteredAssets) {
+      const y = Math.max(1, a.usefulLifeYears || 1);
+      annual += Math.max(0, (Number(a.acquisitionCost) - Number(a.salvageValue ?? 0)) / y);
+    }
+    const maint = assetMaintenancesPeriod.reduce((s, m) => s + Number(m.cost || 0), 0);
+    return { annual, monthly: annual / 12, maint };
+  }, [filteredAssets, assetMaintenancesPeriod]);
+
+  const maintSpendByAssetCode = useMemo(() => {
+    const idToCode = new Map(assets.map((a) => [a.id, a.code]));
+    const m = new Map<string, number>();
+    for (const row of assetMaintenancesPeriod) {
+      const code = idToCode.get(row.fixedAssetId) ?? row.fixedAssetId;
+      m.set(code, (m.get(code) ?? 0) + Number(row.cost || 0));
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [assetMaintenancesPeriod, assets]);
 
   const categoryTf = (c: string) => {
     const m: Record<string, string> = {
@@ -574,14 +626,71 @@ const Expenses: React.FC = () => {
                 )}
               />
             </div>
-            <Link
-              to="/administration"
-              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20"
-            >
-              <ExternalLink className="w-5 h-5" />
-              {tf('administration')}
-            </Link>
+            {profile?.role === 'admin' && (
+              <Link
+                to="/administration?tab=assets"
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20"
+                aria-label={tf('administration')}
+                title={tf('administration')}
+              >
+                <ExternalLink className="w-5 h-5" />
+                {tf('administration')}
+              </Link>
+            )}
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{tf('assetFinanceDepreciationTotalAnnual')}</p>
+              <p className="text-lg font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(assetFinanceTotals.annual)}</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{tf('assetFinanceDepreciationMonthlyAccrual')}</p>
+              <p className="text-lg font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(assetFinanceTotals.monthly)}</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900 p-4 shadow-sm sm:col-span-2">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{tf('assetFinanceMaintenanceSpend')}</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 block">{tf('assetFinancePeriodFrom')}</label>
+                  <input
+                    type="date"
+                    value={assetMaintFrom}
+                    onChange={(e) => setAssetMaintFrom(e.target.value)}
+                    className="input py-1.5 text-sm mt-0.5"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 block">{tf('assetFinancePeriodTo')}</label>
+                  <input
+                    type="date"
+                    value={assetMaintTo}
+                    onChange={(e) => setAssetMaintTo(e.target.value)}
+                    className="input py-1.5 text-sm mt-0.5"
+                  />
+                </div>
+                <p className="text-lg font-bold text-slate-900 dark:text-white pb-0.5">{formatCurrency(assetFinanceTotals.maint)}</p>
+              </div>
+            </div>
+          </div>
+
+          {maintSpendByAssetCode.length > 0 && (
+            <div className="rounded-xl border border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900 p-4 shadow-sm">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{tf('assetFinanceMaintenanceSpend')} — par actif</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {maintSpendByAssetCode.map(([code, amt]) => (
+                      <tr key={code} className="border-b border-slate-50 dark:border-white/5 last:border-0">
+                        <td className="py-2 font-mono text-xs">{code}</td>
+                        <td className="py-2 text-end font-mono">{formatCurrency(amt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
             {tf('assetDepreciationLinear')} — {tf('assetAnnualDepreciation')}.

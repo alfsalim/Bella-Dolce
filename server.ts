@@ -69,6 +69,7 @@ const getModel = (collectionName: string) => {
     'purchases': prisma.supplierInvoice,
     'customerInvoices': prisma.customerInvoice,
     'fixedAssets': prisma.fixedAsset,
+    'fixedAssetMaintenances': prisma.fixedAssetMaintenance,
     'cashReconciliations': prisma.dailyCashReconciliation,
     'riskSnapshots': prisma.riskSnapshot,
     'budgets': prisma.budget,
@@ -287,12 +288,49 @@ function prepareFixedAssetForPrisma(raw: Record<string, any>) {
     else delete out.maintenanceNotes;
   }
   if (has("lastMaintenanceAt")) {
-    if (out.lastMaintenanceAt) out.lastMaintenanceAt = new Date(out.lastMaintenanceAt);
-    else delete out.lastMaintenanceAt;
+    if (raw.lastMaintenanceAt === null) {
+      out.lastMaintenanceAt = null;
+    } else if (out.lastMaintenanceAt) {
+      out.lastMaintenanceAt = new Date(out.lastMaintenanceAt);
+    } else {
+      delete out.lastMaintenanceAt;
+    }
   }
   if (has("nextMaintenanceAt")) {
-    if (out.nextMaintenanceAt) out.nextMaintenanceAt = new Date(out.nextMaintenanceAt);
-    else delete out.nextMaintenanceAt;
+    if (raw.nextMaintenanceAt === null) {
+      out.nextMaintenanceAt = null;
+    } else if (out.nextMaintenanceAt) {
+      out.nextMaintenanceAt = new Date(out.nextMaintenanceAt);
+    } else {
+      delete out.nextMaintenanceAt;
+    }
+  }
+  return out;
+}
+
+function prepareFixedAssetMaintenanceForPrisma(raw: Record<string, any>) {
+  const num = (v: unknown, d: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : d;
+  };
+  const fixedAssetId = String(raw.fixedAssetId ?? "").trim();
+  if (!fixedAssetId) {
+    throw new Error("fixedAssetId is required for maintenance");
+  }
+  const out: Record<string, any> = {
+    fixedAssetId,
+    description: String(raw.description ?? "").trim(),
+    cost: Math.max(0, num(raw.cost, 0)),
+  };
+  if (raw.date) {
+    out.date = new Date(raw.date);
+  } else {
+    out.date = new Date();
+  }
+  if (raw.nextDueDate === null || raw.nextDueDate === "") {
+    out.nextDueDate = null;
+  } else if (raw.nextDueDate != null) {
+    out.nextDueDate = new Date(raw.nextDueDate);
   }
   return out;
 }
@@ -383,8 +421,9 @@ const COLLECTION_ROUTE_MAP: Record<string, string> = {
   riskSnapshots:       '/finance',
   supplierInvoices:    '/finance',
   customerInvoices:    '/finance',
-  fixedAssets:         '/finance',
-  financialEmployees:  '/finance',
+  fixedAssets:              '/finance',
+  fixedAssetMaintenances:   '/finance',
+  financialEmployees:       '/finance',
   // Procurement
   suppliers:           '/procurement',
   purchases:           '/procurement',
@@ -1503,6 +1542,14 @@ async function startServer() {
         if (idKeep) dataToSave.id = idKeep;
       }
 
+      if (collection === 'fixedAssetMaintenances') {
+        const idKeep = dataToSave.id;
+        const prepared = prepareFixedAssetMaintenanceForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, prepared);
+        if (idKeep) dataToSave.id = idKeep;
+      }
+
       if (collection === 'purchases') {
         dataToSave.invoiceNumber = `INV-${Date.now()}`;
         dataToSave.date = new Date(dataToSave.purchaseDate);
@@ -1551,9 +1598,10 @@ async function startServer() {
         if (rowId) dataToSave.id = rowId;
       }
 
-      const data = collection === 'fixedAssets'
-        ? await createWithUnknownArgRetry(model, dataToSave)
-        : await model.create({ data: dataToSave });
+      const data =
+        collection === 'fixedAssets' || collection === 'fixedAssetMaintenances'
+          ? await createWithUnknownArgRetry(model, dataToSave)
+          : await model.create({ data: dataToSave });
       const result = unwrapDataIfNeeded(collection, data);
 
       // For purchases, return original data merged with saved data
@@ -1613,6 +1661,13 @@ async function startServer() {
         delete dataToSave.id;
       }
 
+      if (collection === 'fixedAssetMaintenances') {
+        const prepared = prepareFixedAssetMaintenanceForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, prepared);
+        delete dataToSave.id;
+      }
+
       if (collection === 'purchases') {
         if (dataToSave.purchaseDate) dataToSave.date = new Date(dataToSave.purchaseDate);
         if (!dataToSave.totalAmount && dataToSave.price) {
@@ -1662,18 +1717,20 @@ async function startServer() {
       const existing = await model.findUnique({ where: { id } });
       let data;
       if (existing) {
-        data = collection === 'fixedAssets'
-          ? await updateWithUnknownArgRetry(model, id, dataToSave)
-          : await model.update({
-              where: { id },
-              data: dataToSave
-            });
+        data =
+          collection === 'fixedAssets' || collection === 'fixedAssetMaintenances'
+            ? await updateWithUnknownArgRetry(model, id, dataToSave)
+            : await model.update({
+                where: { id },
+                data: dataToSave
+              });
       } else {
-        data = collection === 'fixedAssets'
-          ? await createWithUnknownArgRetry(model, { ...dataToSave, id })
-          : await model.create({
-              data: { ...dataToSave, id }
-            });
+        data =
+          collection === 'fixedAssets' || collection === 'fixedAssetMaintenances'
+            ? await createWithUnknownArgRetry(model, { ...dataToSave, id })
+            : await model.create({
+                data: { ...dataToSave, id }
+              });
       }
       const result = unwrapDataIfNeeded(collection, data);
 

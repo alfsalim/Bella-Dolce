@@ -337,6 +337,7 @@ const Users: React.FC = () => {
                           onClick={() => setSelectedUserForLogs(user)}
                           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400 transition-all"
                           title={t('viewActivities')}
+                          aria-label={t('viewActivities')}
                         >
                           <Activity className="w-5 h-5" />
                         </button>
@@ -349,6 +350,7 @@ const Users: React.FC = () => {
                               : "text-slate-400 dark:text-slate-600 hover:bg-slate-100 dark:hover:bg-[#1a1512]"
                           )}
                           title={user.status === 'active' ? t('disableUser') : t('activateUser')}
+                          aria-label={user.status === 'active' ? t('disableUser') : t('activateUser')}
                         >
                           {user.status === 'active' ? <UserCheck className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
                         </button>
@@ -359,6 +361,7 @@ const Users: React.FC = () => {
                           }}
                           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-[#1a1512] text-slate-400 dark:text-slate-600 transition-all"
                           title={t('editUserAction')}
+                          aria-label={t('editUserAction')}
                         >
                           <MoreVertical className="w-5 h-5" />
                         </button>
@@ -369,6 +372,7 @@ const Users: React.FC = () => {
                           }}
                           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 dark:text-red-500 transition-all"
                           title={t('deleteUserAction')}
+                          aria-label={t('deleteUserAction')}
                         >
                           <Trash2 className="w-5 h-5" />
                         </button>

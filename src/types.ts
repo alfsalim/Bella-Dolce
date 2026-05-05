@@ -375,6 +375,18 @@ export interface FixedAssetDbRow {
   updatedAt?: string;
 }
 
+/** Record returned by `/api/db/fixedAssetMaintenances`. */
+export interface FixedAssetMaintenanceRow {
+  id: string;
+  fixedAssetId: string;
+  date: string;
+  description: string;
+  cost: number;
+  nextDueDate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CustomerInvoice {
   id: string;
   invoiceNumber: string;

@@ -108,9 +108,13 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     if (!location.pathname.startsWith('/administration')) return;
-    if (searchParams.get('tab') !== 'ai-manager') return;
+    const tab = searchParams.get('tab');
+    if (!tab) return;
     if (!profile) return;
-    if (profile.role === 'admin') setActiveTab('aiManager');
+    if (profile.role === 'admin') {
+      if (tab === 'ai-manager') setActiveTab('aiManager');
+      if (tab === 'assets') setActiveTab('assets');
+    }
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
