@@ -38,7 +38,8 @@ const ProductManagement: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState<'All' | 'Regular' | 'Pack' | 'RawMaterial'>('All');
   const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
-  const kitchenCategorySet = useMemo(() => new Set(itemCategoryConfig.rawMaterial), [itemCategoryConfig.rawMaterial]);
+  const kitchenCategoryKey = itemCategoryConfig.rawMaterial.join('|');
+  const kitchenCategorySet = useMemo(() => new Set(itemCategoryConfig.rawMaterial), [kitchenCategoryKey]);
   const [selectedProductForDetails, setSelectedProductForDetails] = useState<Product | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'products' | 'materials'>('products');
@@ -136,6 +137,8 @@ const ProductManagement: React.FC = () => {
     let oUnsubscribe = () => {};
     let itemCategoriesUnsubscribe = () => {};
 
+    let itemCategoriesErrorLogged = false;
+
     if (currentUserProfile) {
       const bq = query(collection(db, 'batches'));
       bUnsubscribe = onSnapshot(bq, (snapshot) => {
@@ -150,8 +153,16 @@ const ProductManagement: React.FC = () => {
       itemCategoriesUnsubscribe = onSnapshot(doc(db, 'settings', 'item_categories'), (snapshot) => {
         if (snapshot.exists()) {
           setItemCategoryConfig(sanitizeItemCategoryConfig(snapshot.data()));
+        } else {
+          setItemCategoryConfig(getDefaultItemCategoryConfig());
         }
-      }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/item_categories'));
+      }, (error) => {
+        setItemCategoryConfig(getDefaultItemCategoryConfig());
+        if (!itemCategoriesErrorLogged) {
+          itemCategoriesErrorLogged = true;
+          handleFirestoreError(error, OperationType.GET, 'settings/item_categories');
+        }
+      });
     }
 
     return () => {
@@ -162,7 +173,7 @@ const ProductManagement: React.FC = () => {
       oUnsubscribe();
       itemCategoriesUnsubscribe();
     };
-  }, [currentUserProfile, PAGE_SIZE, productsPage, materialsPage, kitchenCategorySet]);
+  }, [currentUserProfile, PAGE_SIZE, productsPage, materialsPage, kitchenCategoryKey]);
 
   const isProductDeletable = (productId: string) => {
     const activeBatches = batches.filter(b => 

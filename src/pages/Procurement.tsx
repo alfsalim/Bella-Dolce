@@ -55,6 +55,10 @@ const Procurement: React.FC = () => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [materialsLoading, setMaterialsLoading] = useState(true);
+  const [suppliersLoading, setSuppliersLoading] = useState(true);
+  const [materialsError, setMaterialsError] = useState<string | null>(null);
+  const [suppliersError, setSuppliersError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
@@ -96,29 +100,43 @@ const Procurement: React.FC = () => {
 
   const fetchMaterials = async () => {
     try {
+      setMaterialsLoading(true);
+      setMaterialsError(null);
       const token = localStorage.getItem('bakery_token');
       const response = await authFetch('/api/db/rawMaterials', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error('Failed to fetch materials');
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const data = await response.json();
       setMaterials(data || []);
     } catch (error) {
       console.error('Error fetching materials:', error);
+      const message = error instanceof Error ? error.message : 'Failed to load raw materials';
+      setMaterialsError(message);
+      toast.error(`${t('purchaseLoadFailed') || 'Load failed'}: ${message}`);
+    } finally {
+      setMaterialsLoading(false);
     }
   };
 
   const fetchSuppliers = async () => {
     try {
+      setSuppliersLoading(true);
+      setSuppliersError(null);
       const token = localStorage.getItem('bakery_token');
       const response = await authFetch('/api/db/suppliers', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error('Failed to fetch suppliers');
+      if (!response.ok) throw new Error(await readApiErrorMessage(response));
       const data = await response.json();
       setSuppliers(data || []);
     } catch (error) {
       console.error('Error fetching suppliers:', error);
+      const message = error instanceof Error ? error.message : 'Failed to load suppliers';
+      setSuppliersError(message);
+      toast.error(`${t('purchaseLoadFailed') || 'Load failed'}: ${message}`);
+    } finally {
+      setSuppliersLoading(false);
     }
   };
 
@@ -417,6 +435,9 @@ const Procurement: React.FC = () => {
       const isMissing = !p.supplierId && !p.supplierName;
       return matchesSearch && (!showMissingOnly || isMissing);
     });
+  const purchaseDependenciesLoading = materialsLoading || suppliersLoading;
+  const purchaseDependenciesError = materialsError || suppliersError;
+  const purchaseSubmitDisabled = purchaseDependenciesLoading || !!purchaseDependenciesError;
 
   const purchasesTotalPages = Math.ceil(filteredPurchases.length / PAGE_SIZE) || 1;
   const safePurchasesPage = Math.min(purchasesPage, purchasesTotalPages);
@@ -706,6 +727,18 @@ const Procurement: React.FC = () => {
               </div>
 
               <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                {purchaseDependenciesError && (
+                  <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-bold">{t('purchaseLoadFailed') || 'Failed to load purchase data'}</p>
+                      <p>{purchaseDependenciesError}</p>
+                      <p className="mt-1 text-xs opacity-80">
+                        Use the full app server with npm run dev so /api/db routes are available.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
@@ -715,9 +748,16 @@ const Procurement: React.FC = () => {
                       required
                       value={formData.materialId}
                       onChange={(e) => setFormData({ ...formData, materialId: e.target.value })}
+                      disabled={materialsLoading || !!materialsError}
                       className="input w-full"
                     >
-                      <option value="">{t('selectMaterial')}</option>
+                      <option value="">
+                        {materialsLoading
+                          ? t('loading') || 'Loading...'
+                          : materialsError
+                            ? t('purchaseLoadFailed') || 'Failed to load materials'
+                            : t('selectMaterial')}
+                      </option>
                       {materials.map(m => (
                         <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>
                       ))}
@@ -732,9 +772,16 @@ const Procurement: React.FC = () => {
                       required
                       value={formData.supplierId}
                       onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
+                      disabled={suppliersLoading || !!suppliersError}
                       className="input w-full"
                     >
-                      <option value="">{t('selectSupplier')}</option>
+                      <option value="">
+                        {suppliersLoading
+                          ? t('loading') || 'Loading...'
+                          : suppliersError
+                            ? t('purchaseLoadFailed') || 'Failed to load suppliers'
+                            : t('selectSupplier')}
+                      </option>
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
@@ -844,7 +891,8 @@ const Procurement: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="btn-primary px-10 shadow-lg shadow-primary-600/20"
+                    disabled={purchaseSubmitDisabled}
+                    className="btn-primary px-10 shadow-lg shadow-primary-600/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {editingPurchase ? t('purchaseSubmitUpdate') : t('purchaseSubmitCreate')}
                   </button>

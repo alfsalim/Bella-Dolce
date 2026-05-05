@@ -2152,6 +2152,21 @@ async function startServer() {
         });
       }
 
+      const itemCategoriesSetting = await prisma.setting.findUnique({ where: { id: 'item_categories' } });
+      if (!itemCategoriesSetting) {
+        console.log("Seeding default item categories...");
+        await prisma.setting.create({
+          data: {
+            id: 'item_categories',
+            data: JSON.stringify({
+              product: ['boulangerie', 'patisserie', 'viennoiserie', 'boissons', 'emballages'],
+              rawMaterial: ['kitchen'],
+              consumable: ['maintenance', 'cleaning', 'others']
+            })
+          }
+        });
+      }
+
       // Seed sample products if none exist
       const productCount = await prisma.product.count();
       if (productCount === 0) {
