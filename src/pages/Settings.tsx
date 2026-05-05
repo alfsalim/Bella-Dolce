@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, addDoc, setDoc, deleteDoc, getDocs, getDoc, isAuthError } from '../lib/firebase-compat';
 import { UserProfile, ActivityLog, Role, RolePermission, Promotion, Product, RawMaterial } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { DEFAULT_PERMISSIONS } from '../lib/seedData';
-import { Settings as SettingsIcon, Users as UsersIcon, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X, Database, Sparkles, Filter } from 'lucide-react';
+import { Settings as SettingsIcon, Users as UsersIcon, Activity, Shield, Globe, Bell, Save, UserPlus, MoreVertical, ShieldCheck, ShieldAlert, Calendar, Search, CheckCircle2, XCircle, RefreshCw, Image as ImageIcon, Plus, Edit2, Trash2, X, Database, Sparkles, Filter, Package } from 'lucide-react';
 import UsersPage from './Users';
 import AIManager from './AIManager';
 import { clsx } from 'clsx';
@@ -26,6 +26,7 @@ import {
   ItemCategoryConfig,
   buildItemCategoryConfigFromLegacy,
   getDefaultItemCategoryConfig,
+  isConsumableCategory,
   sanitizeItemCategoryConfig,
 } from '../lib/itemCategories';
 
@@ -33,13 +34,16 @@ const Settings: React.FC = () => {
   const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole, tCategory } = useLanguage();
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'aiManager' | 'data'>('general');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'consumables' | 'aiManager' | 'data'>('general');
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [promotionsPage, setPromotionsPage] = useState(1);
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
   const [backupConfig, setBackupConfig] = useState<{ enabled: boolean; time: string }>({ enabled: true, time: '23:59' });
@@ -49,12 +53,15 @@ const Settings: React.FC = () => {
   const [backupListError, setBackupListError] = useState<string | null>(null);
   const [logsPage, setLogsPage] = useState(1);
   const [promoFormData, setPromoFormData] = useState<Partial<Promotion>>({
+    name: '',
     title: '',
     description: '',
     imageUrl: '',
     expiryDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
     active: true,
-    type: 'banner'
+    type: 'banner',
+    productIds: [],
+    productPrices: [],
   });
   const [systemAlertsOn, setSystemAlertsOn] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('systemAlerts') === 'true'
@@ -62,8 +69,31 @@ const Settings: React.FC = () => {
   const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
   const [newProductCategory, setNewProductCategory] = useState('');
   const [newRawMaterialCategory, setNewRawMaterialCategory] = useState('');
+  const [newConsumableCategory, setNewConsumableCategory] = useState('');
+  const [consumables, setConsumables] = useState<RawMaterial[]>([]);
+  const [isConsumableModalOpen, setIsConsumableModalOpen] = useState(false);
+  const [editingConsumable, setEditingConsumable] = useState<RawMaterial | null>(null);
+  const [consumableFormData, setConsumableFormData] = useState<Partial<RawMaterial>>({
+    name: '',
+    category: 'cleaning',
+    unit: 'pcs',
+    minStock: 0,
+    imageUrl: '',
+    brand: '',
+  });
 
   const isAdmin = profile?.role === 'admin';
+  const isSettingsSection = location.pathname.startsWith('/settings');
+  const availableTabs = isSettingsSection
+    ? (['general', 'users', 'roles', 'categories', 'data'] as const)
+    : (['logs', 'promotions', 'consumables', 'aiManager'] as const);
+  const sectionTitleKey = isSettingsSection ? 'settings' : 'administration';
+
+  useEffect(() => {
+    if (!availableTabs.includes(activeTab as any)) {
+      setActiveTab(availableTabs[0]);
+    }
+  }, [activeTab, availableTabs]);
 
   useEffect(() => {
     const sync = () => setSystemAlertsOn(localStorage.getItem('systemAlerts') === 'true');
@@ -76,6 +106,7 @@ const Settings: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!location.pathname.startsWith('/administration')) return;
     if (searchParams.get('tab') !== 'ai-manager') return;
     if (!profile) return;
     if (profile.role === 'admin') setActiveTab('aiManager');
@@ -87,7 +118,7 @@ const Settings: React.FC = () => {
       },
       { replace: true }
     );
-  }, [profile, searchParams, setSearchParams]);
+  }, [location.pathname, profile, searchParams, setSearchParams]);
 
   const formatBackupSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -216,6 +247,16 @@ const Settings: React.FC = () => {
   }, [activeTab]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+    const unsubscribe = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
+      const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as RawMaterial));
+      const consumableSet = new Set(itemCategoryConfig.consumable);
+      setConsumables(rows.filter((r) => consumableSet.has((r.category || '').toLowerCase())));
+    });
+    return () => unsubscribe();
+  }, [isAdmin, itemCategoryConfig.consumable.join('|')]);
+
+  useEffect(() => {
     const categoriesRef = doc(db, 'settings', 'item_categories');
     const unsubscribe = onSnapshot(
       categoriesRef,
@@ -233,6 +274,21 @@ const Settings: React.FC = () => {
         const legacySnap = await getDoc(doc(db, 'settings', 'categories'));
         const migrated = buildItemCategoryConfigFromLegacy(legacySnap.exists() ? legacySnap.data().list : undefined);
         await setDoc(categoriesRef, migrated, { merge: true });
+
+        // One-time data migration: operational categories become consumables.
+        const materialsSnap = await getDocs(collection(db, 'rawMaterials'));
+        await Promise.all(
+          materialsSnap.docs.map(async (row) => {
+            const data = row.data() as any;
+            if (isConsumableCategory(String(data.category || '').toLowerCase())) {
+              return;
+            } else {
+              await updateDoc(doc(db, 'rawMaterials', row.id), {
+                category: 'kitchen',
+              } as any);
+            }
+          })
+        );
       },
       (error) => {
         console.error('Failed to load item categories config', error);
@@ -260,6 +316,24 @@ const Settings: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(promotions.length / PAGE_SIZE));
+    setPromotionsPage((p) => Math.min(p, totalPages));
+  }, [promotions.length, PAGE_SIZE]);
+
+  const { promotionsTotalPages, pagedPromotions } = useMemo(() => {
+    const totalPages = Math.max(1, Math.ceil(promotions.length / PAGE_SIZE));
+    const slice = promotions.slice((promotionsPage - 1) * PAGE_SIZE, promotionsPage * PAGE_SIZE);
+    return { promotionsTotalPages: totalPages, pagedPromotions: slice };
+  }, [promotions, promotionsPage, PAGE_SIZE]);
+
   const handlePromoImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -283,6 +357,30 @@ const Settings: React.FC = () => {
   const handleSavePromo = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (promoFormData.type === 'campaign') {
+        const rows = promoFormData.productPrices || [];
+        if (!promoFormData.name || rows.length === 0) {
+          toast.error(t('promoCampaignValidationRequired'));
+          return;
+        }
+        const hasInvalidPrice = rows.some((row) => row.promotionPrice >= row.originalPrice);
+        if (hasInvalidPrice) {
+          toast.error(t('promoCampaignValidationPrice'));
+          return;
+        }
+        const nowIso = new Date().toISOString();
+        const overlapping = promotions.some((promo) => {
+          if (editingPromo && promo.id === editingPromo.id) return false;
+          if (!promo.active || promo.type !== 'campaign' || promo.expiryDate <= nowIso) return false;
+          const ids = new Set((promo.productPrices || []).map((row) => row.productId));
+          return rows.some((row) => ids.has(row.productId));
+        });
+        if (overlapping) {
+          toast.error(t('promoCampaignValidationOverlap'));
+          return;
+        }
+      }
+
       if (editingPromo) {
         await updateDoc(doc(db, 'promotions', editingPromo.id), {
           ...promoFormData,
@@ -300,12 +398,15 @@ const Settings: React.FC = () => {
       setIsPromoModalOpen(false);
       setEditingPromo(null);
       setPromoFormData({
+        name: '',
         title: '',
         description: '',
         imageUrl: '',
         expiryDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
         active: true,
-        type: 'banner'
+        type: 'banner',
+        productIds: [],
+        productPrices: [],
       });
     } catch (error) {
       console.error("Error saving promotion:", error);
@@ -459,6 +560,7 @@ const Settings: React.FC = () => {
     { path: '/orders', label: 'orders' },
     { path: '/finance', label: 'finance' },
     { path: '/reports', label: 'reports' },
+    { path: '/administration', label: 'administration' },
     { path: '/settings', label: 'settings' },
   ];
 
@@ -484,8 +586,13 @@ const Settings: React.FC = () => {
     };
   }, [isAdmin]);
 
-  if (profile && !isAdmin && activeTab !== 'general') {
-    setActiveTab('general');
+  if (profile && !isAdmin) {
+    if (isSettingsSection && activeTab !== 'general') {
+      setActiveTab('general');
+    }
+    if (!isSettingsSection && activeTab !== 'logs') {
+      setActiveTab('logs');
+    }
   }
 
   const handleTogglePermission = async (roleId: Role, path: string) => {
@@ -666,8 +773,8 @@ const Settings: React.FC = () => {
     setItemCategoryConfig(sanitized);
   };
 
-  const addCategoryByType = async (type: 'product' | 'rawMaterial') => {
-    const input = type === 'product' ? newProductCategory : newRawMaterialCategory;
+  const addCategoryByType = async (type: 'product' | 'rawMaterial' | 'consumable') => {
+    const input = type === 'product' ? newProductCategory : type === 'rawMaterial' ? newRawMaterialCategory : newConsumableCategory;
     const normalized = normalizeCategoryName(input);
     if (!normalized) return toast.error(t('categoryValidationEmpty'));
 
@@ -680,7 +787,8 @@ const Settings: React.FC = () => {
         [type]: [...itemCategoryConfig[type], normalized],
       });
       if (type === 'product') setNewProductCategory('');
-      else setNewRawMaterialCategory('');
+      else if (type === 'rawMaterial') setNewRawMaterialCategory('');
+      else setNewConsumableCategory('');
       toast.success(t('categorySaved'));
     } catch (error) {
       console.error('Error adding category:', error);
@@ -688,7 +796,7 @@ const Settings: React.FC = () => {
     }
   };
 
-  const renameCategoryByType = async (type: 'product' | 'rawMaterial', oldValue: string) => {
+  const renameCategoryByType = async (type: 'product' | 'rawMaterial' | 'consumable', oldValue: string) => {
     const input = window.prompt(t('renameCategoryPrompt') || 'Rename category', oldValue);
     if (input == null) return;
     const normalized = normalizeCategoryName(input);
@@ -709,7 +817,7 @@ const Settings: React.FC = () => {
     }
   };
 
-  const deleteCategoryByType = async (type: 'product' | 'rawMaterial', value: string) => {
+  const deleteCategoryByType = async (type: 'product' | 'rawMaterial' | 'consumable', value: string) => {
     if (!window.confirm(t('confirmDelete'))) return;
     if (itemCategoryConfig[type].length <= 1) return toast.error(t('categoryValidationKeepOne'));
 
@@ -725,77 +833,102 @@ const Settings: React.FC = () => {
     }
   };
 
+  const saveConsumable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: Partial<RawMaterial> = {
+      name: consumableFormData.name?.trim() || '',
+      category: consumableFormData.category || itemCategoryConfig.consumable[0] || 'cleaning',
+      unit: consumableFormData.unit || 'pcs',
+      minStock: Number(consumableFormData.minStock || 0),
+      imageUrl: consumableFormData.imageUrl || '',
+      brand: consumableFormData.brand || '',
+      stock: Number(consumableFormData.stock || 0),
+      currentStock: Number(consumableFormData.currentStock || consumableFormData.stock || 0),
+      status: 'none',
+    };
+    if (!payload.name) {
+      toast.error(t('categoryValidationEmpty'));
+      return;
+    }
+
+    try {
+      if (editingConsumable?.id) {
+        await setDoc(doc(db, 'rawMaterials', editingConsumable.id), payload as any, { merge: true });
+      } else {
+        await addDoc(collection(db, 'rawMaterials'), { ...payload, createdAt: new Date().toISOString() } as any);
+      }
+      setIsConsumableModalOpen(false);
+      setEditingConsumable(null);
+      setConsumableFormData({ name: '', category: itemCategoryConfig.consumable[0] || 'cleaning', unit: 'pcs', minStock: 0, imageUrl: '', brand: '' });
+      toast.success(t('categorySaved'));
+    } catch (error) {
+      console.error('Error saving consumable', error);
+      toast.error(t('errorSavingCategory'));
+    }
+  };
+
+  const deleteConsumable = async (id: string) => {
+    if (!window.confirm(t('confirmDelete'))) return;
+    try {
+      await updateDoc(doc(db, 'rawMaterials', id), { disabled: true } as any);
+      toast.success(t('categoryDeleted'));
+    } catch (error) {
+      console.error('Error deleting consumable', error);
+      toast.error(t('errorSavingCategory'));
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('settings')}</h1>
+          <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t(sectionTitleKey)}</h1>
           <p className="text-zinc-500 font-medium">{t('settingsPageSubtitle')}</p>
         </div>
       </div>
 
       <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-zinc-900 rounded-2xl w-fit overflow-x-auto max-w-full border border-slate-200 dark:border-white/5">
-        <button 
-          onClick={() => setActiveTab('general')}
-          className={clsx(
-            "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'general' 
-              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
-              : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
-          )}
-        >
-          <SettingsIcon className="w-4 h-4" />
-          {t('general')}
-        </button>
-        <button
-          onClick={() => setActiveTab('users')}
-          className={clsx(
-            "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'users'
-              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
-              : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
-          )}
-        >
-          <UsersIcon className="w-4 h-4" />
-          {t('users')}
-        </button>
-        <button
-          onClick={() => setActiveTab('roles')}
-          className={clsx(
-            "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'roles'
-              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
-              : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
-          )}
-        >
-          <Shield className="w-4 h-4" />
-          {t('roleManagement')}
-        </button>
-        <button 
-          onClick={() => setActiveTab('logs')}
-          className={clsx(
-            "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'logs' 
-              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
-              : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
-          )}
-        >
-          <Activity className="w-4 h-4" />
-          {t('auditLog')}
-        </button>
-        <button 
-          onClick={() => setActiveTab('promotions')}
-          className={clsx(
-            "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-            activeTab === 'promotions' 
-              ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
-              : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
-          )}
-        >
-          <ImageIcon className="w-4 h-4" />
-          {t('promotions')}
-        </button>
-        {isAdmin && (
+        {isSettingsSection && (
+          <>
+            <button 
+              onClick={() => setActiveTab('general')}
+              className={clsx(
+                "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+                activeTab === 'general' 
+                  ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
+                  : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+              )}
+            >
+              <SettingsIcon className="w-4 h-4" />
+              {t('general')}
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={clsx(
+                "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+                activeTab === 'users'
+                  ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                  : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+              )}
+            >
+              <UsersIcon className="w-4 h-4" />
+              {t('users')}
+            </button>
+            <button
+              onClick={() => setActiveTab('roles')}
+              className={clsx(
+                "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+                activeTab === 'roles'
+                  ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                  : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+              )}
+            >
+              <Shield className="w-4 h-4" />
+              {t('roleManagement')}
+            </button>
+          </>
+        )}
+        {isSettingsSection && isAdmin && (
           <button
             onClick={() => setActiveTab('categories')}
             className={clsx(
@@ -809,21 +942,7 @@ const Settings: React.FC = () => {
             {t('categoryManagement')}
           </button>
         )}
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('aiManager')}
-            className={clsx(
-              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-              activeTab === 'aiManager'
-                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
-                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
-            )}
-          >
-            <Sparkles className="w-4 h-4" />
-            {t('aiManager')}
-          </button>
-        )}
-        {isAdmin && (
+        {isSettingsSection && isAdmin && (
           <button
             onClick={() => setActiveTab('data')}
             className={clsx(
@@ -835,6 +954,62 @@ const Settings: React.FC = () => {
           >
             <Database className="w-4 h-4" />
             {t('dataManagement')}
+          </button>
+        )}
+        {!isSettingsSection && (
+          <button 
+            onClick={() => setActiveTab('logs')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'logs' 
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Activity className="w-4 h-4" />
+            {t('auditLog')}
+          </button>
+        )}
+        {!isSettingsSection && (
+          <button 
+            onClick={() => setActiveTab('promotions')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'promotions' 
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <ImageIcon className="w-4 h-4" />
+            {t('promotions')}
+          </button>
+        )}
+        {!isSettingsSection && isAdmin && (
+          <button
+            onClick={() => setActiveTab('consumables')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'consumables'
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Package className="w-4 h-4" />
+            {t('consumables')}
+          </button>
+        )}
+        {!isSettingsSection && isAdmin && (
+          <button
+            onClick={() => setActiveTab('aiManager')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'aiManager'
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Sparkles className="w-4 h-4" />
+            {t('aiManager')}
           </button>
         )}
       </div>
@@ -1087,19 +1262,22 @@ const Settings: React.FC = () => {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('promotions')}</h2>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('promoTypeBanner')} + {t('promoTypeCampaign')}</h2>
               <p className="text-sm text-zinc-500">{t('promotionsPageSubtitle')}</p>
             </div>
             <button 
               onClick={() => {
                 setEditingPromo(null);
                 setPromoFormData({
+                  name: '',
                   title: '',
                   description: '',
                   imageUrl: '',
                   expiryDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'),
                   active: true,
-                  type: 'banner'
+                  type: 'banner',
+                  productIds: [],
+                  productPrices: [],
                 });
                 setIsPromoModalOpen(true);
               }}
@@ -1111,10 +1289,10 @@ const Settings: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {promotions.map((promo) => (
+            {pagedPromotions.map((promo) => (
               <div key={promo.id} className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none overflow-hidden group">
                 <div className="h-40 bg-slate-100 dark:bg-black relative">
-                  {promo.imageUrl ? (
+                  {promo.imageUrl && promo.type !== 'campaign' ? (
                     <img src={promo.imageUrl} alt={promo.title} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-400 dark:text-zinc-600">
@@ -1142,7 +1320,9 @@ const Settings: React.FC = () => {
                 </div>
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-bold text-slate-900 dark:text-white">{promo.title}</h3>
+                    <h3 className="font-bold text-slate-900 dark:text-white">
+                      {promo.type === 'campaign' ? (promo.name || promo.title) : promo.title}
+                    </h3>
                     <span className={clsx(
                       "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
                       promo.active ? "bg-green-900/20 text-green-400" : "bg-slate-100 dark:bg-zinc-900/20 text-zinc-400"
@@ -1151,6 +1331,14 @@ const Settings: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-sm text-zinc-500 mb-4 line-clamp-2">{promo.description}</p>
+                  <div className="mb-2 text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-zinc-500">
+                    {promo.type === 'campaign' ? t('promoTypeCampaign') : t('promoTypeBanner')}
+                  </div>
+                  {promo.type === 'campaign' && (
+                    <p className="text-xs text-zinc-500 mb-2">
+                      {t('promoCampaignProductsCount')}: {promo.productPrices?.length || 0}
+                    </p>
+                  )}
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
                     <Calendar className="w-3.5 h-3.5" />
                     <span>{t('promoExpiresOn')}: {format(new Date(promo.expiryDate), 'PPP')}</span>
@@ -1159,6 +1347,11 @@ const Settings: React.FC = () => {
               </div>
             ))}
           </div>
+          <Pagination
+            currentPage={promotionsPage}
+            totalPages={promotionsTotalPages}
+            onPageChange={setPromotionsPage}
+          />
 
           {isPromoModalOpen && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
@@ -1178,16 +1371,31 @@ const Settings: React.FC = () => {
                   </div>
 
                   <div className="p-6 space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('title')}</label>
-                      <input 
-                        type="text" 
-                        required
-                        className="input"
-                        value={promoFormData.title || ''}
-                        onChange={(e) => setPromoFormData({ ...promoFormData, title: e.target.value })}
-                      />
-                    </div>
+                    {promoFormData.type !== 'campaign' && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('title')}</label>
+                        <input 
+                          type="text"
+                          required
+                          className="input"
+                          value={promoFormData.title || ''}
+                          onChange={(e) => setPromoFormData({ ...promoFormData, title: e.target.value })}
+                        />
+                      </div>
+                    )}
+
+                    {promoFormData.type === 'campaign' && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('promoCampaignName')}</label>
+                        <input
+                          type="text"
+                          required
+                          className="input"
+                          value={promoFormData.name || ''}
+                          onChange={(e) => setPromoFormData({ ...promoFormData, name: e.target.value })}
+                        />
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('description')}</label>
@@ -1214,36 +1422,113 @@ const Settings: React.FC = () => {
                         <select 
                           className="input"
                           value={promoFormData.type || 'banner'}
-                          onChange={(e) => setPromoFormData({ ...promoFormData, type: e.target.value as any })}
+                          onChange={(e) => {
+                            const nextType = e.target.value as any;
+                            setPromoFormData({
+                              ...promoFormData,
+                              type: nextType,
+                              title: nextType === 'campaign' ? '' : (promoFormData.title || ''),
+                            });
+                          }}
                         >
                           <option value="banner">{t('promoTypeBanner')}</option>
                           <option value="popup">{t('promoTypePopup')}</option>
+                          <option value="campaign">{t('promoTypeCampaign')}</option>
                         </select>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('imageUrl')}</label>
-                      <div className="flex gap-4 items-center">
-                        {promoFormData.imageUrl && (
-                          <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-black overflow-hidden shrink-0 border border-slate-200 dark:border-white/10">
-                            <img src={promoFormData.imageUrl} alt="" className="w-full h-full object-cover" />
-                          </div>
-                        )}
-                        <label className="flex-1 cursor-pointer">
-                          <div className="input flex items-center gap-2 text-zinc-500">
-                            <ImageIcon className="w-4 h-4" />
-                            <span>{promoFormData.imageUrl ? t('changeImage') : t('uploadImage')}</span>
-                          </div>
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            className="hidden" 
-                            onChange={handlePromoImageUpload}
-                          />
-                        </label>
+                    {promoFormData.type !== 'campaign' ? (
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('imageUrl')}</label>
+                        <div className="flex gap-4 items-center">
+                          {promoFormData.imageUrl && (
+                            <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-black overflow-hidden shrink-0 border border-slate-200 dark:border-white/10">
+                              <img src={promoFormData.imageUrl} alt="" className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                          <label className="flex-1 cursor-pointer">
+                            <div className="input flex items-center gap-2 text-zinc-500">
+                              <ImageIcon className="w-4 h-4" />
+                              <span>{promoFormData.imageUrl ? t('changeImage') : t('uploadImage')}</span>
+                            </div>
+                            <input 
+                              type="file" 
+                              accept="image/*"
+                              className="hidden" 
+                              onChange={handlePromoImageUpload}
+                            />
+                          </label>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <label className="text-sm font-bold text-slate-500 dark:text-zinc-400">{t('promoCampaignProducts')}</label>
+                        <div className="max-h-44 overflow-y-auto border border-slate-200 dark:border-white/10 rounded-xl p-3 space-y-2">
+                          {products.map((product) => {
+                            const selectedIds = promoFormData.productIds || [];
+                            const checked = selectedIds.includes(product.id);
+                            return (
+                              <label key={product.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-zinc-300">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const ids = new Set(selectedIds);
+                                    const currentRows = promoFormData.productPrices || [];
+                                    if (e.target.checked) {
+                                      ids.add(product.id);
+                                      const exists = currentRows.some((row) => row.productId === product.id);
+                                      const nextRows = exists ? currentRows : [...currentRows, {
+                                        productId: product.id,
+                                        originalPrice: Number(product.sellingPrice || 0),
+                                        promotionPrice: Number(product.sellingPrice || 0) - 1,
+                                      }];
+                                      setPromoFormData({ ...promoFormData, productIds: Array.from(ids), productPrices: nextRows });
+                                    } else {
+                                      ids.delete(product.id);
+                                      setPromoFormData({
+                                        ...promoFormData,
+                                        productIds: Array.from(ids),
+                                        productPrices: currentRows.filter((row) => row.productId !== product.id),
+                                      });
+                                    }
+                                  }}
+                                />
+                                <span>{product.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div className="space-y-2">
+                          {(promoFormData.productPrices || []).map((row) => {
+                            const product = products.find((p) => p.id === row.productId);
+                            return (
+                              <div key={row.productId} className="grid grid-cols-3 gap-2 items-center">
+                                <p className="text-xs font-bold text-slate-600 dark:text-zinc-300">{product?.name || row.productId}</p>
+                                <p className="text-xs text-slate-500 dark:text-zinc-500">{row.originalPrice}</p>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  className="input"
+                                  value={row.promotionPrice}
+                                  onChange={(e) => {
+                                    const value = Number(e.target.value);
+                                    setPromoFormData({
+                                      ...promoFormData,
+                                      productPrices: (promoFormData.productPrices || []).map((entry) =>
+                                        entry.productId === row.productId ? { ...entry, promotionPrice: value } : entry
+                                      ),
+                                    });
+                                  }}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-black rounded-2xl border border-slate-100 dark:border-white/5">
                       <input 
@@ -1343,6 +1628,120 @@ const Settings: React.FC = () => {
               ))}
             </div>
           </div>
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none space-y-6 lg:col-span-2">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('consumableCategories')}</h2>
+            <div className="flex gap-3">
+              <input
+                className="input flex-1"
+                value={newConsumableCategory}
+                onChange={(e) => setNewConsumableCategory(e.target.value)}
+                placeholder={t('newCategoryName')}
+              />
+              <button type="button" className="btn-primary gap-2" onClick={() => addCategoryByType('consumable')}>
+                <Plus className="w-4 h-4" />
+                {t('add')}
+              </button>
+            </div>
+            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-2">
+              {itemCategoryConfig.consumable.map((cat) => (
+                <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
+                  <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => renameCategoryByType('consumable', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button type="button" onClick={() => deleteCategoryByType('consumable', cat)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {activeTab === 'consumables' && isAdmin && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('consumableDefinitions')}</h2>
+              <p className="text-sm text-zinc-500">{t('consumableDefinitionsDesc')}</p>
+            </div>
+            <button
+              type="button"
+              className="btn-primary gap-2"
+              onClick={() => {
+                setEditingConsumable(null);
+                setConsumableFormData({ name: '', category: itemCategoryConfig.consumable[0] || 'cleaning', unit: 'pcs', minStock: 0, imageUrl: '', brand: '' });
+                setIsConsumableModalOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              {t('addConsumable')}
+            </button>
+          </div>
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-100 dark:border-white/10 overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-slate-50 dark:bg-black">
+                <tr>
+                  <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('name')}</th>
+                  <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('category')}</th>
+                  <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('unit')}</th>
+                  <th className="text-left px-6 py-3 text-xs uppercase text-slate-500">{t('minStock')}</th>
+                  <th className="text-right px-6 py-3 text-xs uppercase text-slate-500">{t('actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {consumables.map((item) => (
+                  <tr key={item.id} className="border-t border-slate-100 dark:border-white/5">
+                    <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200">{item.name}</td>
+                    <td className="px-6 py-4">{tCategory(item.category)}</td>
+                    <td className="px-6 py-4">{item.unit}</td>
+                    <td className="px-6 py-4">{item.minStock || 0}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex justify-end gap-2">
+                        <button type="button" className="p-1.5 text-slate-400 hover:text-amber-500" onClick={() => {
+                          setEditingConsumable(item);
+                          setConsumableFormData(item);
+                          setIsConsumableModalOpen(true);
+                        }}>
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button type="button" className="p-1.5 text-slate-400 hover:text-red-600" onClick={() => deleteConsumable(item.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {isConsumableModalOpen && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-zinc-900 rounded-[32px] w-full max-w-lg border border-slate-100 dark:border-white/10 overflow-hidden">
+                <form onSubmit={saveConsumable}>
+                  <div className="p-6 border-b border-slate-100 dark:border-white/10 flex items-center justify-between">
+                    <h3 className="text-lg font-bold">{editingConsumable ? t('editConsumable') : t('addConsumable')}</h3>
+                    <button type="button" onClick={() => setIsConsumableModalOpen(false)}><X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <input className="input" placeholder={t('name')} value={consumableFormData.name || ''} onChange={(e) => setConsumableFormData({ ...consumableFormData, name: e.target.value })} />
+                    <select className="input" value={consumableFormData.category || ''} onChange={(e) => setConsumableFormData({ ...consumableFormData, category: e.target.value })}>
+                      {itemCategoryConfig.consumable.map((cat) => <option key={cat} value={cat}>{tCategory(cat)}</option>)}
+                    </select>
+                    <input className="input" placeholder={t('unit')} value={consumableFormData.unit || ''} onChange={(e) => setConsumableFormData({ ...consumableFormData, unit: e.target.value })} />
+                    <input type="number" className="input" placeholder={t('minStock')} value={consumableFormData.minStock || 0} onChange={(e) => setConsumableFormData({ ...consumableFormData, minStock: Number(e.target.value) })} />
+                  </div>
+                  <div className="p-6 bg-slate-50 dark:bg-black flex gap-3">
+                    <button type="button" className="btn-secondary flex-1" onClick={() => setIsConsumableModalOpen(false)}>{t('cancel')}</button>
+                    <button type="submit" className="btn-primary flex-1">{t('save')}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {activeTab === 'aiManager' && isAdmin && <AIManager embedded />}

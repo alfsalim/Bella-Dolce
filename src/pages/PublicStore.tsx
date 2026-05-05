@@ -35,6 +35,7 @@ import { Product, Promotion } from '../types';
 import { PAGE_SIZE } from '../constants';
 import Pagination from '../components/Pagination';
 import { BrandWordmark } from '../components/BrandLogo';
+import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 
 const PublicStore: React.FC = () => {
   console.log('PublicStore rendering');
@@ -79,7 +80,7 @@ const PublicStore: React.FC = () => {
       const now = new Date().toISOString();
       const promoData = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Promotion))
-        .filter(p => p.expiryDate > now);
+        .filter(p => p.expiryDate > now && (p.type === 'banner' || p.type === 'popup' || !p.type));
       setPromotions(promoData);
     });
 
@@ -216,6 +217,10 @@ const PublicStore: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {filteredProducts.map(product => (
+              (() => {
+                const activePromotion = getActiveProductPromotion(product.id, promotions);
+                const effectivePrice = getEffectiveSellingPrice(product, promotions);
+                return (
               <motion.div 
                 layout
                 key={product.id}
@@ -235,12 +240,27 @@ const PublicStore: React.FC = () => {
                 <div className="px-2">
                   <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-2">{tProduct(product)}</h3>
                   <div className="flex items-center justify-between mt-4">
-                    <span className="text-2xl font-display font-extrabold text-amber-600 dark:text-amber-500">
-                      {product.sellingPrice.toLocaleString()} {currencyUnit}
-                    </span>
+                    <div className="flex flex-col">
+                      {activePromotion && (
+                        <span className="text-xs line-through text-slate-400 dark:text-zinc-500">
+                          {product.sellingPrice.toLocaleString()} {currencyUnit}
+                        </span>
+                      )}
+                      <span className={clsx(
+                        "text-2xl font-display font-extrabold",
+                        activePromotion ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-500"
+                      )}>
+                        {effectivePrice.toLocaleString()} {currencyUnit}
+                      </span>
+                      {activePromotion && (
+                        <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider">
+                          {activePromotion.campaignName}
+                        </span>
+                      )}
+                    </div>
                     <button 
                       onClick={() => {
-                        addToCart(product);
+                        addToCart({ ...product, sellingPrice: effectivePrice });
                         setIsCartOpen(true);
                       }}
                       className="w-12 h-12 bg-amber-600 text-white rounded-2xl flex items-center justify-center hover:bg-amber-500 hover:scale-110 active:scale-95 transition-all shadow-lg shadow-amber-600/20"
@@ -250,6 +270,8 @@ const PublicStore: React.FC = () => {
                   </div>
                 </div>
               </motion.div>
+                );
+              })()
             ))}
           </div>
           <div className="mt-12 flex justify-center">

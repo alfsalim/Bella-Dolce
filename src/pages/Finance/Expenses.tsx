@@ -10,6 +10,7 @@ import Pagination from '../../components/Pagination';
 import { authFetch, getAuthHeaders, parseJsonResponse, readApiErrorMessage } from '../../lib/api-client';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
+import { db, collection, onSnapshot } from '../../lib/firebase-compat';
 
 type PurchaseExpenseRow = {
   id: string;
@@ -27,6 +28,7 @@ type PurchaseExpenseRow = {
 
 function parsePurchaseDetails(amountHT: string | null | undefined): {
   materialName?: string;
+  materialId?: string;
   quantity?: number;
   unit?: string;
 } {
@@ -35,6 +37,7 @@ function parsePurchaseDetails(amountHT: string | null | undefined): {
     const j = JSON.parse(amountHT) as Record<string, unknown>;
     return {
       materialName: typeof j.materialName === 'string' ? j.materialName : undefined,
+      materialId: typeof j.materialId === 'string' ? j.materialId : undefined,
       quantity: typeof j.quantity === 'number' ? j.quantity : undefined,
       unit: typeof j.unit === 'string' ? j.unit : undefined,
     };
@@ -67,6 +70,7 @@ const Expenses: React.FC = () => {
 
   const [assets, setAssets] = useState<FixedAssetDbRow[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
+  const [materialCategoryById, setMaterialCategoryById] = useState<Record<string, string>>({});
   const [assetPage, setAssetPage] = useState(1);
   const [assetSearch, setAssetSearch] = useState('');
   const [assetModalOpen, setAssetModalOpen] = useState(false);
@@ -132,6 +136,18 @@ const Expenses: React.FC = () => {
   }, [fetchPurchases]);
 
   useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
+      const next: Record<string, string> = {};
+      snapshot.docs.forEach((row) => {
+        const data = row.data() as any;
+        next[row.id] = String(data.category || '').toLowerCase();
+      });
+      setMaterialCategoryById(next);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (activeSubTab === 'assets') void fetchAssets();
   }, [activeSubTab, fetchAssets]);
 
@@ -163,6 +179,19 @@ const Expenses: React.FC = () => {
     (safeInvoicePage - 1) * PAGE_SIZE,
     safeInvoicePage * PAGE_SIZE
   );
+
+  const purchaseBuckets = useMemo(() => {
+    return filteredPurchases.reduce(
+      (acc, row) => {
+        const details = parsePurchaseDetails(row.amountHT);
+        const category = details.materialId ? materialCategoryById[details.materialId] : '';
+        if (category === 'kitchen') acc.rawMaterial += Number(row.totalAmount || 0);
+        else acc.consumable += Number(row.totalAmount || 0);
+        return acc;
+      },
+      { rawMaterial: 0, consumable: 0 }
+    );
+  }, [filteredPurchases, materialCategoryById]);
 
   const filteredAssets = useMemo(() => {
     const q = assetSearch.trim().toLowerCase();
@@ -387,6 +416,17 @@ const Expenses: React.FC = () => {
             >
               {t('sync')}
             </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900 p-4">
+              <p className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">{t('rawMaterial')}</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(purchaseBuckets.rawMaterial)}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 dark:border-white/10 bg-white dark:bg-zinc-900 p-4">
+              <p className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">{t('consumable')}</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(purchaseBuckets.consumable)}</p>
+            </div>
           </div>
 
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm overflow-hidden">

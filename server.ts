@@ -108,6 +108,50 @@ const unwrapDataIfNeeded = (collection: string, item: any) => {
   return item;
 };
 
+function preparePromotionForPrisma(src: Record<string, any>) {
+  const isCampaign = src.type === 'campaign';
+  if (isCampaign) {
+    const campaignPayload = {
+      campaignName: String(src.name ?? src.title ?? "").trim(),
+      description: String(src.description ?? "").trim(),
+      productIds: Array.isArray(src.productIds) ? src.productIds : [],
+      productPrices: Array.isArray(src.productPrices) ? src.productPrices : [],
+    };
+    return {
+      title: campaignPayload.campaignName || null,
+      description: JSON.stringify(campaignPayload),
+      imageUrl: null,
+      expiryDate: src.expiryDate,
+      active: src.active !== false,
+      type: 'campaign',
+      createdAt: src.createdAt,
+    };
+  }
+  return {
+    title: src.title ?? null,
+    description: src.description ?? null,
+    imageUrl: src.imageUrl ?? null,
+    expiryDate: src.expiryDate,
+    active: src.active !== false,
+    type: src.type ?? 'banner',
+    createdAt: src.createdAt,
+  };
+}
+
+function hydratePromotionFromStored(row: Record<string, any>) {
+  if (row.type !== 'campaign') return row;
+  const payload = typeof row.description === 'object' && row.description !== null
+    ? row.description
+    : {};
+  return {
+    ...row,
+    name: typeof payload.campaignName === 'string' ? payload.campaignName : (row.title ?? ''),
+    description: typeof payload.description === 'string' ? payload.description : '',
+    productIds: Array.isArray(payload.productIds) ? payload.productIds : [],
+    productPrices: Array.isArray(payload.productPrices) ? payload.productPrices : [],
+  };
+}
+
 /** Coerces JSON/API values to `string | null` for optional Prisma `String?` fields (avoids Prisma Int/object rejects). */
 function optionalEmployeeTextField(v: unknown): string | null {
   if (v == null) return null;
@@ -1313,7 +1357,11 @@ async function startServer() {
         return parsedItem;
       });
 
-      const finalData = collection === 'users' ? data.map(sanitizeUser) : data;
+      const finalData = collection === 'users'
+        ? data.map(sanitizeUser)
+        : collection === 'promotions'
+          ? data.map((r: any) => hydratePromotionFromStored(r))
+          : data;
       res.json(finalData);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -1350,7 +1398,11 @@ async function startServer() {
         Object.assign(data, data.amountHT);
       }
 
-      const finalData = collection === 'users' ? sanitizeUser(data) : data;
+      const finalData = collection === 'users'
+        ? sanitizeUser(data)
+        : collection === 'promotions'
+          ? hydratePromotionFromStored(data)
+          : data;
       res.json(finalData);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -1383,6 +1435,12 @@ async function startServer() {
         Object.keys(dataToSave).forEach((key) => {
           if (!allowedRawMaterialFields.includes(key)) delete dataToSave[key];
         });
+      }
+
+      if (collection === 'promotions') {
+        const preparedPromo = preparePromotionForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, preparedPromo);
       }
 
       if (collection === 'fixedAssets') {
@@ -1448,7 +1506,12 @@ async function startServer() {
       if (collection === 'purchases') {
         res.json({ ...originalData, ...result, id: result.id });
       } else {
-        res.json(collection === 'users' ? sanitizeUser(result) : result);
+        const payload = collection === 'users'
+          ? sanitizeUser(result)
+          : collection === 'promotions'
+            ? hydratePromotionFromStored(result)
+            : result;
+        res.json(payload);
       }
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -1481,6 +1544,12 @@ async function startServer() {
         Object.keys(dataToSave).forEach((key) => {
           if (!allowedRawMaterialFields.includes(key)) delete dataToSave[key];
         });
+      }
+
+      if (collection === 'promotions') {
+        const preparedPromo = preparePromotionForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, preparedPromo);
       }
 
       if (collection === 'fixedAssets') {
@@ -1557,7 +1626,12 @@ async function startServer() {
       if (collection === 'purchases') {
         res.json({ ...originalData, ...result, id: result.id });
       } else {
-        res.json(collection === 'users' ? sanitizeUser(result) : result);
+        const payload = collection === 'users'
+          ? sanitizeUser(result)
+          : collection === 'promotions'
+            ? hydratePromotionFromStored(result)
+            : result;
+        res.json(payload);
       }
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -2046,6 +2120,35 @@ async function startServer() {
     } catch (error) {
       console.error("Error during auto-seeding:", error);
     }
+
+    const scheduleNextPromotionExpiryPass = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 0);
+      const delayMs = Math.max(1_000, nextMidnight.getTime() - now.getTime());
+
+      setTimeout(async () => {
+        try {
+          const prisma = getPrisma();
+          const nowAtRun = new Date();
+          await prisma.promotion.updateMany({
+            where: {
+              active: true,
+              expiryDate: { lte: nowAtRun },
+            },
+            data: {
+              active: false,
+            },
+          });
+        } catch (e) {
+          console.error("Promotion midnight expiry job failed:", e);
+        } finally {
+          scheduleNextPromotionExpiryPass();
+        }
+      }, delayMs);
+    };
+
+    scheduleNextPromotionExpiryPass();
 
     // Nightly backup scheduler — check every minute against config in settings
     let lastBackupDate = "";

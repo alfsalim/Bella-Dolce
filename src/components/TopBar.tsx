@@ -303,9 +303,9 @@ const TopBar: React.FC<TopBarProps> = ({
           </button>
         )}
 
-        {user && canAccess('/settings') && (
+        {user && (canAccess('/administration') || canAccess('/settings')) && (
           <button
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/administration')}
             className="w-11 h-11 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all"
             title={t('topBarSettings')}
           >
@@ -433,15 +433,15 @@ const TopBar: React.FC<TopBarProps> = ({
                 </button>
               )}
             </div>
-            {(canAccess('/settings') || canAccess('*')) && (
+            {(canAccess('/administration') || canAccess('/settings') || canAccess('*')) && (
               <button
-                onClick={() => navigate('/settings')}
+                onClick={() => navigate('/administration')}
                 className="w-11 h-11 rounded-2xl bg-primary-50 dark:bg-zinc-900 flex items-center justify-center text-primary-600 border border-primary-100 dark:border-white/10 hover:scale-105 transition-all"
               >
                 <User className="w-6 h-6" />
               </button>
             )}
-            {!showNavMenu && !(canAccess('/settings') || canAccess('*')) && (
+            {!showNavMenu && !(canAccess('/administration') || canAccess('/settings') || canAccess('*')) && (
               <button
                 onClick={logout}
                 className="w-11 h-11 rounded-2xl bg-red-50 dark:bg-zinc-900 flex items-center justify-center text-red-500 border border-red-100 dark:border-white/10 hover:scale-105 transition-all"

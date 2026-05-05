@@ -261,8 +261,8 @@ const Production: React.FC = () => {
     const unsubscribeMaterials = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
       const mats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       setRawMaterials(prev => {
-        // Only keep active ones and merge with current to avoid flickering
-        const newMats = mats.filter(m => !m.disabled);
+        // Only kitchen raw materials are valid recipe ingredients.
+        const newMats = mats.filter(m => !m.disabled && String(m.category || '').toLowerCase() === 'kitchen');
         return newMats;
       });
     }, (error) => handleFirestoreError(error, OperationType.GET, 'rawMaterials'));

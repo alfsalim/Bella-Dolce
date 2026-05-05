@@ -17,7 +17,7 @@ export const DEFAULT_PERMISSIONS: RolePermission[] = [
       '/orders',
       '/finance',
       '/reports',
-      '/settings',
+      '/administration',
     ],
   },
   { id: 'cashier', allowedPaths: ['/dashboard', '/pos', '/orders'] },

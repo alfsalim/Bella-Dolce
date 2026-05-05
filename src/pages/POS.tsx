@@ -15,10 +15,11 @@ import {
   User
 } from 'lucide-react';
 import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/firebase-compat';
-import { Product, SaleItem, Customer } from '../types';
+import { Product, SaleItem, Customer, Promotion } from '../types';
 import { clsx } from 'clsx';
 import { SELLABLE_CATEGORIES } from '../constants';
 import { authFetch } from '../lib/api-client';
+import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 
 import { logActivity } from '../lib/logger';
 
@@ -27,6 +28,7 @@ const POS: React.FC = () => {
   const { profile } = useAuth();
   
   const [products, setProducts] = useState<Product[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,9 +47,14 @@ const POS: React.FC = () => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'customers'));
 
+    const unsubscribePromotions = onSnapshot(collection(db, 'promotions'), (snapshot) => {
+      setPromotions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Promotion)));
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'promotions'));
+
     return () => {
       unsubscribe();
       unsubscribeCustomers();
+      unsubscribePromotions();
     };
   }, []);
 
@@ -71,7 +78,7 @@ const POS: React.FC = () => {
             : item
         );
       }
-      return [...prev, { productId: product.id, quantity: 1, price: product.sellingPrice }];
+      return [...prev, { productId: product.id, quantity: 1, price: getEffectiveSellingPrice(product, promotions) }];
     });
   };
 
@@ -200,6 +207,10 @@ const POS: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-3 no-scrollbar min-h-[400px]">
           {filteredProducts.map((product) => (
+            (() => {
+              const activePromotion = getActiveProductPromotion(product.id, promotions);
+              const effectivePrice = getEffectiveSellingPrice(product, promotions);
+              return (
             <button
               key={product.id}
               onClick={() => addToCart(product)}
@@ -226,15 +237,32 @@ const POS: React.FC = () => {
                   <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
                 </div>
                 <div className="flex items-center justify-between mt-4 gap-2">
-                  <span className="text-xl font-bold text-primary-600 dark:text-primary-400">
-                    {product.sellingPrice.toLocaleString()} {currencyUnit}
-                  </span>
+                  <div className="flex flex-col">
+                    {activePromotion && (
+                      <span className="text-xs line-through text-slate-400 dark:text-slate-500">
+                        {product.sellingPrice.toLocaleString()} {currencyUnit}
+                      </span>
+                    )}
+                    <span className={clsx(
+                      "text-xl font-bold",
+                      activePromotion ? "text-red-600 dark:text-red-400" : "text-primary-600 dark:text-primary-400"
+                    )}>
+                      {effectivePrice.toLocaleString()} {currencyUnit}
+                    </span>
+                    {activePromotion && (
+                      <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider">
+                        {activePromotion.campaignName}
+                      </span>
+                    )}
+                  </div>
                   <div className="w-12 h-12 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90">
                     <Plus className="w-6 h-6" />
                   </div>
                 </div>
               </div>
             </button>
+              );
+            })()
           ))}
         </div>
       </div>

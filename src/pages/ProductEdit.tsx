@@ -66,7 +66,8 @@ const ProductEdit: React.FC = () => {
     });
 
     const unsubscribeMaterials = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
-      setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
+      const rows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial));
+      setMaterials(rows.filter((m) => String(m.category || '').toLowerCase() === 'kitchen'));
     });
 
     return () => {

@@ -1,22 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, limit, getCountFromServer, getDoc } from '../lib/firebase-compat';
-import { Product, RawMaterial, RecipeIngredient, ProductionBatch, Order } from '../types';
+import { Product, RawMaterial, RecipeIngredient, ProductionBatch, Order, Promotion } from '../types';
 import { Plus, Search, Edit2, Trash2, Package, Info, List, Image as ImageIcon, Percent, Scale, Hash, Filter, RotateCcw, ChevronRight, X } from 'lucide-react';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx } from 'clsx';
 import { compressImage } from '../lib/utils';
-import { CATEGORIES, PAGE_SIZE } from '../constants';
+import { PAGE_SIZE } from '../constants';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
-
-const RAW_MATERIAL_ONLY_CATEGORIES = ['raw_material', 'cooking', 'maintenance', 'cleaning', 'kitchen', 'others'];
+import { ItemCategoryConfig, getDefaultItemCategoryConfig, sanitizeItemCategoryConfig } from '../lib/itemCategories';
+import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 
 const ProductManagement: React.FC = () => {
   const { t, tProduct, tCategory, isRTL, currencyUnit } = useLanguage();
   const { profile: currentUserProfile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -36,9 +37,8 @@ const ProductManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState<'All' | 'Regular' | 'Pack' | 'RawMaterial'>('All');
-  const [dynamicCategories, setDynamicCategories] = useState<string[]>(CATEGORIES);
-  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
+  const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
+  const kitchenCategorySet = useMemo(() => new Set(itemCategoryConfig.rawMaterial), [itemCategoryConfig.rawMaterial]);
   const [selectedProductForDetails, setSelectedProductForDetails] = useState<Product | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'products' | 'materials'>('products');
@@ -124,12 +124,17 @@ const ProductManagement: React.FC = () => {
       limit(PAGE_SIZE * materialsPage)
     );
     const unsubscribeMaterials = onSnapshot(mq, (snapshot) => {
-      setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
+      const rows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial));
+      setMaterials(rows.filter((m) => kitchenCategorySet.has((m.category || '').toLowerCase())));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'rawMaterials'));
+
+    const unsubscribePromotions = onSnapshot(collection(db, 'promotions'), (snapshot) => {
+      setPromotions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Promotion)));
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'promotions'));
 
     let bUnsubscribe = () => {};
     let oUnsubscribe = () => {};
-    let catUnsubscribe = () => {};
+    let itemCategoriesUnsubscribe = () => {};
 
     if (currentUserProfile) {
       const bq = query(collection(db, 'batches'));
@@ -142,21 +147,22 @@ const ProductManagement: React.FC = () => {
         setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
       }, (error) => handleFirestoreError(error, OperationType.GET, 'orders'));
 
-      catUnsubscribe = onSnapshot(doc(db, 'settings', 'categories'), (snapshot) => {
+      itemCategoriesUnsubscribe = onSnapshot(doc(db, 'settings', 'item_categories'), (snapshot) => {
         if (snapshot.exists()) {
-          setDynamicCategories(snapshot.data().list || CATEGORIES);
+          setItemCategoryConfig(sanitizeItemCategoryConfig(snapshot.data()));
         }
-      }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/categories'));
+      }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/item_categories'));
     }
 
     return () => {
       unsubscribeProducts();
       unsubscribeMaterials();
+      unsubscribePromotions();
       bUnsubscribe();
       oUnsubscribe();
-      catUnsubscribe();
+      itemCategoriesUnsubscribe();
     };
-  }, [currentUserProfile, PAGE_SIZE, productsPage, materialsPage]);
+  }, [currentUserProfile, PAGE_SIZE, productsPage, materialsPage, kitchenCategorySet]);
 
   const isProductDeletable = (productId: string) => {
     const activeBatches = batches.filter(b => 
@@ -341,20 +347,6 @@ const ProductManagement: React.FC = () => {
     }
   };
 
-  const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) return;
-    try {
-      const updated = [...dynamicCategories, newCategoryName.trim()];
-      await setDoc(doc(db, 'settings', 'categories'), { list: updated });
-      setNewCategoryName('');
-      setIsCategoryModalOpen(false);
-      toast.success(t('categoryAdded'));
-    } catch (error) {
-      console.error("Error adding category:", error);
-      toast.error(t('errorAddingCategory'));
-    }
-  };
-
   const addIngredient = () => {
     setFormData({
       ...formData,
@@ -466,7 +458,7 @@ const ProductManagement: React.FC = () => {
               setEditingMaterial(null);
               setFormData({
                 name: '',
-                category: activeTab === 'materials' ? 'cooking' : '',
+                category: activeTab === 'materials' ? (itemCategoryConfig.rawMaterial[0] || '') : (itemCategoryConfig.product[0] || ''),
                 sellingPrice: 0,
                 costPrice: 0,
                 shelfLife: 24,
@@ -553,22 +545,14 @@ const ProductManagement: React.FC = () => {
             >
               <option value="All">{t('allCategories')}</option>
               {activeTab === 'products' 
-                ? dynamicCategories.filter(cat => !RAW_MATERIAL_ONLY_CATEGORIES.includes(cat)).map(cat => (
+                ? itemCategoryConfig.product.map(cat => (
                     <option key={cat} value={cat}>{tCategory(cat)}</option>
                   ))
-                : ['cooking', 'maintenance', 'cleaning', 'kitchen', 'others'].map(cat => (
+                : itemCategoryConfig.rawMaterial.map(cat => (
                     <option key={cat} value={cat}>{tCategory(cat)}</option>
                   ))
               }
             </select>
-            <button
-              onClick={() => setIsCategoryModalOpen(true)}
-              className="p-2.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-all flex items-center gap-2"
-              title={t('manageCategories')}
-            >
-              <Plus className="w-5 h-5" />
-              <span className="text-sm font-bold hidden lg:inline">{t('manageCategories')}</span>
-            </button>
           </div>
 
           <button 
@@ -600,6 +584,8 @@ const ProductManagement: React.FC = () => {
               const isProduct = 'sellingPrice' in item;
               const product = isProduct ? item as Product : null;
               const material = !isProduct ? item as RawMaterial : null;
+              const activePromotion = product ? getActiveProductPromotion(product.id, promotions) : null;
+              const effectivePrice = product ? getEffectiveSellingPrice(product, promotions) : null;
 
               return (
                 <div key={item.id} className={clsx(
@@ -683,7 +669,23 @@ const ProductManagement: React.FC = () => {
                           {isProduct ? t('price') : t('minStock')}
                         </p>
                         <p className="font-bold text-slate-900 dark:text-white">
-                          {isProduct ? `${product?.sellingPrice} ${currencyUnit}` : `${material?.minStock} ${material?.unit}`}
+                          {isProduct ? (
+                            <span className="flex flex-col">
+                              {activePromotion && (
+                                <span className="text-xs font-medium line-through text-slate-400 dark:text-slate-500">
+                                  {product?.sellingPrice} {currencyUnit}
+                                </span>
+                              )}
+                              <span className={clsx(activePromotion && "text-red-600 dark:text-red-400")}>
+                                {effectivePrice} {currencyUnit}
+                              </span>
+                              {activePromotion && (
+                                <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider">
+                                  {activePromotion.campaignName}
+                                </span>
+                              )}
+                            </span>
+                          ) : `${material?.minStock} ${material?.unit}`}
                         </p>
                       </div>
                       <div className="p-3 bg-slate-50 dark:bg-[#0a0a0a] rounded-xl">
@@ -777,6 +779,8 @@ const ProductManagement: React.FC = () => {
                   const isProduct = 'sellingPrice' in item;
                   const product = isProduct ? item as Product : null;
                   const material = !isProduct ? item as RawMaterial : null;
+                  const activePromotion = product ? getActiveProductPromotion(product.id, promotions) : null;
+                  const effectivePrice = product ? getEffectiveSellingPrice(product, promotions) : null;
 
                   return (
                     <tr key={item.id} className={clsx(
@@ -815,9 +819,30 @@ const ProductManagement: React.FC = () => {
                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{tCategory(item.category)}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="font-bold text-primary-600 dark:text-primary-400">
-                          {isProduct ? `${product?.sellingPrice} ${currencyUnit}` : `${material?.minStock} ${material?.unit}`}
-                        </span>
+                        {isProduct ? (
+                          <div className="flex flex-col">
+                            {activePromotion && (
+                              <span className="text-xs line-through text-slate-400 dark:text-slate-500">
+                                {product?.sellingPrice} {currencyUnit}
+                              </span>
+                            )}
+                            <span className={clsx(
+                              "font-bold",
+                              activePromotion ? "text-red-600 dark:text-red-400" : "text-primary-600 dark:text-primary-400"
+                            )}>
+                              {effectivePrice} {currencyUnit}
+                            </span>
+                            {activePromotion && (
+                              <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider">
+                                {activePromotion.campaignName}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="font-bold text-primary-600 dark:text-primary-400">
+                            {material?.minStock} {material?.unit}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span className="font-bold text-slate-700 dark:text-slate-300">{item.unit || 'g'}</span>
@@ -928,7 +953,7 @@ const ProductManagement: React.FC = () => {
                         ...formData, 
                         isPack: val === 'pack',
                         itemType: val,
-                        category: val === 'material' ? 'cooking' : CATEGORIES[0]
+                        category: val === 'material' ? (itemCategoryConfig.rawMaterial[0] || '') : (itemCategoryConfig.product[0] || '')
                       });
                     }}
                   >
@@ -969,10 +994,10 @@ const ProductManagement: React.FC = () => {
                   >
                     <option value="">{t('selectCategory')}</option>
                     {(formData.itemType === 'material' || formData.category === 'raw_material')
-                      ? ['cooking', 'maintenance', 'cleaning', 'kitchen', 'others'].map(cat => (
+                      ? itemCategoryConfig.rawMaterial.map(cat => (
                         <option key={cat} value={cat}>{tCategory(cat)}</option>
                       ))
-                      : dynamicCategories.filter(c => !RAW_MATERIAL_ONLY_CATEGORIES.includes(c)).map(cat => (
+                      : itemCategoryConfig.product.map(cat => (
                         <option key={cat} value={cat}>{tCategory(cat)}</option>
                       ))
                     }
@@ -1240,71 +1265,6 @@ const ProductManagement: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Category Management Modal */}
-      {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl border border-slate-100 dark:border-white/10">
-            <div className="p-8 border-b border-slate-100 dark:border-white/10">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{t('manageCategories')}</h2>
-                <button 
-                  onClick={() => setIsCategoryModalOpen(false)}
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-8 space-y-6">
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  placeholder={t('newCategoryName')}
-                  className="input"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                />
-                <button 
-                  onClick={handleAddCategory}
-                  className="btn-primary"
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                {dynamicCategories.filter(c => !RAW_MATERIAL_ONLY_CATEGORIES.includes(c)).map((cat) => (
-                  <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
-                    <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
-                    <button 
-                      onClick={async () => {
-                        if (window.confirm(t('confirmDelete'))) {
-                          const updated = dynamicCategories.filter(c => c !== cat);
-                          await setDoc(doc(db, 'settings', 'categories'), { list: updated });
-                        }
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 dark:border-white/10">
-                <button 
-                  onClick={() => setIsCategoryModalOpen(false)}
-                  className="w-full btn-secondary justify-center"
-                >
-                  {t('close')}
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}

@@ -10,6 +10,7 @@ import {
   Wallet,
   BarChart3,
   Settings,
+  ShieldCheck,
 } from 'lucide-react';
 export type AppNavItem = {
   path: string;
@@ -30,6 +31,7 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
   { icon: ClipboardList, tKey: 'orders', path: '/orders' },
   { icon: Wallet, tKey: 'finance', path: '/finance' },
   { icon: BarChart3, tKey: 'reports', path: '/reports' },
+  { icon: ShieldCheck, tKey: 'administration', path: '/administration' },
   { icon: Settings, tKey: 'settings', path: '/settings' },
 ];
 
@@ -48,9 +50,17 @@ export function staffCanAccessFinanceNav(permissions: string[]): boolean {
 export function getFilteredNavItems(permissions: string[] | null): AppNavItem[] {
   if (!permissions) return [];
   if (permissions.includes('*')) return [...APP_NAV_ITEMS];
+  const normalized = [...permissions];
+  // Keep backward compatibility while splitting admin/settings into two sections.
+  if (normalized.includes('/settings') && !normalized.includes('/administration')) {
+    normalized.push('/administration');
+  }
+  if (normalized.includes('/administration') && !normalized.includes('/settings')) {
+    normalized.push('/settings');
+  }
   return APP_NAV_ITEMS.filter((item) => {
-    if (item.path === '/finance') return staffCanAccessFinanceNav(permissions);
-    return permissions.includes(item.path);
+    if (item.path === '/finance') return staffCanAccessFinanceNav(normalized);
+    return normalized.includes(item.path);
   });
 }
 
@@ -58,10 +68,17 @@ export function getFilteredNavItems(permissions: string[] | null): AppNavItem[] 
 export function pathnameAllowedForStaffPermissions(pathname: string, permissions: string[] | null): boolean {
   if (!permissions?.length) return false;
   if (permissions.includes('*')) return true;
-  if (pathname === '/finance' || pathname.startsWith('/finance/')) {
-    if (staffCanAccessFinanceNav(permissions)) return true;
+  const normalized = [...permissions];
+  if (normalized.includes('/settings') && !normalized.includes('/administration')) {
+    normalized.push('/administration');
   }
-  for (const p of permissions) {
+  if (normalized.includes('/administration') && !normalized.includes('/settings')) {
+    normalized.push('/settings');
+  }
+  if (pathname === '/finance' || pathname.startsWith('/finance/')) {
+    if (staffCanAccessFinanceNav(normalized)) return true;
+  }
+  for (const p of normalized) {
     if (pathname === p || pathname.startsWith(`${p}/`)) return true;
   }
   if (pathname.startsWith('/products/') && permissions.includes('/product-management')) return true;

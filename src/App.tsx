@@ -75,11 +75,12 @@ const App: React.FC = () => {
               <Route path="/delivery" element={<Navigate to="/orders" replace />} />
               <Route path="/finance" element={<Finance />} />
               <Route path="/customers" element={<Customers />} />
-              <Route path="/users" element={<Navigate to="/settings" replace />} />
+              <Route path="/users" element={<Navigate to="/administration" replace />} />
+              <Route path="/administration" element={<Settings />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/orders" element={<Orders />} />
-              <Route path="/ai-manager" element={<Navigate to="/settings?tab=ai-manager" replace />} />
+              <Route path="/ai-manager" element={<Navigate to="/administration?tab=ai-manager" replace />} />
               <Route path="/products/:id" element={<ProductEdit />} />
             </Route>
 

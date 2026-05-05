@@ -40,7 +40,7 @@ export interface Product {
   unit?: string; // e.g., "piece", "kg"
   status?: 'none' | 'frozen' | 'ordered' | 'requested' | 'cancelled';
   isPack?: boolean;
-  itemType?: 'product' | 'pack' | 'material';
+  itemType?: 'product' | 'pack' | 'material' | 'consumable';
   packItems?: { productId: string; quantity: number }[];
   createdAt?: string;
   disabled?: boolean;
@@ -208,12 +208,20 @@ export interface RolePermission {
 
 export interface Promotion {
   id: string;
-  imageUrl: string;
+  imageUrl?: string;
+  name?: string;
   title?: string;
   description?: string;
   expiryDate: string;
   active: boolean;
-  type?: 'banner' | 'popup' | 'discount';
+  type?: 'banner' | 'popup' | 'discount' | 'campaign';
+  productIds?: string[];
+  productPrices?: {
+    productId: string;
+    originalPrice: number;
+    promotionPrice: number;
+  }[];
+  status?: 'active' | 'expired';
   createdAt: string;
 }
 
