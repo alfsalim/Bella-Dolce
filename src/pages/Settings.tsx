@@ -29,13 +29,14 @@ import {
   isConsumableCategory,
   sanitizeItemCategoryConfig,
 } from '../lib/itemCategories';
+import AssetManagement from './AssetManagement';
 
 const Settings: React.FC = () => {
   const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole, tCategory } = useLanguage();
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'consumables' | 'aiManager' | 'data'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'assets' | 'consumables' | 'aiManager' | 'data'>('general');
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -86,7 +87,7 @@ const Settings: React.FC = () => {
   const isSettingsSection = location.pathname.startsWith('/settings');
   const availableTabs = isSettingsSection
     ? (['general', 'users', 'roles', 'categories', 'data'] as const)
-    : (['logs', 'promotions', 'consumables', 'aiManager'] as const);
+    : (['promotions', 'consumables', 'assets', 'aiManager', 'logs'] as const);
   const sectionTitleKey = isSettingsSection ? 'settings' : 'administration';
 
   useEffect(() => {
@@ -590,8 +591,8 @@ const Settings: React.FC = () => {
     if (isSettingsSection && activeTab !== 'general') {
       setActiveTab('general');
     }
-    if (!isSettingsSection && activeTab !== 'logs') {
-      setActiveTab('logs');
+    if (!isSettingsSection && activeTab !== 'promotions') {
+      setActiveTab('promotions');
     }
   }
 
@@ -958,20 +959,6 @@ const Settings: React.FC = () => {
         )}
         {!isSettingsSection && (
           <button 
-            onClick={() => setActiveTab('logs')}
-            className={clsx(
-              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
-              activeTab === 'logs' 
-                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
-                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
-            )}
-          >
-            <Activity className="w-4 h-4" />
-            {t('auditLog')}
-          </button>
-        )}
-        {!isSettingsSection && (
-          <button 
             onClick={() => setActiveTab('promotions')}
             className={clsx(
               "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
@@ -1000,6 +987,20 @@ const Settings: React.FC = () => {
         )}
         {!isSettingsSection && isAdmin && (
           <button
+            onClick={() => setActiveTab('assets')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'assets'
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Package className="w-4 h-4" />
+            {t('fixedAssets')}
+          </button>
+        )}
+        {!isSettingsSection && isAdmin && (
+          <button
             onClick={() => setActiveTab('aiManager')}
             className={clsx(
               "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
@@ -1010,6 +1011,20 @@ const Settings: React.FC = () => {
           >
             <Sparkles className="w-4 h-4" />
             {t('aiManager')}
+          </button>
+        )}
+        {!isSettingsSection && (
+          <button 
+            onClick={() => setActiveTab('logs')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'logs' 
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20" 
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Activity className="w-4 h-4" />
+            {t('auditLog')}
           </button>
         )}
       </div>
@@ -1659,6 +1674,9 @@ const Settings: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {activeTab === 'assets' && isAdmin && (
+        <AssetManagement />
       )}
       {activeTab === 'consumables' && isAdmin && (
         <div className="space-y-6">

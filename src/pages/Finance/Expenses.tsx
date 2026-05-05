@@ -583,14 +583,13 @@ const Expenses: React.FC = () => {
                 )}
               />
             </div>
-            <button
-              type="button"
-              onClick={openNewAsset}
+            <Link
+              to="/administration"
               className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20"
             >
-              <Plus className="w-5 h-5" />
-              {tf('assetAdd')}
-            </button>
+              <ExternalLink className="w-5 h-5" />
+              {tf('administration')}
+            </Link>
           </div>
 
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
@@ -629,15 +628,12 @@ const Expenses: React.FC = () => {
                         <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                           {tf('assetStatus')}
                         </th>
-                        <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-end">
-                          {t('actions')}
-                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-white/5">
                       {paginatedAssets.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                             {tf('searchNoResults')}
                           </td>
                         </tr>
@@ -655,24 +651,6 @@ const Expenses: React.FC = () => {
                               {a.nextMaintenanceAt ? formatApiDate(a.nextMaintenanceAt) : '—'}
                             </td>
                             <td className="px-4 py-3 text-xs font-bold">{statusTf(a.status)}</td>
-                            <td className="px-4 py-3 text-end">
-                              <button
-                                type="button"
-                                onClick={() => openEditAsset(a)}
-                                className="p-2 text-slate-400 hover:text-primary-600 inline-flex"
-                                title={tf('assetEdit')}
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void deleteAsset(a)}
-                                className="p-2 text-slate-400 hover:text-rose-600 inline-flex"
-                                title={t('delete')}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
                           </tr>
                         ))
                       )}
