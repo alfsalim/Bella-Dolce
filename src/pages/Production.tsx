@@ -21,7 +21,7 @@ import {
   Store,
   Snowflake
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, Timestamp, getDoc, limit, handleFirestoreError, OperationType, getCountFromServer, where, getDocs, writeBatch } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, Timestamp, getDoc, limit, handleFirestoreError, OperationType, getCountFromServer, where, getDocs, writeBatch } from '../lib/db';
 import { toast } from 'react-hot-toast';
 import { ProductionBatch, Product, Recipe } from '../types';
 import { clsx } from 'clsx';

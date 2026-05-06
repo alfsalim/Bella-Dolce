@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, limit, getCountFromServer, getDoc } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, limit, getCountFromServer, getDoc } from '../lib/db';
 import { Product, RawMaterial, RecipeIngredient, ProductionBatch, Order, Promotion } from '../types';
 import { Plus, Search, Edit2, Trash2, Package, Info, List, Image as ImageIcon, Percent, Scale, Hash, Filter, RotateCcw, ChevronRight, X } from 'lucide-react';
 import { logActivity } from '../lib/logger';

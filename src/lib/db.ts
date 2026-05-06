@@ -1,4 +1,4 @@
-// Firebase compatibility layer - all functions use REST API, not Firebase
+// REST API client — all CRUD operations go through the Express/SQLite backend
 import {
   getDocsFromApi,
   getDocFromApi,
@@ -7,8 +7,6 @@ import {
   deleteDocFromApi
 } from './api-client';
 import { recordStaffSystemError } from './systemErrorNotifications';
-
-export { auth, signInWithPopup, signOut, onAuthStateChanged } from './firebase-auth-only';
 
 // Collection reference
 export function collection(db: any, collectionName: string) {
@@ -75,7 +73,7 @@ export function query(collectionRef: any, ...constraints: any[]) {
   };
 }
 
-// OnSnapshot - listen to collection changes
+// OnSnapshot - polls the REST API on an interval to simulate real-time updates
 export function onSnapshot(
   queryOrRef: any,
   onNext: (snapshot: any) => void,
@@ -149,7 +147,6 @@ function prismaDateValue(value: unknown): unknown {
 
 // Where constraint
 export function where(field: string, operator: string, value: any) {
-  // Map Firebase operators to Prisma operators
   const operatorMap: Record<string, string> = {
     '>=': 'gte',
     '<=': 'lte',
@@ -195,7 +192,7 @@ export async function getDoc(docRef: any) {
   return doc;
 }
 
-// Get documents (alias for getDocsFromApi)
+// Get documents
 export async function getDocs(queryRef: any) {
   return getDocsFromApi(queryRef.path || queryRef.collectionName, queryRef.params);
 }
@@ -216,7 +213,7 @@ export async function getCountFromServer(queryRef: any) {
   return { data: () => ({ count: docs.size }) };
 }
 
-// Operation types (HTTP methods)
+// Operation types
 export enum OperationType {
   GET = 'GET',
   POST = 'POST',
@@ -225,9 +222,9 @@ export enum OperationType {
   PATCH = 'PATCH'
 }
 
-// Handle Firestore error (mock)
+// Handle API error
 export function handleFirestoreError(error: any, operationType?: OperationType, collection?: string) {
-  const msg = `Firestore error [${operationType}] on ${collection || 'unknown'}`;
+  const msg = `API error [${operationType}] on ${collection || 'unknown'}`;
   console.error(msg, error);
   recordStaffSystemError({
     operation: operationType,
@@ -237,7 +234,7 @@ export function handleFirestoreError(error: any, operationType?: OperationType, 
   return error;
 }
 
-// Batch operations (simplified - just execute sequentially)
+// Batch operations — executed sequentially
 export function writeBatch(db: any) {
   const batch: any = {
     ops: [],
@@ -268,12 +265,12 @@ export function writeBatch(db: any) {
   return batch;
 }
 
-// Array union (for Firebase array operations)
+// Array union
 export function arrayUnion(...elements: any[]) {
-  return elements; // Simplified - just return the elements
+  return elements;
 }
 
-// Array remove (for Firebase array operations)
+// Array remove
 export function arrayRemove(...elements: any[]) {
   return { _remove: elements };
 }

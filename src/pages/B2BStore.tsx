@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  collection, 
-  onSnapshot, 
-  addDoc, 
+  collection,
+  onSnapshot,
+  addDoc,
   serverTimestamp,
   query,
   where,
   orderBy,
   limit,
   getCountFromServer,
-  db, 
-  auth, 
-  handleFirestoreError, 
-  OperationType 
-} from '../lib/firebase-compat';
+  db,
+  handleFirestoreError,
+  OperationType
+} from '../lib/db';
 import { 
   ChefHat, 
   Package, 
@@ -113,16 +112,17 @@ const B2BStore: React.FC = () => {
   const total = subtotal - discountAmount;
 
   const handleCheckout = async () => {
-    if (!auth.currentUser) {
+    const currentUser = JSON.parse(localStorage.getItem('bakery_user') || 'null');
+    if (!currentUser) {
       toast.error(t('b2bLoginRequired'));
       return;
     }
 
     try {
       await addDoc(collection(db, 'orders'), {
-        customerId: auth.currentUser.uid,
-        userName: auth.currentUser.displayName,
-        createdBy: auth.currentUser.displayName || 'B2B Customer',
+        customerId: currentUser.id,
+        userName: currentUser.name,
+        createdBy: currentUser.name || 'B2B Customer',
         items: cart.map(item => ({
           productId: item.id,
           name: item.name,

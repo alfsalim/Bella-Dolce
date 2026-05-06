@@ -45,7 +45,7 @@ import {
   isWithinInterval,
 } from 'date-fns';
 import { fr as dateFnsFr, arSA as dateFnsArSA } from 'date-fns/locale';
-import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/db';
 import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
 import { clsx } from 'clsx';
 import Pagination from '../components/Pagination';

@@ -11,7 +11,7 @@ import {
   onSnapshot,
   handleFirestoreError,
   OperationType,
-} from '../lib/firebase-compat';
+} from '../lib/db';
 import { readStaffSystemErrors, type SystemErrorEvent } from '../lib/systemErrorNotifications';
 import { QUERY_MAX_ITEMS } from '../constants';
 

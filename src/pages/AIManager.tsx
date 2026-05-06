@@ -18,7 +18,7 @@ import {
   MessageSquare,
   Send
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, where, orderBy, getDocs } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, query, where, orderBy, getDocs } from '../lib/db';
 import { ProductionBatch, Sale, Product, RawMaterial, Order, ActivityLog, DailyCashReconciliation } from '../types';
 import { generateDailyReport, askAiManager, ReportContext } from '../services/aiManagerService';
 import Markdown from 'react-markdown';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, addDoc, handleFirestoreError, OperationType, limit, getCountFromServer, where } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, addDoc, handleFirestoreError, OperationType, limit, getCountFromServer, where } from '../lib/db';
 import { Order, Delivery, UserProfile } from '../types';
 import { Truck, Search, MapPin, Clock, CheckCircle, User, MessageSquare, MoreVertical, Navigation, Package, Plus, LayoutGrid, LayoutList, Filter } from 'lucide-react';
 import { clsx } from 'clsx';

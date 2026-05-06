@@ -1,5 +1,3 @@
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase-auth-only';
-
 export const db = {
   // Mock db object that will be used by our compatibility layer
 };
@@ -148,4 +146,3 @@ export function onSnapshotMock(query: any, callback: (snapshot: any) => void) {
   return () => clearInterval(interval);
 }
 
-export { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged };

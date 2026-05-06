@@ -104,7 +104,7 @@ const Procurement: React.FC = () => {
       setMaterialsLoading(true);
       setMaterialsError(null);
       const token = localStorage.getItem('bakery_token');
-      const response = await authFetch('/api/db/rawMaterials', {
+      const response = await authFetch(`/api/db/rawMaterials?orderBy=${encodeURIComponent(JSON.stringify({ name: 'asc' }))}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error(await readApiErrorMessage(response));

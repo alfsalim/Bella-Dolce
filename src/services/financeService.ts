@@ -11,9 +11,8 @@ import {
   writeBatch, 
   Timestamp,
   onSnapshot,
-  db, 
-  auth
-} from '../lib/firebase-compat';
+  db
+} from '../lib/db';
 import { 
   Account, 
   JournalEntry, 
@@ -23,7 +22,7 @@ import {
   FinancialEmployee,
   UserProfile
 } from '../types';
-import { handleFirestoreError } from '../lib/firebase-compat';
+import { handleFirestoreError } from '../lib/db';
 import { format } from 'date-fns';
 
 export const financeService = {
@@ -128,7 +127,7 @@ export const financeService = {
       sourceModule: 'POS',
       sourceId: saleId,
       status: 'COMPTABILISÉ',
-      createdBy: auth.currentUser?.uid || 'system'
+      createdBy: JSON.parse(localStorage.getItem('bakery_user') || 'null')?.id || 'system'
     }, lines);
   },
 

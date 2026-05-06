@@ -10,7 +10,7 @@ import Pagination from '../../components/Pagination';
 import { authFetch, getAuthHeaders, parseJsonResponse, readApiErrorMessage } from '../../lib/api-client';
 import { toast } from 'react-hot-toast';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
-import { db, collection, onSnapshot } from '../../lib/firebase-compat';
+import { db, collection, onSnapshot } from '../../lib/db';
 import { useAuth } from '../../contexts/AuthContext';
 
 type PurchaseExpenseRow = {

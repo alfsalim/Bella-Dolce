@@ -16,7 +16,7 @@ import {
   History,
   ShoppingBag
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy, handleFirestoreError, OperationType } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy, handleFirestoreError, OperationType } from '../lib/db';
 import { Customer, Order } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';

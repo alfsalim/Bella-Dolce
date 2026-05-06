@@ -11,7 +11,7 @@ import {
   auth, 
   handleFirestoreError, 
   OperationType 
-} from '../lib/firebase-compat';
+} from '../lib/db';
 import { 
   ShoppingBag, 
   Filter, 

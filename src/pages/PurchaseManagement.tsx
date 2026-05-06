@@ -149,7 +149,7 @@ const PurchaseManagement: React.FC = () => {
   const fetchMaterials = async () => {
     try {
       const token = localStorage.getItem('bakery_token');
-      const response = await authFetch('/api/db/rawMaterials', {
+      const response = await authFetch(`/api/db/rawMaterials?orderBy=${encodeURIComponent(JSON.stringify({ name: 'asc' }))}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch materials');

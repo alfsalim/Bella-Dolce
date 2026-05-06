@@ -3,7 +3,7 @@ import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
-import { db, collection, addDoc, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/firebase-compat';
+import { db, collection, addDoc, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/db';
 import { logActivity } from '../lib/logger';
 import { ShoppingBag, User, Phone, MapPin, CreditCard, ChevronLeft, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';

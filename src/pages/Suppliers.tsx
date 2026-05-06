@@ -17,7 +17,7 @@ import {
   History,
   Info
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy } from '../lib/firebase-compat';
+import { db, collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, where, orderBy } from '../lib/db';
 import Pagination from '../components/Pagination';
 import { PAGE_SIZE } from '../constants';
 import { Supplier, RawMaterial, SupplierInvoice } from '../types';
