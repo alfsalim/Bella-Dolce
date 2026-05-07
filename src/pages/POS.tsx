@@ -37,6 +37,8 @@ const POS: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
     if (!product) return 0;
@@ -59,7 +61,8 @@ const POS: React.FC = () => {
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'products'));
+      setIsLoading(false);
+    }, (error) => { handleFirestoreError(error, OperationType.GET, 'products'); setIsLoading(false); });
 
     const unsubscribeCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
@@ -86,10 +89,12 @@ const POS: React.FC = () => {
   });
 
   const addToCart = (product: Product) => {
-    if (getShopSellableStock(product) <= 0) return;
+    const maxStock = getShopSellableStock(product);
+    if (maxStock <= 0) return;
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       if (existing) {
+        if (existing.quantity >= maxStock) return prev;
         return prev.map(item =>
           item.productId === product.id
             ? { ...item, quantity: item.quantity + 1 }
@@ -132,7 +137,7 @@ const POS: React.FC = () => {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
-
+    setIsProcessing(true);
     try {
       const token = localStorage.getItem('bakery_token');
       const res = await authFetch('/api/sale', {
@@ -154,7 +159,7 @@ const POS: React.FC = () => {
         throw new Error(err.error || 'Checkout failed');
       }
 
-      // Deduct shopStock from Firestore for each sold item
+      // Deduct shopStock for each sold item
       // stock = shopStock + freezerStock + wasteQuantity (invariant must hold)
       const saleItems = [...cart];
       for (const item of saleItems) {
@@ -169,7 +174,7 @@ const POS: React.FC = () => {
             await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
           }
         } catch (err) {
-          console.error(`Error updating Firestore stock for product ${item.productId}:`, err);
+          console.error(`Error updating stock for product ${item.productId}:`, err);
         }
       }
 
@@ -187,6 +192,8 @@ const POS: React.FC = () => {
     } catch (error: any) {
       console.error("Checkout error:", error);
       alert(error.message || 'Checkout failed. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -237,7 +244,12 @@ const POS: React.FC = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-3 no-scrollbar min-h-[400px]">
-          {filteredProducts.map((product) => (
+          {isLoading ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-600 gap-4">
+              <div className="w-10 h-10 border-4 border-primary-200 dark:border-primary-900 border-t-primary-600 dark:border-t-primary-400 rounded-full animate-spin" />
+              <p className="font-bold text-sm">{t('loading')}</p>
+            </div>
+          ) : filteredProducts.map((product) => (
             (() => {
               const activePromotion = getActiveProductPromotion(product.id, promotions);
               const effectivePrice = getEffectiveSellingPrice(product, promotions);
@@ -484,9 +496,13 @@ const POS: React.FC = () => {
 
                   <button
                     onClick={handleCheckout}
-                    className="w-full btn-primary py-5 text-xl font-bold rounded-xl active:scale-95 transition-transform"
+                    disabled={isProcessing}
+                    className="w-full btn-primary py-5 text-xl font-bold rounded-xl active:scale-95 transition-transform disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                   >
-                    {t('confirmPayment')}
+                    {isProcessing && (
+                      <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    )}
+                    {isProcessing ? t('checkoutProcessing') : t('confirmPayment')}
                   </button>
                 </div>
               </>

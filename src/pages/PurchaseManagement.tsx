@@ -18,6 +18,7 @@ import { authFetch, readApiErrorMessage } from '../lib/api-client';
 import { buildPurchasesListUrl } from '../lib/purchaseListQuery';
 import { PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
 import Pagination from '../components/Pagination';
+import Alert from '../components/Alert';
 
 interface Purchase {
   id: string;
@@ -102,6 +103,7 @@ const PurchaseManagement: React.FC = () => {
     expiryDate: ''
   });
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
 
   const getDefaultExpiryDate = () => {
     const date = new Date();
@@ -264,12 +266,12 @@ const PurchaseManagement: React.FC = () => {
 
     const material = materials.find(m => m.id === formData.materialId);
     if (!material) {
-      toast.error(t('purchaseSelectMaterial'));
+      setFormFeedback({type: 'error', message: t('purchaseSelectMaterial')});
       return;
     }
 
     if (!formData.supplierId) {
-      toast.error(t('purchaseSelectSupplier'));
+      setFormFeedback({type: 'error', message: t('purchaseSelectSupplier')});
       return;
     }
 
@@ -351,7 +353,7 @@ const PurchaseManagement: React.FC = () => {
           }
         }
 
-        toast.success(t('purchaseUpdatedSuccess'));
+        setFormFeedback({type: 'success', message: t('purchaseUpdatedSuccess')});
       } else {
         // CREATE: Add to inventory
         const supplier = suppliers.find(s => s.id === formData.supplierId);
@@ -415,7 +417,7 @@ const PurchaseManagement: React.FC = () => {
           // Don't fail the purchase creation if inventory sync fails
         }
 
-        toast.success(t('purchaseCreatedSuccess'));
+        setFormFeedback({type: 'success', message: t('purchaseCreatedSuccess')});
       }
 
       setIsModalOpen(false);
@@ -426,7 +428,7 @@ const PurchaseManagement: React.FC = () => {
       await reconcileInventoryWithProduction();
     } catch (error) {
       console.error('Error saving purchase:', error);
-      toast.error(t('purchaseSaveFailed'));
+      setFormFeedback({type: 'error', message: t('purchaseSaveFailed')});
     }
   };
 
@@ -553,6 +555,7 @@ const PurchaseManagement: React.FC = () => {
       purchaseDate: purchase.purchaseDate,
       expiryDate: purchase.expiryDate
     });
+    setFormFeedback(null);
     setIsModalOpen(true);
   };
 
@@ -598,6 +601,7 @@ const PurchaseManagement: React.FC = () => {
           onClick={() => {
             setEditingPurchase(null);
             resetForm();
+            setFormFeedback(null);
             setIsModalOpen(true);
           }}
           className="btn-primary gap-2 inline-flex"
@@ -904,6 +908,7 @@ const PurchaseManagement: React.FC = () => {
                   </div>
                 </div>
 
+                {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
                 <div className="flex justify-end gap-4 pt-6">
                   <button
                     type="button"

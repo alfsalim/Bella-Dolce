@@ -31,6 +31,7 @@ import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import { PAGE_SIZE } from '../constants';
+import Alert from '../components/Alert';
 
 const Production: React.FC = () => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
@@ -53,6 +54,7 @@ const Production: React.FC = () => {
     return (localStorage.getItem('productionViewMode') as 'list' | 'card') || 'card';
   });
   const [error, setError] = useState<string | null>(null);
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
   const [rawMaterials, setRawMaterials] = useState<any[]>([]);
   const [isDistributionModalOpen, setIsDistributionModalOpen] = useState(false);
   const [batchToComplete, setBatchToComplete] = useState<any | null>(null);
@@ -424,7 +426,7 @@ const Production: React.FC = () => {
 
     // Validate ingredients for non-cancelled batches
     if (effectiveIngredients.length === 0 && newBatch.status !== 'cancelled') {
-      toast.error(t('ingredientsRequired') || 'At least one ingredient is required to start production');
+      setError(t('ingredientsRequired') || 'At least one ingredient is required to start production');
       return;
     }
 
@@ -626,7 +628,7 @@ const Production: React.FC = () => {
           location: newBatch.location || 'shop'
         });
 
-        toast.success(t('batchUpdatedSuccessfully') || 'Batch updated successfully');
+        setFormFeedback({ type: 'success', message: t('batchUpdatedSuccessfully') || 'Batch updated successfully' });
       } else {
         const batchRef = await addDoc(collection(db, 'batches'), {
           productId: newBatch.productId,
@@ -709,7 +711,7 @@ const Production: React.FC = () => {
           }
         }
 
-        toast.success(t('batchCreatedSuccessfully') || 'Batch created successfully');
+        setFormFeedback({ type: 'success', message: t('batchCreatedSuccessfully') || 'Batch created successfully' });
       }
 
       setIsModalOpen(false);
@@ -1273,12 +1275,8 @@ const Production: React.FC = () => {
               {isEditingBatch ? t('editBatch') : t('addBatch')}
             </h2>
             <form onSubmit={handleAddBatch} className="space-y-6">
-              {error && (
-                <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400 animate-shake">
-                  <AlertCircle className="w-5 h-5 shrink-0" />
-                  <p className="text-sm font-bold">{error}</p>
-                </div>
-              )}
+              {error && <Alert type="error" message={error} onDismiss={() => setError(null)} />}
+              {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-2">{t('product')}</label>

@@ -12,6 +12,7 @@ import { clsx } from 'clsx';
 import { format, addDays } from 'date-fns';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
+import Alert from '../components/Alert';
 
 import { logActivity } from '../lib/logger';
 import { compressImage } from '../lib/utils';
@@ -37,6 +38,7 @@ const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'assets' | 'consumables' | 'aiManager' | 'data'>('general');
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -144,9 +146,9 @@ const Settings: React.FC = () => {
         body: JSON.stringify({ id: 'backup_config', ...backupConfig }),
       });
       if (!res.ok) throw new Error();
-      toast.success(t('save'));
+      setFormFeedback({ type: 'success', message: t('save') });
     } catch {
-      toast.error(t('backupFailed'));
+      setFormFeedback({ type: 'error', message: t('backupFailed') });
     }
   };
 
@@ -348,17 +350,17 @@ const Settings: React.FC = () => {
 
     // Check file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error(t('imageTooLarge') || 'Image is too large (max 5MB)');
+      setFormFeedback({ type: 'error', message: t('imageTooLarge') || 'Image is too large (max 5MB)' });
       return;
     }
 
     try {
-      // Compress image to ensure it stays under Firestore 1MB limit
+      // Compress image to reduce size
       const compressedBase64 = await compressImage(file, 1200, 800, 0.6);
       setPromoFormData({ ...promoFormData, imageUrl: compressedBase64 });
     } catch (error) {
       console.error("Error compressing image:", error);
-      toast.error(t('errorUploadingImage'));
+      setFormFeedback({ type: 'error', message: t('errorUploadingImage') });
     }
   };
 
@@ -374,12 +376,12 @@ const Settings: React.FC = () => {
       if (promoFormData.type === 'campaign') {
         const rows = promoFormData.productPrices || [];
         if (!promoFormData.name || rows.length === 0) {
-          toast.error(t('promoCampaignValidationRequired'));
+          setFormFeedback({ type: 'error', message: t('promoCampaignValidationRequired') });
           return;
         }
         const hasInvalidPrice = rows.some((row) => row.promotionPrice >= row.originalPrice);
         if (hasInvalidPrice) {
-          toast.error(t('promoCampaignValidationPrice'));
+          setFormFeedback({ type: 'error', message: t('promoCampaignValidationPrice') });
           return;
         }
         const nowIso = new Date().toISOString();
@@ -390,7 +392,7 @@ const Settings: React.FC = () => {
           return rows.some((row) => ids.has(row.productId));
         });
         if (overlapping) {
-          toast.error(t('promoCampaignValidationOverlap'));
+          setFormFeedback({ type: 'error', message: t('promoCampaignValidationOverlap') });
           return;
         }
       }
@@ -428,13 +430,13 @@ const Settings: React.FC = () => {
         await updateDoc(doc(db, 'promotions', editingPromo.id), {
           ...payload,
         });
-        toast.success(t('promoUpdated'));
+        setFormFeedback({ type: 'success', message: t('promoUpdated') });
       } else {
         await addDoc(collection(db, 'promotions'), {
           ...payload,
           createdAt: new Date().toISOString(),
         });
-        toast.success(t('promoAdded'));
+        setFormFeedback({ type: 'success', message: t('promoAdded') });
       }
       setIsPromoModalOpen(false);
       setEditingPromo(null);
@@ -451,7 +453,7 @@ const Settings: React.FC = () => {
       });
     } catch (error) {
       console.error("Error saving promotion:", error);
-      toast.error(t('errorSavingPromo'));
+      setFormFeedback({ type: 'error', message: t('errorSavingPromo') });
     }
   };
 
@@ -565,7 +567,7 @@ const Settings: React.FC = () => {
           toast.success(t('databaseCleanedSuccess').replace('{deleted}', deletedCount.toString()).replace('{updated}', updatedMaterialsCount.toString()));
         }
         
-        // Mark cleanup as performed in Firestore
+        // Mark cleanup as performed
         await setDoc(doc(db, 'system', 'database_cleanup'), {
           performed: true,
           performedAt: new Date().toISOString(),
@@ -650,10 +652,10 @@ const Settings: React.FC = () => {
       await setDoc(doc(db, 'rolePermissions', roleId), {
         allowedPaths: newPaths
       });
-      toast.success(t('settingsUpdated'));
+      setFormFeedback({ type: 'success', message: t('settingsUpdated') });
     } catch (error) {
       console.error('Error updating permissions:', error);
-      toast.error(t('permissionsUpdateFailed'));
+      setFormFeedback({ type: 'error', message: t('permissionsUpdateFailed') });
     }
   };
 
@@ -665,10 +667,10 @@ const Settings: React.FC = () => {
           allowedPaths: perm.allowedPaths
         });
       }
-      toast.success(t('permissionsInitSuccess'));
+      setFormFeedback({ type: 'success', message: t('permissionsInitSuccess') });
     } catch (error) {
       console.error('Error seeding permissions:', error);
-      toast.error(t('permissionsInitFailed'));
+      setFormFeedback({ type: 'error', message: t('permissionsInitFailed') });
     } finally {
       setIsSeeding(false);
     }
@@ -817,10 +819,10 @@ const Settings: React.FC = () => {
   const addCategoryByType = async (type: 'product' | 'rawMaterial' | 'consumable') => {
     const input = type === 'product' ? newProductCategory : type === 'rawMaterial' ? newRawMaterialCategory : newConsumableCategory;
     const normalized = normalizeCategoryName(input);
-    if (!normalized) return toast.error(t('categoryValidationEmpty'));
+    if (!normalized) { setFormFeedback({ type: 'error', message: t('categoryValidationEmpty') }); return; }
 
     const existing = itemCategoryConfig[type].map((cat) => cat.toLowerCase());
-    if (existing.includes(normalized)) return toast.error(t('categoryValidationDuplicate'));
+    if (existing.includes(normalized)) { setFormFeedback({ type: 'error', message: t('categoryValidationDuplicate') }); return; }
 
     try {
       await updateItemCategoryConfig({
@@ -830,10 +832,10 @@ const Settings: React.FC = () => {
       if (type === 'product') setNewProductCategory('');
       else if (type === 'rawMaterial') setNewRawMaterialCategory('');
       else setNewConsumableCategory('');
-      toast.success(t('categorySaved'));
+      setFormFeedback({ type: 'success', message: t('categorySaved') });
     } catch (error) {
       console.error('Error adding category:', error);
-      toast.error(t('errorAddingCategory'));
+      setFormFeedback({ type: 'error', message: t('errorAddingCategory') });
     }
   };
 
@@ -841,36 +843,36 @@ const Settings: React.FC = () => {
     const input = window.prompt(t('renameCategoryPrompt') || 'Rename category', oldValue);
     if (input == null) return;
     const normalized = normalizeCategoryName(input);
-    if (!normalized) return toast.error(t('categoryValidationEmpty'));
+    if (!normalized) { setFormFeedback({ type: 'error', message: t('categoryValidationEmpty') }); return; }
 
     const siblingList = itemCategoryConfig[type].filter((cat) => cat !== oldValue).map((cat) => cat.toLowerCase());
-    if (siblingList.includes(normalized)) return toast.error(t('categoryValidationDuplicate'));
+    if (siblingList.includes(normalized)) { setFormFeedback({ type: 'error', message: t('categoryValidationDuplicate') }); return; }
 
     try {
       await updateItemCategoryConfig({
         ...itemCategoryConfig,
         [type]: itemCategoryConfig[type].map((cat) => (cat === oldValue ? normalized : cat)),
       });
-      toast.success(t('categorySaved'));
+      setFormFeedback({ type: 'success', message: t('categorySaved') });
     } catch (error) {
       console.error('Error renaming category:', error);
-      toast.error(t('errorSavingCategory'));
+      setFormFeedback({ type: 'error', message: t('errorSavingCategory') });
     }
   };
 
   const deleteCategoryByType = async (type: 'product' | 'rawMaterial' | 'consumable', value: string) => {
     if (!window.confirm(t('confirmDelete'))) return;
-    if (itemCategoryConfig[type].length <= 1) return toast.error(t('categoryValidationKeepOne'));
+    if (itemCategoryConfig[type].length <= 1) { setFormFeedback({ type: 'error', message: t('categoryValidationKeepOne') }); return; }
 
     try {
       await updateItemCategoryConfig({
         ...itemCategoryConfig,
         [type]: itemCategoryConfig[type].filter((cat) => cat !== value),
       });
-      toast.success(t('categoryDeleted'));
+      setFormFeedback({ type: 'success', message: t('categoryDeleted') });
     } catch (error) {
       console.error('Error deleting category:', error);
-      toast.error(t('errorSavingCategory'));
+      setFormFeedback({ type: 'error', message: t('errorSavingCategory') });
     }
   };
 
@@ -889,7 +891,7 @@ const Settings: React.FC = () => {
       status: 'none',
     };
     if (!payload.name) {
-      toast.error(t('categoryValidationEmpty'));
+      setFormFeedback({ type: 'error', message: t('categoryValidationEmpty') });
       return;
     }
 
@@ -902,10 +904,10 @@ const Settings: React.FC = () => {
       setIsConsumableModalOpen(false);
       setEditingConsumable(null);
       setConsumableFormData({ name: '', category: itemCategoryConfig.consumable[0] || 'cleaning', unit: 'pcs', minStock: 0, imageUrl: '', brand: '', description: '' });
-      toast.success(t('categorySaved'));
+      setFormFeedback({ type: 'success', message: t('categorySaved') });
     } catch (error) {
       console.error('Error saving consumable', error);
-      toast.error(t('errorSavingCategory'));
+      setFormFeedback({ type: 'error', message: t('errorSavingCategory') });
     }
   };
 
@@ -913,10 +915,10 @@ const Settings: React.FC = () => {
     if (!window.confirm(t('confirmDelete'))) return;
     try {
       await updateDoc(doc(db, 'rawMaterials', id), { disabled: true } as any);
-      toast.success(t('categoryDeleted'));
+      setFormFeedback({ type: 'success', message: t('categoryDeleted') });
     } catch (error) {
       console.error('Error deleting consumable', error);
-      toast.error(t('errorSavingCategory'));
+      setFormFeedback({ type: 'error', message: t('errorSavingCategory') });
     }
   };
 
@@ -1608,13 +1610,14 @@ const Settings: React.FC = () => {
                     >
                       {t('cancel')}
                     </button>
-                    <button 
+                    <button
                       type="submit"
                       className="btn-primary flex-1"
                     >
                       {t('save')}
                     </button>
                   </div>
+                  {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
                 </form>
               </motion.div>
             </div>
@@ -1925,6 +1928,11 @@ const Settings: React.FC = () => {
               </div>
             ) : null}
           </div>
+        </div>
+      )}
+      {formFeedback && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-50">
+          <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />
         </div>
       )}
     </div>

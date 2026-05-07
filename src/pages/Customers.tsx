@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import Pagination from '../components/Pagination';
+import Alert from '../components/Alert';
 import { PAGE_SIZE } from '../constants';
 
 const Customers: React.FC = () => {
@@ -43,6 +44,7 @@ const Customers: React.FC = () => {
     address: '',
     type: 'b2c'
   });
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
@@ -85,6 +87,7 @@ const Customers: React.FC = () => {
         type: 'b2c'
       });
     }
+    setFormFeedback(null);
     setIsModalOpen(true);
   };
 
@@ -96,18 +99,18 @@ const Customers: React.FC = () => {
           ...formData,
           updatedAt: new Date().toISOString()
         });
-        toast.success(t('customerUpdated'));
+        setFormFeedback({type: 'success', message: t('customerUpdated')});
       } else {
         await addDoc(collection(db, 'customers'), {
           ...formData,
           createdAt: new Date().toISOString()
         });
-        toast.success(t('customerAdded'));
+        setFormFeedback({type: 'success', message: t('customerAdded')});
       }
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error saving customer:", error);
-      toast.error(t('customerSaveFailed'));
+      setFormFeedback({type: 'error', message: t('customerSaveFailed')});
     }
   };
 
@@ -449,15 +452,16 @@ const Customers: React.FC = () => {
                   </select>
                 </div>
 
+                {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
                 <div className="flex gap-4 pt-6">
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
                     className="flex-1 btn-secondary"
                   >
                     {t('cancel')}
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     className="flex-1 btn-primary"
                   >

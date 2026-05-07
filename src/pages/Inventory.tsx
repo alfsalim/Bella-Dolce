@@ -36,6 +36,7 @@ import { CATEGORIES, UNITS, PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
 import { compressImage } from '../lib/utils';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
+import Alert from '../components/Alert';
 
 interface InventoryProps {
   defaultTab?: 'products' | 'materials' | 'activities';
@@ -108,6 +109,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   });
   const [inventoryStockWarning, setInventoryStockWarning] = useState(false);
   const [lastBatch, setLastBatch] = useState<any>(null);
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
 
   const openInventoryModal = (item: Product | RawMaterial) => {
     const isProduct = !('currentStock' in item);
@@ -293,7 +295,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       const itemSnap = await getDoc(itemRef);
 
       if (!itemSnap.exists()) {
-        toast.error('Item not found');
+        setFormFeedback({ type: 'error', message: 'Item not found' });
         return;
       }
 
@@ -314,11 +316,11 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         const qty = adjustmentData.quantity;
 
         if (!fromLoc || fromLoc === 'none' || !toLoc || toLoc === 'none') {
-          toast.error(t('adjustSelectLocations'));
+          setFormFeedback({ type: 'error', message: t('adjustSelectLocations') });
           return;
         }
         if (fromLoc === toLoc) {
-          toast.error(t('adjustSourceDestDifferent'));
+          setFormFeedback({ type: 'error', message: t('adjustSourceDestDifferent') });
           return;
         }
 
@@ -326,13 +328,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         const sourceAvailable = fromLoc === 'shop' ? (currentData.shopStock || 0) : (currentData.freezerStock || 0);
         if (qty > sourceAvailable) {
           const locationLabel = fromLoc === 'shop' ? t('shop') : t('freezer');
-          toast.error(
-            tx('stockAdjustInsufficient', {
-              location: locationLabel,
-              available: String(sourceAvailable),
-              qty: String(qty),
-            })
-          );
+          setFormFeedback({ type: 'error', message: tx('stockAdjustInsufficient', { location: locationLabel, available: String(sourceAvailable), qty: String(qty) }) });
           return;
         }
 
@@ -371,11 +367,11 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         });
       }
 
-      toast.success(t('stockAdjustedSuccessfully') || 'Stock adjusted successfully');
+      setFormFeedback({ type: 'success', message: t('stockAdjustedSuccessfully') || 'Stock adjusted successfully' });
       setIsAdjustmentModalOpen(false);
     } catch (error) {
       console.error('Error adjusting stock:', error);
-      toast.error(t('errorAdjustingStock') || 'Error adjusting stock');
+      setFormFeedback({ type: 'error', message: t('errorAdjustingStock') || 'Error adjusting stock' });
     }
   };
 
@@ -563,7 +559,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   const handlePurchaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMaterialForPurchase || !purchaseFormData.supplierId) {
-      toast.error(t('requiredFieldsMissing') || 'Please fill all required fields');
+      setFormFeedback({ type: 'error', message: t('requiredFieldsMissing') || 'Please fill all required fields' });
       return;
     }
 
@@ -627,12 +623,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         });
       }
 
-      toast.success(t('purchaseCreatedSuccessfully') || 'Purchase created and inventory updated');
+      setFormFeedback({ type: 'success', message: t('purchaseCreatedSuccessfully') || 'Purchase created and inventory updated' });
       setIsPurchaseModalOpen(false);
       setSelectedMaterialForPurchase(null);
     } catch (error) {
       console.error('Error creating purchase:', error);
-      toast.error(t('errorCreatingPurchase') || 'Error creating purchase');
+      setFormFeedback({ type: 'error', message: t('errorCreatingPurchase') || 'Error creating purchase' });
     }
   };
 
@@ -752,7 +748,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
     const materialExists = materials.some(m => m.name.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedNewName && m.id !== selectedProduct?.id);
 
     if (productExists || materialExists) {
-      toast.error(t('nameExists') || 'Name already exists in products or materials');
+      setFormFeedback({ type: 'error', message: t('nameExists') || 'Name already exists in products or materials' });
       return;
     }
 
@@ -769,15 +765,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           const newFrozen = Number(formData.freezerStock);
           const newTotal = newShop + newFrozen + existingWaste;
           if (newTotal !== originalStock) {
-            toast.error(
-              tx('stockTotalMismatchDetail', {
-                total: String(originalStock),
-                shop: String(newShop),
-                frozen: String(newFrozen),
-                waste: String(existingWaste),
-                current: String(newTotal),
-              })
-            );
+            setFormFeedback({ type: 'error', message: tx('stockTotalMismatchDetail', { total: String(originalStock), shop: String(newShop), frozen: String(newFrozen), waste: String(existingWaste), current: String(newTotal) }) });
             return;
           }
         }
@@ -903,7 +891,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
           }
         }
 
-        toast.success(t('itemUpdated') || 'Item updated successfully');
+        setFormFeedback({ type: 'success', message: t('itemUpdated') || 'Item updated successfully' });
       } else {
         // Handle Add
         if (activeTab === 'products') {
@@ -996,7 +984,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
             }
           }
         }
-        toast.success(t('itemAdded') || 'Item added successfully');
+        setFormFeedback({ type: 'success', message: t('itemAdded') || 'Item added successfully' });
       }
       setIsModalOpen(false);
       setSelectedProduct(null);
@@ -1016,7 +1004,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       });
     } catch (error) {
       console.error('Error saving inventory item:', error);
-      toast.error(t('errorSavingItem') || 'Error saving item');
+      setFormFeedback({ type: 'error', message: t('errorSavingItem') || 'Error saving item' });
     }
   };
 
@@ -2220,15 +2208,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             const newWasteVal = newWaste || 0;
                             updatedStock = newShop + newFrozen + newWasteVal;
                             if (updatedStock !== originalStock) {
-                              toast.error(
-                                tx('stockTotalMismatchDetail', {
-                                  total: String(originalStock),
-                                  shop: String(newShop),
-                                  frozen: String(newFrozen),
-                                  waste: String(newWasteVal),
-                                  current: String(updatedStock),
-                                })
-                              );
+                              setFormFeedback({ type: 'error', message: tx('stockTotalMismatchDetail', { total: String(originalStock), shop: String(newShop), frozen: String(newFrozen), waste: String(newWasteVal), current: String(updatedStock) }) });
                               return;
                             }
                           } else {
@@ -2338,12 +2318,12 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                             }, { merge: true });
                           }
 
-                          toast.success(t('productUpdatedSuccessfully') || 'Product updated successfully');
+                          setFormFeedback({ type: 'success', message: t('productUpdatedSuccessfully') || 'Product updated successfully' });
                           setIsEditingDetails(false);
                           setSelectedProduct({...selectedProduct, ...finalData});
                         } catch (error) {
                           console.error('Error updating product:', error);
-                          toast.error(t('errorUpdatingProduct') || 'Error updating product');
+                          setFormFeedback({ type: 'error', message: t('errorUpdatingProduct') || 'Error updating product' });
                         }
                       }}
                       className="flex-1 btn-primary justify-center gap-2 dark:bg-primary-600 dark:hover:bg-primary-700"
@@ -2553,6 +2533,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                 </div>
               </div>
 
+              {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setIsAdjustmentModalOpen(false)} className="flex-1 btn-secondary justify-center dark:bg-zinc-800 dark:border-white/10 dark:text-slate-300">{t('cancel')}</button>
                 <button type="submit" className="flex-1 btn-primary justify-center dark:bg-primary-600 dark:hover:bg-primary-700">{t('confirm')}</button>
@@ -2666,6 +2647,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   {t('purchase')} & {t('sync')}
                 </button>
               </div>
+              {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
             </form>
           </div>
         </div>
@@ -2866,15 +2848,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                       const computedStock = inventoryFormData.shopStock + inventoryFormData.freezerStock + inventoryFormData.wasteQuantity;
                       const originalStockAtSave = (selectedItemForInventory as any).stock || 0;
                       if (!isMaterial && Math.abs(computedStock - originalStockAtSave) > 0.001) {
-                        toast.error(
-                          tx('stockTotalMismatchSave', {
-                            total: String(originalStockAtSave),
-                            shop: String(inventoryFormData.shopStock),
-                            frozen: String(inventoryFormData.freezerStock),
-                            waste: String(inventoryFormData.wasteQuantity),
-                            current: String(computedStock),
-                          })
-                        );
+                        setFormFeedback({ type: 'error', message: tx('stockTotalMismatchSave', { total: String(originalStockAtSave), shop: String(inventoryFormData.shopStock), frozen: String(inventoryFormData.freezerStock), waste: String(inventoryFormData.wasteQuantity), current: String(computedStock) }) });
                         return;
                       }
                       const updateData = isMaterial
@@ -2920,11 +2894,11 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                         });
                       }
 
-                      toast.success(t('updatedSuccessfully') || 'Updated successfully');
+                      setFormFeedback({ type: 'success', message: t('updatedSuccessfully') || 'Updated successfully' });
                       setIsInventoryModalOpen(false);
                     } catch (error) {
                       console.error('Error updating inventory:', error);
-                      toast.error(t('errorUpdating') || 'Error updating');
+                      setFormFeedback({ type: 'error', message: t('errorUpdating') || 'Error updating' });
                     }
                   }}
                   className="flex-1 btn-primary justify-center dark:bg-primary-600 dark:hover:bg-primary-700"
@@ -2932,6 +2906,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
                   {t('save')}
                 </button>
               </div>
+              {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
             </div>
           </div>
         </div>

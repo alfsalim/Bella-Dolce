@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, limit, getCountFromServer, getDoc } from '../lib/db';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, getDoc } from '../lib/db';
 import { Product, RawMaterial, RecipeIngredient, ProductionBatch, Order, Promotion } from '../types';
 import { Plus, Search, Edit2, Trash2, Package, Info, List, Image as ImageIcon, Percent, Scale, Hash, Filter, RotateCcw, ChevronRight, X } from 'lucide-react';
 import { logActivity } from '../lib/logger';
@@ -10,6 +10,7 @@ import { compressImage } from '../lib/utils';
 import { PAGE_SIZE } from '../constants';
 import { toast } from 'react-hot-toast';
 import Pagination from '../components/Pagination';
+import Alert from '../components/Alert';
 import { ItemCategoryConfig, getDefaultItemCategoryConfig, sanitizeItemCategoryConfig } from '../lib/itemCategories';
 import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 
@@ -18,7 +19,7 @@ const ProductManagement: React.FC = () => {
   const { profile: currentUserProfile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
-  const [materials, setMaterials] = useState<RawMaterial[]>([]);
+  const [allMaterials, setAllMaterials] = useState<RawMaterial[]>([]);
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,6 +41,10 @@ const ProductManagement: React.FC = () => {
   const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
   const kitchenCategoryKey = itemCategoryConfig.rawMaterial.join('|');
   const kitchenCategorySet = useMemo(() => new Set(itemCategoryConfig.rawMaterial), [kitchenCategoryKey]);
+  const materials = useMemo(
+    () => allMaterials.filter((m) => kitchenCategorySet.has((m.category || '').toLowerCase())),
+    [allMaterials, kitchenCategoryKey]
+  );
   const [selectedProductForDetails, setSelectedProductForDetails] = useState<Product | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'products' | 'materials'>('products');
@@ -47,8 +52,7 @@ const ProductManagement: React.FC = () => {
 
   const [productsPage, setProductsPage] = useState(1);
   const [materialsPage, setMaterialsPage] = useState(1);
-  const [totalProductsPages, setTotalProductsPages] = useState(1);
-  const [totalMaterialsPages, setTotalMaterialsPages] = useState(1);
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
 
 
   const [formData, setFormData] = useState<Partial<Product>>({
@@ -72,7 +76,7 @@ const ProductManagement: React.FC = () => {
 
   const buildRawMaterialPayload = (data: any) => ({
     name: data.name || '',
-    category: data.category || 'cooking',
+    category: data.category || 'kitchen',
     unit: data.unit || 'kg',
     imageUrl: data.imageUrl || '',
     brand: data.brand || null,
@@ -87,46 +91,35 @@ const ProductManagement: React.FC = () => {
     if (file) {
       // Check file size (5MB limit)
       if (file.size > 5 * 1024 * 1024) {
-        toast.error(t('imageTooLarge') || 'Image is too large (max 5MB)');
+        setFormFeedback({ type: 'error', message: t('imageTooLarge') || 'Image is too large (max 5MB)' });
         return;
       }
       try {
-        // Compress image to ensure it stays under Firestore 1MB limit
+        // Compress image to reduce size
         const base64 = await compressImage(file, 800, 800, 0.6);
         setFormData({ ...formData, imageUrl: base64 });
       } catch (error) {
         console.error("Error uploading image:", error);
-        toast.error(t('errorUploadingImage') || 'Error uploading image');
+        setFormFeedback({ type: 'error', message: t('errorUploadingImage') || 'Error uploading image' });
       }
     }
   };
 
   useEffect(() => {
-    const fetchCounts = async () => {
-      const productsSnapshot = await getCountFromServer(collection(db, 'products'));
-      const materialsSnapshot = await getCountFromServer(collection(db, 'rawMaterials'));
-      setTotalProductsPages(Math.ceil(productsSnapshot.data().count / PAGE_SIZE));
-      setTotalMaterialsPages(Math.ceil(materialsSnapshot.data().count / PAGE_SIZE));
-    };
-    fetchCounts();
-
     const pq = query(
-      collection(db, 'products'), 
-      orderBy('name'), 
-      limit(PAGE_SIZE * productsPage)
+      collection(db, 'products'),
+      orderBy('name')
     );
     const unsubscribeProducts = onSnapshot(pq, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'products'));
 
     const mq = query(
-      collection(db, 'rawMaterials'), 
-      orderBy('name'), 
-      limit(PAGE_SIZE * materialsPage)
+      collection(db, 'rawMaterials'),
+      orderBy('name')
     );
     const unsubscribeMaterials = onSnapshot(mq, (snapshot) => {
-      const rows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial));
-      setMaterials(rows.filter((m) => kitchenCategorySet.has((m.category || '').toLowerCase())));
+      setAllMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'rawMaterials'));
 
     const unsubscribePromotions = onSnapshot(collection(db, 'promotions'), (snapshot) => {
@@ -173,7 +166,7 @@ const ProductManagement: React.FC = () => {
       oUnsubscribe();
       itemCategoriesUnsubscribe();
     };
-  }, [currentUserProfile, PAGE_SIZE, productsPage, materialsPage, kitchenCategoryKey]);
+  }, [currentUserProfile]);
 
   const isProductDeletable = (productId: string) => {
     const activeBatches = batches.filter(b => 
@@ -265,13 +258,13 @@ const ProductManagement: React.FC = () => {
     
     // Check for unique name (case-insensitive and trimmed)
     const normalizedNewName = formData.name?.trim().toLowerCase().replace(/\s+/g, ' ');
-    const nameExists = (activeTab === 'products' ? products : materials).some(p => 
+    const nameExists = (activeTab === 'products' ? products : allMaterials).some(p =>
       p.name.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedNewName && 
       p.id !== (editingProduct?.id || editingMaterial?.id)
     );
 
     if (nameExists) {
-      toast.error(t('itemNameExists') || 'Item name already exists');
+      setFormFeedback({type: 'error', message: t('itemNameExists') || 'Item name already exists'});
       return;
     }
 
@@ -354,7 +347,7 @@ const ProductManagement: React.FC = () => {
       });
     } catch (error) {
       console.error("Error saving item:", error);
-      toast.error(t('errorSavingItem') || 'Error saving item');
+      setFormFeedback({type: 'error', message: t('errorSavingItem') || 'Error saving item'});
     }
   };
 
@@ -478,6 +471,7 @@ const ProductManagement: React.FC = () => {
             onClick={() => {
               setEditingProduct(null);
               setEditingMaterial(null);
+              setFormFeedback(null);
               setFormData({
                 name: '',
                 category: activeTab === 'materials' ? (itemCategoryConfig.rawMaterial[0] || '') : (itemCategoryConfig.product[0] || ''),
@@ -653,6 +647,7 @@ const ProductManagement: React.FC = () => {
                                   itemType: 'material'
                                 } as any);
                               }
+                              setFormFeedback(null);
                               setIsModalOpen(true);
                             }}
                             className="p-2 bg-white/90 dark:bg-black/90 backdrop-blur-sm rounded-lg text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 shadow-lg"
@@ -761,6 +756,7 @@ const ProductManagement: React.FC = () => {
                             onClick={() => {
                               setEditingProduct(product);
                               setFormData(product!);
+                              setFormFeedback(null);
                               setIsModalOpen(true);
                             }}
                             className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-bold text-xs flex items-center gap-1 group/btn"
@@ -913,6 +909,7 @@ const ProductManagement: React.FC = () => {
                                       itemType: 'material'
                                     } as any);
                                   }
+                                  setFormFeedback(null);
                                   setIsModalOpen(true);
                                 }}
                                 className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
@@ -1271,15 +1268,16 @@ const ProductManagement: React.FC = () => {
                 </div>
               )}
 
+              {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
               <div className="flex gap-4 pt-4 sticky bottom-0 bg-white dark:bg-[#0a0a0a]">
-                <button 
+                <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
                   className="btn-secondary flex-1"
                 >
                   {t('cancel')}
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="btn-primary flex-1"
                 >
@@ -1385,6 +1383,7 @@ const ProductManagement: React.FC = () => {
                   onClick={() => {
                     setEditingProduct(selectedProductForDetails);
                     setFormData(selectedProductForDetails);
+                    setFormFeedback(null);
                     setIsDetailsModalOpen(false);
                     setIsModalOpen(true);
                   }}

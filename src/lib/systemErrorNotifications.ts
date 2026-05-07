@@ -29,7 +29,7 @@ function pushEvent(evt: SystemErrorEvent) {
   }
 }
 
-/** Record a backend / Firestore failure for the staff notification bell. Rate-limits identical bursts. */
+/** Record a backend failure for the staff notification bell. Rate-limits identical bursts. */
 export function recordStaffSystemError(detail: {
   collection?: string;
   operation?: string;

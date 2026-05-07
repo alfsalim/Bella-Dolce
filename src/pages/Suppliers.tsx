@@ -24,6 +24,7 @@ import { Supplier, RawMaterial, SupplierInvoice } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
+import Alert from '../components/Alert';
 
 const Suppliers: React.FC = () => {
   const { t, isRTL, formatCurrency } = useLanguage();
@@ -46,6 +47,7 @@ const Suppliers: React.FC = () => {
     address: '',
     materials: []
   });
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
 
   useEffect(() => {
     const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
@@ -97,6 +99,7 @@ const Suppliers: React.FC = () => {
         materials: []
       });
     }
+    setFormFeedback(null);
     setIsModalOpen(true);
   };
 
@@ -108,18 +111,18 @@ const Suppliers: React.FC = () => {
           ...formData,
           updatedAt: new Date().toISOString()
         });
-        toast.success(t('supplierUpdated'));
+        setFormFeedback({ type: 'success', message: t('supplierUpdated') });
       } else {
         await addDoc(collection(db, 'suppliers'), {
           ...formData,
           createdAt: new Date().toISOString()
         });
-        toast.success(t('supplierAdded'));
+        setFormFeedback({ type: 'success', message: t('supplierAdded') });
       }
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error saving supplier:", error);
-      toast.error(t('supplierSaveFailed'));
+      setFormFeedback({ type: 'error', message: t('supplierSaveFailed') });
     }
   };
 
@@ -524,13 +527,14 @@ const Suppliers: React.FC = () => {
                   >
                     {t('cancel')}
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     className="btn-primary px-8"
                   >
                     {t('save')}
                   </button>
                 </div>
+                {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
               </form>
             </motion.div>
           </div>

@@ -165,7 +165,7 @@ const ProductEdit: React.FC = () => {
         return;
       }
       try {
-        // Compress image to ensure it stays under Firestore 1MB limit
+        // Compress image to reduce size
         const base64 = await compressImage(file, 800, 800, 0.6);
         setProduct({ ...product, imageUrl: base64 });
       } catch (error) {

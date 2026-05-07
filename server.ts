@@ -1,5 +1,6 @@
 import "dotenv/config";
 import config from './app.config';
+import Redis from 'ioredis';
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -880,6 +881,50 @@ async function runGlobalSearch(userRole: string, q: string): Promise<SearchHitDt
   return hits;
 }
 
+// Redis client — shared cross-user cache for read-heavy collections
+// retryStrategy: null disables automatic reconnection so dev runs without Redis stay clean
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  lazyConnect: true,
+  enableOfflineQueue: false,
+  retryStrategy: () => null,
+});
+redis.on('error', () => {}); // suppress unhandled error events when Redis is unavailable
+redis.connect().catch(() => {}); // graceful: app works without Redis
+
+const CACHED_COLLECTIONS = new Set([
+  'products', 'rawMaterials', 'promotions', 'recipes',
+  'suppliers', 'customers', 'settings',
+]);
+const CACHE_TTL_SECONDS = 3600;
+// These collections trigger rawMaterials invalidation as a side-effect (stock changes)
+const INVALIDATES_RAW_MATERIALS = new Set(['purchases', 'batches']);
+
+function buildCacheKey(collection: string, params: object): string {
+  const sorted = Object.keys(params).sort().reduce((acc, k) => {
+    (acc as any)[k] = (params as any)[k];
+    return acc;
+  }, {} as object);
+  return `bella:${collection}:${JSON.stringify(sorted)}`;
+}
+async function cacheGet(key: string): Promise<any[] | null> {
+  try { const v = await redis.get(key); return v ? JSON.parse(v) : null; }
+  catch { return null; }
+}
+async function cacheSet(key: string, data: any[]): Promise<void> {
+  try { await redis.set(key, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS); }
+  catch {}
+}
+async function cacheInvalidate(collection: string): Promise<void> {
+  try {
+    let cursor = '0';
+    do {
+      const [next, keys] = await redis.scan(cursor, 'MATCH', `bella:${collection}:*`, 'COUNT', 100);
+      cursor = next;
+      if (keys.length) await redis.del(...(keys as string[]));
+    } while (cursor !== '0');
+  } catch {}
+}
+
 // In-memory cache for role → allowedPaths (avoids a DB hit on every API call)
 const _permCache = new Map<string, { paths: string[]; at: number }>();
 const PERM_CACHE_TTL = 60_000; // 1 minute
@@ -1428,6 +1473,14 @@ async function startServer() {
         if (!Number.isNaN(n) && n >= 0) skipN = n;
       }
 
+      const cacheKey = CACHED_COLLECTIONS.has(collection)
+        ? buildCacheKey(collection, { where: parsedWhere, orderBy, take: takeLimit, skip: skipN })
+        : null;
+      if (cacheKey) {
+        const hit = await cacheGet(cacheKey);
+        if (hit) return res.json(hit);
+      }
+
       const rawData = await model.findMany({
         where: parsedWhere as object | undefined,
         orderBy: orderBy ? JSON.parse(orderBy as string) : undefined,
@@ -1462,6 +1515,7 @@ async function startServer() {
         : collection === 'promotions'
           ? data.map((r: any) => hydratePromotionFromStored(r))
           : data;
+      if (cacheKey) await cacheSet(cacheKey, finalData);
       res.json(finalData);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -1613,6 +1667,11 @@ async function startServer() {
           : await model.create({ data: dataToSave });
       const result = unwrapDataIfNeeded(collection, data);
 
+      // Invalidate cache for affected collections
+      if (CACHED_COLLECTIONS.has(collection)) await cacheInvalidate(collection);
+      if (INVALIDATES_RAW_MATERIALS.has(collection)) await cacheInvalidate('rawMaterials');
+      if (collection === 'batches') await cacheInvalidate('products');
+
       // For purchases, return original data merged with saved data
       if (collection === 'purchases') {
         res.json({ ...originalData, ...result, id: result.id });
@@ -1746,6 +1805,11 @@ async function startServer() {
       // Bust the permissions cache when an admin updates a rolePermission row
       if (collection === 'rolePermissions') invalidatePermissionsCache(id);
 
+      // Invalidate cache for affected collections
+      if (CACHED_COLLECTIONS.has(collection)) await cacheInvalidate(collection);
+      if (INVALIDATES_RAW_MATERIALS.has(collection)) await cacheInvalidate('rawMaterials');
+      if (collection === 'batches') await cacheInvalidate('products');
+
       // For purchases, return original data merged with saved data
       if (collection === 'purchases') {
         res.json({ ...originalData, ...result, id: result.id });
@@ -1808,6 +1872,7 @@ async function startServer() {
             data: { currentStock: next, stock: nextStock } as Prisma.RawMaterialUncheckedUpdateInput,
           });
         });
+        await cacheInvalidate('rawMaterials');
         return res.json({ success: true });
       }
 
@@ -1815,6 +1880,9 @@ async function startServer() {
       if (!model) return res.status(404).json({ error: `Collection ${collection} not found` });
 
       await model.delete({ where: { id } });
+      if (CACHED_COLLECTIONS.has(collection)) await cacheInvalidate(collection);
+      if (INVALIDATES_RAW_MATERIALS.has(collection)) await cacheInvalidate('rawMaterials');
+      if (collection === 'batches') await cacheInvalidate('products');
       res.json({ success: true });
     } catch (error) {
       const msg = (error as Error).message;

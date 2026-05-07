@@ -21,6 +21,7 @@ import { authFetch, readApiErrorMessage } from '../lib/api-client';
 import { buildPurchasesListUrl } from '../lib/purchaseListQuery';
 import { PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
 import Pagination from '../components/Pagination';
+import Alert from '../components/Alert';
 
 interface Purchase {
   id: string;
@@ -69,6 +70,7 @@ const Procurement: React.FC = () => {
   const [sortCol, setSortCol] = useState<'date' | 'supplier' | 'total'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
   /** `all` = no date filter (still limited to QUERY_MAX_ITEMS on the server). */
   const [purchaseTimeScope, setPurchaseTimeScope] = useState<number | 'all'>('all');
   const firstPurchasesLoad = useRef(true);
@@ -241,12 +243,12 @@ const Procurement: React.FC = () => {
 
     const material = materials.find(m => m.id === formData.materialId);
     if (!material) {
-      toast.error(t('purchaseSelectMaterial'));
+      setFormFeedback({type: 'error', message: t('purchaseSelectMaterial')});
       return;
     }
 
     if (!formData.supplierId) {
-      toast.error(t('purchaseSelectSupplier'));
+      setFormFeedback({type: 'error', message: t('purchaseSelectSupplier')});
       return;
     }
 
@@ -316,7 +318,7 @@ const Procurement: React.FC = () => {
           }
         }
 
-        toast.success(t('purchaseUpdatedSuccess'));
+        setFormFeedback({type: 'success', message: t('purchaseUpdatedSuccess')});
       } else {
         const supplier = suppliers.find(s => s.id === formData.supplierId);
         const purchaseData = {
@@ -347,7 +349,7 @@ const Procurement: React.FC = () => {
           console.error('Inventory sync warning:', invError);
         }
 
-        toast.success(t('purchaseCreatedSuccess'));
+        setFormFeedback({type: 'success', message: t('purchaseCreatedSuccess')});
       }
 
       setIsModalOpen(false);
@@ -357,7 +359,7 @@ const Procurement: React.FC = () => {
       void fetchPurchases();
     } catch (error) {
       console.error('Error saving purchase:', error);
-      toast.error(t('purchaseSaveFailed'));
+      setFormFeedback({type: 'error', message: t('purchaseSaveFailed')});
     }
   };
 
@@ -424,6 +426,7 @@ const Procurement: React.FC = () => {
       purchaseDate: purchase.purchaseDate,
       expiryDate: purchase.expiryDate
     });
+    setFormFeedback(null);
     setIsModalOpen(true);
   };
 
@@ -559,6 +562,7 @@ const Procurement: React.FC = () => {
                 onClick={() => {
                   setEditingPurchase(null);
                   resetForm();
+                  setFormFeedback(null);
                   setIsModalOpen(true);
                 }}
                 className="btn-primary gap-2 inline-flex"
@@ -877,6 +881,7 @@ const Procurement: React.FC = () => {
                   </div>
                 </div>
 
+                {formFeedback && <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />}
                 <div className="flex justify-end gap-4 pt-6">
                   <button
                     type="button"
@@ -885,6 +890,7 @@ const Procurement: React.FC = () => {
                       setEditingPurchase(null);
                       setPdfFile(null);
                       resetForm();
+                      setFormFeedback(null);
                     }}
                     className="btn-secondary"
                   >
