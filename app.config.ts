@@ -8,7 +8,7 @@ const config = {
 
   // ── App ────────────────────────────────────────────────────
   APP_NAME:    "Bella Dolce",
-  APP_VERSION: "1.4.0",
+  APP_VERSION: "1.4.1",
 
   // ── Display ────────────────────────────────────────────────
   CURRENCY:  "DA",
