@@ -157,8 +157,8 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
       )}
       <div role="region" aria-label="receipt" className="flex-1 overflow-y-auto max-h-64 p-4">
         <div className="text-center mb-4">
-          <h2 className="font-bold text-lg">{storeName}</h2>
-          <p className="text-sm">{storeAddress}</p>
+          <h2 className="font-bold text-lg">{t('storeName') || storeName}</h2>
+          <p className="text-sm">{t('storeAddress') || storeAddress}</p>
         </div>
 
         <div className="text-center mb-4 text-xs">
