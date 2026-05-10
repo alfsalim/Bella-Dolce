@@ -1967,6 +1967,9 @@ async function startServer() {
       const prisma = getPrisma();
       const { date, cashierId, limit = 500, sort = 'desc' } = req.query;
 
+      const userRole: string = (req.user?.role ?? '').trim();
+      const canSeeAll = userRole === 'admin' || userRole === 'manager';
+
       const where: any = {};
 
       if (date) {
@@ -1981,7 +1984,10 @@ async function startServer() {
         };
       }
 
-      if (cashierId) {
+      // Non-admin/manager roles can only see their own sales
+      if (!canSeeAll) {
+        where.cashierId = req.user.id;
+      } else if (cashierId) {
         where.cashierId = cashierId;
       }
 
