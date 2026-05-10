@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  Search, 
-  ShoppingCart, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  CreditCard, 
-  Banknote, 
-  Smartphone,
+import {
+  Search,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
+  CreditCard,
+  Banknote,
   CheckCircle2,
   X,
   User
@@ -24,7 +23,7 @@ import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/prom
 import { logActivity } from '../lib/logger';
 
 const POS: React.FC = () => {
-  const { t, isRTL, tProduct, tCategory, currencyUnit } = useLanguage();
+  const { t, isRTL, tProduct, tCategory, currencyUnit, formatCurrency } = useLanguage();
   const { profile } = useAuth();
   
   const [products, setProducts] = useState<Product[]>([]);
@@ -34,11 +33,12 @@ const POS: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [amountPaid, setAmountPaid] = useState<string>('');
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
     if (!product) return 0;
@@ -134,6 +134,9 @@ const POS: React.FC = () => {
   };
 
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+  const amountPaidNum = parseFloat(amountPaid) || 0;
+  const isCheckoutDisabled = paymentMethod === 'cash' && amountPaidNum < total;
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
@@ -243,7 +246,7 @@ const POS: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-3 no-scrollbar min-h-[400px]">
+        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-2 no-scrollbar min-h-0">
           {isLoading ? (
             <div className="col-span-full flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-600 gap-4">
               <div className="w-10 h-10 border-4 border-primary-200 dark:border-primary-900 border-t-primary-600 dark:border-t-primary-400 rounded-full animate-spin" />
@@ -258,9 +261,9 @@ const POS: React.FC = () => {
               key={product.id}
               onClick={() => addToCart(product)}
               disabled={getShopSellableStock(product) <= 0}
-              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col h-full min-h-[320px] disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col h-full min-h-0 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
-                <div className="h-48 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
+                <div className="h-28 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
                   <img
                     src={product.imageUrl || `https://picsum.photos/seed/${product.name}/300/200`}
                     alt={product.name}
@@ -275,7 +278,7 @@ const POS: React.FC = () => {
                     <Plus className="text-white opacity-0 group-hover:opacity-100 w-8 h-8 drop-shadow-lg" />
                   </div>
                 </div>
-              <div className="p-4 flex flex-col flex-1 justify-between">
+              <div className="p-3 flex flex-col flex-1 justify-between">
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-base mb-2 line-clamp-2" title={tProduct(product)}>{tProduct(product)}</h3>
                   <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
@@ -427,8 +430,11 @@ const POS: React.FC = () => {
               </div>
             ) : (
               <>
-                <button 
-                  onClick={() => setIsCheckoutOpen(false)}
+                <button
+                  onClick={() => {
+                    setIsCheckoutOpen(false);
+                    setAmountPaid('');
+                  }}
                   className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
                 >
                   <X className="w-6 h-6" />
@@ -455,7 +461,10 @@ const POS: React.FC = () => {
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4">{t('paymentMethod')}</label>
                     <div className="grid grid-cols-3 gap-3">
                       <button
-                        onClick={() => setPaymentMethod('cash')}
+                        onClick={() => {
+                          setPaymentMethod('cash');
+                          setAmountPaid('');
+                        }}
                         className={clsx(
                           "flex flex-col items-center gap-2 p-5 rounded-xl border-2 transition-all active:scale-95",
                           paymentMethod === 'cash' ? "border-primary-600 bg-primary-600 text-white" : "border-slate-200 dark:border-[#2a1e17] hover:border-slate-300 dark:hover:border-[#3d2b1f] text-slate-700 dark:text-slate-400"
@@ -465,7 +474,10 @@ const POS: React.FC = () => {
                         <span className="text-sm font-bold">{t('cash')}</span>
                       </button>
                       <button
-                        onClick={() => setPaymentMethod('card')}
+                        onClick={() => {
+                          setPaymentMethod('card');
+                          setAmountPaid('');
+                        }}
                         className={clsx(
                           "flex flex-col items-center gap-2 p-5 rounded-xl border-2 transition-all active:scale-95",
                           paymentMethod === 'card' ? "border-primary-600 bg-primary-600 text-white" : "border-slate-200 dark:border-[#2a1e17] hover:border-slate-300 dark:hover:border-[#3d2b1f] text-slate-700 dark:text-slate-400"
@@ -474,18 +486,39 @@ const POS: React.FC = () => {
                         <CreditCard className="w-8 h-8" />
                         <span className="text-sm font-bold">{t('card')}</span>
                       </button>
-                      <button
-                        onClick={() => setPaymentMethod('mobile')}
-                        className={clsx(
-                          "flex flex-col items-center gap-2 p-5 rounded-xl border-2 transition-all active:scale-95",
-                          paymentMethod === 'mobile' ? "border-primary-600 bg-primary-600 text-white" : "border-slate-200 dark:border-[#2a1e17] hover:border-slate-300 dark:hover:border-[#3d2b1f] text-slate-700 dark:text-slate-400"
-                        )}
-                      >
-                        <Smartphone className="w-8 h-8" />
-                        <span className="text-sm font-bold">{t('mobile')}</span>
-                      </button>
                     </div>
                   </div>
+
+                  {paymentMethod === 'cash' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-3">{t('amountPaid')}</label>
+                        <input
+                          autoFocus
+                          type="number"
+                          inputMode="decimal"
+                          placeholder={total.toString()}
+                          value={amountPaid}
+                          onChange={(e) => setAmountPaid(e.target.value)}
+                          className="input w-full bg-white dark:bg-black border-slate-200 dark:border-[#2a1e17]"
+                        />
+                      </div>
+
+                      {amountPaid && (
+                        <div className={clsx(
+                          "p-4 rounded-xl font-bold text-center",
+                          amountPaidNum >= total
+                            ? "bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
+                            : "bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400"
+                        )}>
+                          {amountPaidNum >= total
+                            ? `${t('changeDue')}: ${formatCurrency(amountPaidNum - total)}`
+                            : `${t('shortBy')}: ${formatCurrency(total - amountPaidNum)}`
+                          }
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="p-4 bg-slate-50 dark:bg-[#1a1512] rounded-2xl">
                     <div className="flex justify-between items-center">
@@ -496,7 +529,7 @@ const POS: React.FC = () => {
 
                   <button
                     onClick={handleCheckout}
-                    disabled={isProcessing}
+                    disabled={isProcessing || isCheckoutDisabled}
                     className="w-full btn-primary py-5 text-xl font-bold rounded-xl active:scale-95 transition-transform disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                   >
                     {isProcessing && (

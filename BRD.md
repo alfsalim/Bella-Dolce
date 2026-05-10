@@ -117,6 +117,282 @@ The objective of this application is to replace manual processes with a digital 
 *   **Accessibility:** High-contrast design and clear typography for readability in various lighting conditions.
 *   **Reliability:** Real-time data synchronization to ensure all staff are working with the latest information.
 
+
+## 7.1. receipe printing
+
+Define the business requirements for printing sales receipts from the Boulangerie Bella-Dolce web application to a thermal receipt printer at the cashier point of sale.
+
+---
+
+## 2. Business Context
+
+Boulangerie Bella-Dolce is a bakery located in Sidi-Abdellah, Alger. The business requires printed receipts for every customer transaction to:
+- Provide customers with proof of purchase
+- Support daily cash reconciliation
+- Maintain transaction traceability
+
+---
+
+## 3. Scope
+
+### 3.1 In Scope
+- Receipt printing triggered from the web application
+- Single thermal printer at the cashier station
+- Cash and POS (card terminal) payment methods
+- Bilingual support (French and Arabic)
+- Receipt reprinting from transaction history
+
+### 3.2 Out of Scope
+- Barcode printing
+- Loyalty points (Fidélité)
+- Multiple printer support
+- Kitchen order printing
+
+---
+
+## 4. Stakeholders
+
+| Role | Responsibility |
+|------|---------------|
+| Cashier | Operates the POS, triggers payment and receipt printing |
+| Store Manager | Configures receipt settings, accesses transaction history |
+| Customer | Receives printed receipt |
+
+---
+
+## 5. Functional Requirements
+
+### FR-01: Print Trigger
+The system shall print a receipt automatically when the cashier clicks "Confirm Payment" in the payment popup.
+
+### FR-02: Non-Blocking Printing
+Printing shall never block or prevent a sale from being completed. If printing fails, the sale is still saved successfully.
+
+### FR-03: Print Failure Notification
+When printing fails, the system shall display an error notification to the cashier with the option to retry immediately.
+
+### FR-04: Receipt Reprinting
+The system shall allow reprinting any past receipt from the Transaction History page.
+
+### FR-05: Single Copy
+The system shall print one (1) copy per transaction by default. Additional copies are obtained via reprint.
+
+### FR-06: Receipt Number
+Each receipt shall have an auto-generated sequential number that resets daily.
+- Format: `YYYYMMDD-NNN` (e.g., `20260510-001`)
+
+### FR-07: Payment Method Display
+The receipt shall display the payment method used:
+- **Cash:** Display "Espèces" (FR) / "نقدي" (AR), and show amount received and change returned
+- **POS/Card:** Display "Carte" (FR) / "بطاقة" (AR), and omit amount received and change lines
+
+---
+
+## 6. Receipt Layout
+
+### 6.1 Header
+| Element | Content |
+|---------|---------|
+| Logo | Bakery logo image (PNG) — configurable: enable/disable |
+| Store Name | Boulangerie Bella-Dolce |
+| Store Address | SIDI-ABDELLAH ALGER |
+
+### 6.2 Transaction Info
+| Element | Description |
+|---------|-------------|
+| Cashier | Name of the cashier (e.g., "Caissier : REDA") |
+| Date & Time | Transaction date and time (e.g., "03/05/2026 16:10") |
+| Client Name | Customer name — optional field |
+| Receipt Number | Daily sequential number (e.g., "20260510-001") |
+
+### 6.3 Items Table
+| Column | Description |
+|--------|-------------|
+| Produit | Product name |
+| Qté | Quantity |
+| Prix U. | Unit price |
+| Montant | Line total (Qty × Unit Price) |
+
+### 6.4 Totals Section
+| Element | Description |
+|---------|-------------|
+| Nbr. Produit | Number of distinct products |
+| Nbr. Unité | Total number of units |
+| Total | Grand total amount |
+
+### 6.5 Payment Section
+| Element | Condition | Description |
+|---------|-----------|-------------|
+| Payment Method | Always | "Espèces" or "Carte" |
+| Mont. Reçu | Cash only | Amount received from customer |
+| Mont. Rendu | Cash only | Change returned to customer |
+
+### 6.6 Footer
+| Element | Content |
+|---------|---------|
+| Thank you message (FR) | "Merci pour votre visite. Demandez votre ticket, il vous sera demandé en cas de réclamation" |
+| Thank you message (AR) | Arabic translation — displayed when Arabic layout is selected |
+
+---
+
+## 7. Language & Localization
+
+### LR-01: Supported Languages
+The system shall support French (FR) and Arabic (AR) for receipt content.
+
+### LR-02: Default Language
+French shall be the default receipt language.
+
+### LR-03: Configurable Layout
+The receipt language/layout shall be configurable from application settings. Options include:
+- French only
+- Arabic only
+- Bilingual (configurable arrangement)
+
+### LR-04: Currency
+All monetary values shall be displayed in Algerian Dinar (DZD).
+- Format: `1 544.00 DA`
+
+---
+
+## 8. Configuration Requirements
+
+### CR-01: Receipt Content Configuration
+The following elements shall be configurable from application settings:
+
+| Element | Configurable? |
+|---------|--------------|
+| Store name | Yes |
+| Store address | Yes |
+| Logo image (enable/disable + file) | Yes |
+| Footer message | Yes |
+| Receipt language | Yes |
+| Currency format | Yes |
+
+### CR-02: Technical Configuration
+The following shall be configurable via environment/configuration files:
+
+| Element | Configurable? |
+|---------|--------------|
+| Printer name | Yes |
+| Print service port | Yes |
+| Print service URL | Yes |
+
+### CR-03: Configuration Sources
+- **Translation labels:** `constants.ts`
+- **Technical config:** `.env`
+- **Application config:** `app.config`
+
+---
+
+## 9. Printer Requirements
+
+| Requirement | Value |
+|-------------|-------|
+| Printer Model | Xprinter D200 |
+| Connection | USB |
+| Paper Width | 80mm |
+| Driver | Installed and visible in Windows Printers & Scanners |
+
+---
+
+## 10. Non-Functional Requirements
+
+### NFR-01: Reliability
+The printing mechanism shall not impact the core sales workflow. A print failure shall never cause data loss or block a transaction.
+
+### NFR-02: Performance
+Receipt printing shall initiate within 2 seconds of the "Confirm Payment" action.
+
+### NFR-03: Availability
+The print service shall start automatically when the cashier machine boots and restart automatically on failure.
+
+### NFR-04: Maintainability
+The print module shall reside in the same repository as the main application for unified maintenance.
+
+---
+
+## 11. Acceptance Criteria
+
+| # | Criteria |
+|---|---------|
+| AC-01 | Cashier clicks "Confirm Payment" and receipt prints successfully with all required fields |
+| AC-02 | Receipt displays correct store header: "Boulangerie Bella-Dolce" + "SIDI-ABDELLAH ALGER" |
+| AC-03 | Receipt displays logo when logo printing is enabled |
+| AC-04 | Receipt displays all items with correct name, quantity, unit price, and amount |
+| AC-05 | Receipt displays correct totals (product count, unit count, grand total) |
+| AC-06 | Cash payment receipt shows amount received and change; POS receipt does not |
+| AC-07 | Receipt number follows daily sequential format (YYYYMMDD-NNN) |
+| AC-08 | Sale is saved successfully even when printing fails |
+| AC-09 | Error notification is shown on print failure with retry option |
+| AC-10 | Past receipts can be reprinted from Transaction History |
+| AC-11 | Receipt prints in French by default |
+| AC-12 | Receipt prints in Arabic when Arabic layout is selected |
+| AC-13 | All configurable fields can be modified without code changes |
+| AC-14 | No barcode or loyalty points appear on receipt |
+
+---
+
+## 12. Reference Receipt Layout (Visual)
+
+┌──────────────────────────────────────┐
+
+│          [LOGO - if enabled]         │
+
+│                                      │
+
+│     Boulangerie Bella-Dolce          │
+
+│       SIDI-ABDELLAH ALGER            │
+
+│                                      │
+
+│ Caissier : XXXXX    DD/MM/YYYY HH:MM│
+
+│ Client : XXXXX (optional)            │
+
+│ Reçu N° : YYYYMMDD-NNN              │
+
+│──────────────────────────────────────│
+
+│ Produit      Qté  Prix U.   Montant │
+
+│──────────────────────────────────────│
+
+│ XXXXXXXXXX    X   XXX.XX    XXX.XX  │
+
+│ XXXXXXXXXX    X   XXX.XX    XXX.XX  │
+
+│ XXXXXXXXXX    X   XXX.XX    XXX.XX  │
+
+│──────────────────────────────────────│
+
+│ Nbr. Produit : X                     │
+
+│ Nbr. Unité   : X    Total: X XXX.XX │
+
+│──────────────────────────────────────│
+
+│                                      │
+
+│ Paiement : Espèces / Carte          │
+
+│              Mont. Reçu : X XXX.XX  │ ← Cash only
+
+│              Mont. Rendu :   XXX.XX  │ ← Cash only
+
+│                                      │
+
+│──────────────────────────────────────│
+
+│ Merci pour votre visite. Demandez    │
+
+│ votre ticket, il vous sera demandé   │
+
+│ en cas de réclamation                │
+
+└──────────────────────────────────────┘
+
 ## 7. Implementation Notes & Recent Updates
 
 ### 7.1 Inventory System Validation (May 2, 2026)

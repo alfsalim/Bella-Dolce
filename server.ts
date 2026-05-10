@@ -1935,6 +1935,17 @@ async function startServer() {
     }
   });
 
+  app.post("/api/print-receipt", requireAuth, async (req: any, res) => {
+    const { saleId, items, total, amountPaid, paymentMethod, receiptNumber } = req.body;
+
+    if (!saleId) {
+      return res.status(400).json({ error: 'saleId is required' });
+    }
+
+    console.log('Print job queued:', { saleId, items, total, amountPaid, paymentMethod, receiptNumber });
+    res.json({ status: 'queued', saleId });
+  });
+
   app.get("/api/sales", requireAuth, async (req: any, res) => {
     try {
       const prisma = getPrisma();
