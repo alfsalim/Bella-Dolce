@@ -25,7 +25,11 @@ interface ReceiptPreviewProps {
   saleId?: string;
 }
 
-type PrintStatus = 'printing' | 'done' | 'error' | null;
+export type PrintStatus = 'printing' | 'done' | 'error' | 'printer_unavailable' | null;
+export interface PrintError {
+  status: string;
+  message?: string;
+}
 
 const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   receiptNumber,
@@ -44,41 +48,57 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
 }) => {
   const { t, formatCurrency } = useLanguage();
   const [printStatus, setPrintStatus] = useState<PrintStatus>(saleId ? 'printing' : null);
+  const [printError, setPrintError] = useState<PrintError | null>(null);
+
+  const callPrintAPI = async () => {
+    if (!saleId) return;
+
+    try {
+      setPrintStatus('printing');
+      setPrintError(null);
+      const token = localStorage.getItem('bakery_token');
+      const res = await authFetch('/api/print-receipt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          saleId,
+          items,
+          total: totalAmount,
+          amountPaid,
+          paymentMethod,
+          receiptNumber
+        })
+      });
+
+      if (!res.ok) {
+        setPrintStatus('error');
+        setPrintError({ status: 'error', message: 'unknown' });
+        return;
+      }
+
+      const data = await res.json();
+
+      if (data.status === 'error') {
+        setPrintStatus('printer_unavailable');
+        setPrintError(data);
+      } else if (data.status === 'queued') {
+        setPrintStatus('done');
+      } else {
+        setPrintStatus('error');
+        setPrintError(data);
+      }
+    } catch (error) {
+      console.error('Print API error:', error);
+      setPrintStatus('error');
+      setPrintError({ status: 'error', message: 'unknown' });
+    }
+  };
 
   useEffect(() => {
     if (!saleId) return;
-
-    const callPrintAPI = async () => {
-      try {
-        setPrintStatus('printing');
-        const token = localStorage.getItem('bakery_token');
-        const res = await authFetch('/api/print-receipt', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({
-            saleId,
-            items,
-            total: totalAmount,
-            amountPaid,
-            paymentMethod,
-            receiptNumber
-          })
-        });
-
-        if (res.ok) {
-          setPrintStatus('done');
-        } else {
-          setPrintStatus('error');
-        }
-      } catch (error) {
-        console.error('Print API error:', error);
-        setPrintStatus('error');
-      }
-    };
-
     callPrintAPI();
   }, [saleId, items, totalAmount, amountPaid, paymentMethod, receiptNumber]);
 
@@ -102,11 +122,12 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   const getPrintStatusColor = () => {
     switch (printStatus) {
       case 'printing':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
       case 'done':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       case 'error':
-        return 'bg-red-100 text-red-800';
+      case 'printer_unavailable':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
       default:
         return '';
     }
@@ -118,6 +139,8 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
         return t('printingReceipt');
       case 'done':
         return t('printingDone');
+      case 'printer_unavailable':
+        return t('printerUnavailable');
       case 'error':
         return t('printingError');
       default:
@@ -204,13 +227,24 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
         </div>
       </div>
 
-      <button
-        onClick={onClose}
-        className="mt-4 w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded text-sm font-medium"
-        aria-label="close"
-      >
-        Fermer
-      </button>
+      <div className="mt-4 flex gap-2">
+        {printStatus === 'printer_unavailable' && (
+          <button
+            onClick={callPrintAPI}
+            className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-medium transition-colors"
+            aria-label="retry print"
+          >
+            {t('retryPrint')}
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="flex-1 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-800 dark:text-white rounded text-sm font-medium transition-colors"
+          aria-label="close"
+        >
+          {t('close') || 'Fermer'}
+        </button>
+      </div>
     </div>
   );
 };

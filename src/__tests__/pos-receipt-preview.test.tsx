@@ -272,3 +272,119 @@ describe('ReceiptPreview with Print Integration', () => {
     expect(screen.getByRole('button', { name: /close|fermer/i })).toBeInTheDocument();
   });
 });
+
+describe('ReceiptPreview with Printer Unavailable', () => {
+  const renderWithLanguage = (component: React.ReactElement) => {
+    return render(
+      <LanguageProvider>{component}</LanguageProvider>
+    );
+  };
+
+  const mockOnClose = vi.fn();
+  const mockSaleId = 'sale-123';
+
+  const mockReceipt = {
+    receiptNumber: '20260510-001',
+    storeName: 'Boulangerie Bella-Dolce',
+    storeAddress: 'SIDI-ABDELLAH ALGER',
+    items: [
+      { name: 'Pain Complet', quantity: 2, unitPrice: 150, lineTotal: 300 },
+      { name: 'Croissant', quantity: 3, unitPrice: 80, lineTotal: 240 }
+    ],
+    totalAmount: 540,
+    paymentMethod: 'cash' as const,
+    amountPaid: 600,
+    change: 60,
+    cashierName: 'Fatima',
+    dateTime: new Date('2026-05-10T14:30:00'),
+    autoCloseDelay: 500,
+    saleId: mockSaleId
+  };
+
+  beforeEach(() => {
+    mockOnClose.mockClear();
+    vi.clearAllMocks();
+    (apiClient.authFetch as any).mockClear();
+  });
+
+  it('should show printer unavailable message when print API returns printer_unavailable status', async () => {
+    (apiClient.authFetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: 'error', message: 'printer_unavailable' }), { status: 200, ok: true })
+    );
+    renderWithLanguage(<ReceiptPreview {...mockReceipt} onClose={mockOnClose} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Imprimante non disponible|الطابعة غير متوفرة/i)).toBeInTheDocument();
+    });
+  });
+
+  it('should show retry print button when printer is unavailable', async () => {
+    (apiClient.authFetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: 'error', message: 'printer_unavailable' }), { status: 200, ok: true })
+    );
+    renderWithLanguage(<ReceiptPreview {...mockReceipt} onClose={mockOnClose} />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /retry|réessayer/i })).toBeInTheDocument();
+    });
+  });
+
+  it('should not show retry button when printer is available', async () => {
+    (apiClient.authFetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: 'queued' }), { status: 200, ok: true })
+    );
+    renderWithLanguage(<ReceiptPreview {...mockReceipt} onClose={mockOnClose} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Impression terminée|تمت الطباعة/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /retry|réessayer/i })).not.toBeInTheDocument();
+  });
+
+  it('should call print API again when retry button is clicked', async () => {
+    const user = userEvent.setup();
+    let callCount = 0;
+
+    (apiClient.authFetch as any).mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // First call: printer unavailable
+        return new Response(JSON.stringify({ status: 'error', message: 'printer_unavailable' }), { status: 200, ok: true });
+      } else {
+        // Second call (retry): printer now available
+        return new Response(JSON.stringify({ status: 'queued' }), { status: 200, ok: true });
+      }
+    });
+
+    renderWithLanguage(<ReceiptPreview {...mockReceipt} onClose={mockOnClose} />);
+
+    // Wait for printer unavailable message
+    await waitFor(() => {
+      expect(screen.getByText(/Imprimante non disponible|الطابعة غير متوفرة/i)).toBeInTheDocument();
+    });
+
+    const retryButton = screen.getByRole('button', { name: /retry|réessayer/i });
+    await user.click(retryButton);
+
+    // Should now show success message
+    await waitFor(() => {
+      expect(screen.getByText(/Impression terminée|تمت الطباعة/i)).toBeInTheDocument();
+    });
+
+    // authFetch should have been called twice
+    expect(apiClient.authFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('should NOT auto-close when printer is unavailable', async () => {
+    (apiClient.authFetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: 'error', message: 'printer_unavailable' }), { status: 200, ok: true })
+    );
+
+    renderWithLanguage(<ReceiptPreview {...mockReceipt} onClose={mockOnClose} autoCloseDelay={100} />);
+
+    // Wait for printer unavailable message
+    await waitFor(() => {
+      expect(screen.getByText(/Imprimante non disponible|الطابexe غير متوفرة/i)).toBeInTheDocument();
+    });
+
+    // onClose should NOT be called because status is "printer_unavailable", not "done"
+    expect(mockOnClose).not.toHaveBeenCalled();
+  });
+});

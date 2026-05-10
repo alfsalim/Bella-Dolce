@@ -11,7 +11,8 @@ import {
   Banknote,
   CheckCircle2,
   X,
-  User
+  User,
+  History
 } from 'lucide-react';
 import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/db';
 import { Product, SaleItem, Customer, Promotion } from '../types';
@@ -19,6 +20,7 @@ import { clsx } from 'clsx';
 import { SELLABLE_CATEGORIES } from '../constants';
 import { authFetch } from '../lib/api-client';
 import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
+import RecentSalesModal from '../components/RecentSalesModal';
 
 import { logActivity } from '../lib/logger';
 
@@ -38,6 +40,7 @@ const POS: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showRecentSales, setShowRecentSales] = useState(false);
   const [amountPaid, setAmountPaid] = useState<string>('');
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
@@ -317,13 +320,47 @@ const POS: React.FC = () => {
       <div className="w-full lg:w-96 flex flex-col gap-6">
         <div className="card flex-1 flex flex-col p-0 overflow-hidden shadow-2xl shadow-slate-200 dark:shadow-none border-slate-100 dark:border-[#2a1e17]">
           <div className="p-6 border-b border-slate-100 dark:border-[#2a1e17] flex items-center justify-between bg-slate-50/50 dark:bg-[#1a1512]/50">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-              {t('cart')}
-            </h2>
-            <span className="px-3 py-1 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full text-xs font-bold">
-              {cart.reduce((s, i) => s + i.quantity, 0)} {t('items')}
-            </span>
+            {isRTL ? (
+              <>
+                <button
+                  onClick={() => setShowRecentSales(true)}
+                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  title={t('recentSales')}
+                  aria-label={t('recentSales')}
+                >
+                  <History className="w-4 h-4" />
+                </button>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">
+                    {total.toLocaleString()} {currencyUnit}
+                  </span>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    {t('cart')}
+                    <ShoppingCart className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                  </h2>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <ShoppingCart className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                    {t('cart')}
+                  </h2>
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">
+                    {total.toLocaleString()} {currencyUnit}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowRecentSales(true)}
+                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  title={t('recentSales')}
+                  aria-label={t('recentSales')}
+                >
+                  <History className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-3 no-scrollbar max-h-[400px] lg:max-h-none">
@@ -413,6 +450,7 @@ const POS: React.FC = () => {
             >
               {t('checkout')}
             </button>
+
           </div>
         </div>
       </div>
@@ -543,6 +581,12 @@ const POS: React.FC = () => {
           </div>
         </div>
       )}
+
+      <RecentSalesModal
+        isOpen={showRecentSales}
+        onClose={() => setShowRecentSales(false)}
+        cashierId={profile?.id || ''}
+      />
     </div>
   );
 };

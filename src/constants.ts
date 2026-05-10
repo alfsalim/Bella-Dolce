@@ -62,6 +62,9 @@ export const TRANSLATIONS: Record<Language, any> = {
     rangeTo: "à",
     of: "sur",
     results: "résultats",
+    reprint: "Réimprimer",
+    recentSales: "Ventes récentes",
+    noSalesToday: "Aucune vente aujourd'hui",
     settings: "Paramètres",
     administration: "Administration",
     consumables: "Consommables",
@@ -834,6 +837,8 @@ export const TRANSLATIONS: Record<Language, any> = {
     printingReceipt: "Impression en cours…",
     printingDone: "Impression terminée",
     printingError: "Erreur d'impression",
+    printerUnavailable: "Imprimante non disponible",
+    retryPrint: "Réessayer l'impression",
   },
   ar: {
     dashboard: "لوحة القيادة",
@@ -890,6 +895,9 @@ export const TRANSLATIONS: Record<Language, any> = {
     rangeTo: "إلى",
     of: "من",
     results: "نتيجة",
+    reprint: "إعادة الطباعة",
+    recentSales: "المبيعات الأخيرة",
+    noSalesToday: "لا توجد مبيعات اليوم",
     settings: "الإعدادات",
     administration: "الإدارة",
     consumables: "المستهلكات",
@@ -1662,6 +1670,8 @@ export const TRANSLATIONS: Record<Language, any> = {
     printingReceipt: "جاري الطباعة…",
     printingDone: "تمت الطباعة",
     printingError: "خطأ في الطباعة",
+    printerUnavailable: "الطابعة غير متوفرة",
+    retryPrint: "إعادة محاولة الطباعة",
   },
 };
 

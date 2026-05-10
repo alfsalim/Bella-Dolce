@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import ReceiptPreview from '../components/ReceiptPreview';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  BarChart3, 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  ShoppingCart, 
+import {
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ShoppingCart,
   Calendar,
   Download,
   Clock,
@@ -20,7 +21,8 @@ import {
   AlertTriangle,
   User as UserIcon,
   Search,
-  Activity
+  Activity,
+  Printer
 } from 'lucide-react';
 import { authFetch } from '../lib/api-client';
 import { 
@@ -87,6 +89,7 @@ const Reports: React.FC = () => {
   const [chartMode, setChartMode] = useState<'revenue' | 'orders'>('revenue');
   const [isCumulative, setIsCumulative] = useState(false);
   const [timeFilter, setTimeFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
+  const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<Sale | null>(null);
   const todayYmd = format(new Date(), 'yyyy-MM-dd');
   const [analyticsStart, setAnalyticsStart] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [analyticsEnd, setAnalyticsEnd] = useState<string>(todayYmd);
@@ -682,6 +685,7 @@ const Reports: React.FC = () => {
   ]);
 
   return (
+    <>
     <div className="space-y-8">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
@@ -1265,6 +1269,7 @@ const Reports: React.FC = () => {
                       <th className="px-8 py-4">{t('payment') || 'Payment'}</th>
                       <th className="px-8 py-4">{t('products') || 'Products'}</th>
                       <th className="px-8 py-4 text-right">{t('amount') || 'Amount'}</th>
+                      <th className="px-8 py-4">Reprint</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-white/5">
@@ -1327,12 +1332,17 @@ const Reports: React.FC = () => {
                             <td className="px-8 py-5 text-right font-display font-bold text-lg text-slate-900 dark:text-white">
                               {sale.totalAmount.toLocaleString()} {currencyUnit}
                             </td>
+                            <td className="px-8 py-5">
+                              <button onClick={() => setSelectedSaleForReceipt(sale)} className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors" title={t('reprint')}>
+                                <Printer className="w-4 h-4" />
+                              </button>
+                            </td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
+                        <td colSpan={6} className="px-8 py-12 text-center text-slate-400 italic">
                           {t('noSalesFound') || 'No sales found for the selected criteria.'}
                         </td>
                       </tr>
@@ -1562,6 +1572,32 @@ const Reports: React.FC = () => {
         </div>
       )}
     </div>
+
+    {selectedSaleForReceipt && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-sm p-6">
+          <ReceiptPreview
+            receiptNumber={`${new Date(selectedSaleForReceipt.createdAt).toISOString().split('T')[0].replace(/-/g, '')}-001`}
+            storeName="Boulangerie Bella-Dolce"
+            storeAddress="SIDI-ABDELLAH ALGER"
+            items={parseSaleItems(selectedSaleForReceipt).map(i => ({
+              name: i.name || i.productId,
+              quantity: i.quantity,
+              unitPrice: i.price,
+              lineTotal: i.quantity * i.price,
+            }))}
+            totalAmount={selectedSaleForReceipt.totalAmount}
+            paymentMethod={selectedSaleForReceipt.paymentMethod === 'card' ? 'card' : 'cash'}
+            cashierName={selectedSaleForReceipt.cashierName || ''}
+            dateTime={new Date(selectedSaleForReceipt.createdAt)}
+            saleId={selectedSaleForReceipt.id}
+            onClose={() => setSelectedSaleForReceipt(null)}
+            autoCloseDelay={5000}
+          />
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

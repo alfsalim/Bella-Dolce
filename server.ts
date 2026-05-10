@@ -1942,6 +1942,22 @@ async function startServer() {
       return res.status(400).json({ error: 'saleId is required' });
     }
 
+    // Check if Print Agent is available
+    try {
+      const healthCheckResponse = await fetch('http://localhost:5555/health', {
+        timeout: 2000,
+        method: 'GET'
+      });
+
+      if (!healthCheckResponse.ok) {
+        console.warn('Print Agent health check failed:', healthCheckResponse.status);
+        return res.json({ status: 'error', message: 'printer_unavailable' });
+      }
+    } catch (error) {
+      console.warn('Print Agent unreachable:', error);
+      return res.json({ status: 'error', message: 'printer_unavailable' });
+    }
+
     console.log('Print job queued:', { saleId, items, total, amountPaid, paymentMethod, receiptNumber });
     res.json({ status: 'queued', saleId });
   });
@@ -1949,11 +1965,34 @@ async function startServer() {
   app.get("/api/sales", requireAuth, async (req: any, res) => {
     try {
       const prisma = getPrisma();
+      const { date, cashierId, limit = 500, sort = 'desc' } = req.query;
+
+      const where: any = {};
+
+      if (date) {
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        where.createdAt = {
+          gte: startOfDay,
+          lte: endOfDay
+        };
+      }
+
+      if (cashierId) {
+        where.cashierId = cashierId;
+      }
+
       const sales = await prisma.sale.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 500
+        where,
+        orderBy: { createdAt: sort === 'asc' ? 'asc' : 'desc' },
+        take: Math.min(parseInt(limit) || 500, 500)
       });
-      res.json(sales);
+
+      const hasQueryFilters = date || cashierId;
+      res.json(hasQueryFilters ? { sales } : sales);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -2513,15 +2552,19 @@ async function startServer() {
         });
       }
 
-      // Seed sample sales if none exist
+      // Seed sample sales with today's date
       const saleCount = await prisma.sale.count();
       if (saleCount === 0) {
-        console.log("Seeding sample sales...");
+        const today = new Date();
+        today.setHours(10, 30, 0, 0);
+        const today2 = new Date();
+        today2.setHours(14, 45, 0, 0);
+
+        console.log("Seeding sample sales with today's date...");
         await prisma.sale.createMany({
           data: [
-            { id: 'sale-001', cashierId: 'admin-001', customerId: 'cust-001', totalAmount: 15.50, paymentMethod: 'cash', items: JSON.stringify([{ productId: 'prod-001', quantity: 2, price: 3.50 }, { productId: 'prod-004', quantity: 3, price: 2.00 }]) },
-            { id: 'sale-002', cashierId: 'admin-001', customerId: 'cust-003', totalAmount: 45.00, paymentMethod: 'card', items: JSON.stringify([{ productId: 'prod-003', quantity: 1, price: 12.00 }, { productId: 'prod-002', quantity: 6, price: 5.00 }]) },
-            { id: 'sale-003', cashierId: 'admin-001', customerId: null, totalAmount: 8.50, paymentMethod: 'cash', items: JSON.stringify([{ productId: 'prod-007', quantity: 1, price: 8.50 }]) },
+            { id: 'sale-001', cashierId: 'admin-001', cashierName: 'The Boss', customerId: 'cust-001', totalAmount: 1500, paymentMethod: 'CASH', items: JSON.stringify([{ productId: 'prod-001', quantity: 2, price: 350 }, { productId: 'prod-004', quantity: 3, price: 200 }]), createdAt: today },
+            { id: 'sale-002', cashierId: 'admin-001', cashierName: 'The Boss', customerId: 'cust-003', totalAmount: 4500, paymentMethod: 'CARD', items: JSON.stringify([{ productId: 'prod-003', quantity: 1, price: 1200 }, { productId: 'prod-002', quantity: 6, price: 500 }]), createdAt: today2 },
           ]
         });
       }
