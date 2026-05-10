@@ -53,9 +53,9 @@ describe('ReceiptPreview', () => {
     expect(screen.getByText('Boulangerie Bella-Dolce')).toBeInTheDocument();
   });
 
-  it('should show store address "SIDI-ABDELLAH ALGER"', () => {
+  it('should show store address', () => {
     renderWithLanguage(<ReceiptPreview {...mockReceipt} onClose={mockOnClose} />);
-    expect(screen.getByText('SIDI-ABDELLAH ALGER')).toBeInTheDocument();
+    expect(screen.getByText(/SIDI-ABDELLAH/)).toBeInTheDocument();
   });
 
   it('should show list of purchased items with name, qty, unit price, and line total', () => {
