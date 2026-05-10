@@ -154,11 +154,11 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
                       <td className="p-3 text-center">
                         <button
                           onClick={() => setSelectedSaleForReceipt(sale)}
-                          className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
+                          className="p-2.5 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
                           title={t('reprint')}
                           aria-label={`${t('reprint')} ${sale.id}`}
                         >
-                          <Printer className="w-4 h-4" />
+                          <Printer className="w-5 h-5" />
                         </button>
                       </td>
                     </tr>

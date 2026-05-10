@@ -162,20 +162,20 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
         </div>
 
         <div className="text-center mb-4 text-xs">
-          <p>Reçu n° {receiptNumber}</p>
+          <p>{t('receiptNo')} {receiptNumber}</p>
         </div>
 
         <div className="text-xs mb-4 space-y-1">
           <div className="flex justify-between">
-            <span>Caissier:</span>
+            <span>{t('cashier')}:</span>
             <span>{cashierName}</span>
           </div>
           <div className="flex justify-between">
-            <span>Date:</span>
+            <span>{t('date')}:</span>
             <span>{formatDate(dateTime)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Heure:</span>
+            <span>{t('time')}:</span>
             <span>{formatTime(dateTime)}</span>
           </div>
         </div>
@@ -183,10 +183,10 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
         <div className="border-t border-b border-gray-300 py-2 mb-4">
           <div className="text-xs space-y-1 mb-2">
             <div className="grid grid-cols-4 gap-1 font-semibold">
-              <span>Article</span>
-              <span className="text-right">Qté</span>
-              <span className="text-right">P.U.</span>
-              <span className="text-right">Total</span>
+              <span>{t('invoiceItem')}</span>
+              <span className="text-right">{t('qtyAbbrev')}</span>
+              <span className="text-right">{t('unitPrice')}</span>
+              <span className="text-right">{t('total')}</span>
             </div>
           </div>
           {items.map((item, index) => (
@@ -201,21 +201,21 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
 
         <div className="mb-4 space-y-1 text-sm">
           <div className="flex justify-between font-semibold">
-            <span>Montant total:</span>
+            <span>{t('totalAmount')}:</span>
             <span>{formatCurrency(totalAmount)}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span>Mode de paiement:</span>
+            <span>{t('paymentMethod')}:</span>
             <span>{paymentMethodLabel}</span>
           </div>
           {paymentMethod === 'cash' && (
             <>
               <div className="flex justify-between text-xs">
-                <span>Montant payé:</span>
+                <span>{t('amountPaid')}:</span>
                 <span>{formatCurrency(amountPaid || 0)}</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span>Monnaie:</span>
+                <span>{t('changeDue')}:</span>
                 <span>{formatCurrency(change || 0)}</span>
               </div>
             </>
