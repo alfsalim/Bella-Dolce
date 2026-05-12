@@ -1939,7 +1939,7 @@ async function startServer() {
   app.post("/api/print-receipt", requireAuth, async (req: any, res) => {
     const PRINT_AGENT_URL = process.env.PRINT_AGENT_URL || "http://localhost:5555";
     const PRINT_AGENT_TIMEOUT = parseInt(process.env.PRINT_AGENT_TIMEOUT || "2000", 10);
-    const { saleId, items, total, amountPaid, paymentMethod, receiptNumber } = req.body;
+    const { saleId, items, total, amountPaid, paymentMethod, receiptNumber, cashierName } = req.body;
   
     if (!saleId) {
       return res.status(400).json({ error: 'saleId is required' });
@@ -1971,7 +1971,7 @@ async function startServer() {
           ReceiptNumber: receiptNumber || '',
           Date: new Date().toISOString().split('T')[0],
           Time: new Date().toTimeString().split(' ')[0],
-          CashierName: req.user?.name || 'Unknown',
+          CashierName: req.body.cashierName || req.user?.username || 'Unknown',
           PaymentMethod: paymentMethod || 'cash',
           Items: (items || []).map((item: any) => ({
             Name: item.name,

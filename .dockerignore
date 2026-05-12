@@ -7,3 +7,6 @@ prisma_data
 .env
 .git
 .DS_Store
+PrintAgent/src/bin
+PrintAgent/publish
+PrintAgent/src/obj

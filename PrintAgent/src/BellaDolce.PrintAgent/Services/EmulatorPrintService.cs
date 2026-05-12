@@ -26,19 +26,16 @@ namespace BellaDolce.PrintAgent.Services
         {
             try
             {
-                // Build receipt text
                 var receipt = BuildReceiptText(job);
 
-                // Print to console
                 Console.WriteLine();
                 Console.WriteLine("╔══════════════════════════════════════╗");
-                Console.WriteLine("║     📄 PRINT JOB RECEIVED          ║");
+                Console.WriteLine("║ 📄 PRINT JOB RECEIVED               ║");
                 Console.WriteLine("╠══════════════════════════════════════╣");
                 Console.WriteLine(receipt);
                 Console.WriteLine("╚══════════════════════════════════════╝");
                 Console.WriteLine();
 
-                // Save to file
                 var fileName = $"receipt_{job.SaleId}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
                 var filePath = Path.Combine(_outputFolder, fileName);
                 await File.WriteAllTextAsync(filePath, receipt);
@@ -71,16 +68,17 @@ namespace BellaDolce.PrintAgent.Services
             var line = new string('─', width);
             var doubleLine = new string('═', width);
             var lines = new List<string>();
+            var labels = job.Labels;
 
             // Header
-            lines.Add(CenterText("BELLA DOLCE", width));
-            lines.Add(CenterText("Artisanal Atelier de Pâtisserie", width));
+            lines.Add(CenterText(labels.StoreName, width));
+            lines.Add(CenterText(labels.StoreSlogan, width));
             lines.Add(doubleLine);
 
             // Receipt info
-            lines.Add($"Reçu #: {job.ReceiptNumber ?? "N/A"}");
-            lines.Add($"Date: {DateTime.Now:dd/MM/yyyy HH:mm:ss}");
-            lines.Add($"Caissier: {job.CashierName ?? "N/A"}");
+            lines.Add($"{labels.ReceiptLabel}: {job.ReceiptNumber ?? "N/A"}");
+            lines.Add($"{labels.DateLabel}: {DateTime.Now:dd/MM/yyyy HH:mm:ss}");
+            lines.Add($"{labels.CashierLabel}: {job.CashierName ?? "N/A"}");
             lines.Add(line);
 
             // Items
@@ -88,34 +86,34 @@ namespace BellaDolce.PrintAgent.Services
             {
                 foreach (var item in job.Items)
                 {
-                    var itemName = item.Name ?? "Article";
+                    var itemName = item.Name ?? "---";
                     var qty = item.Quantity;
                     var unitPrice = item.UnitPrice;
                     var lineTotal = item.LineTotal > 0 ? item.LineTotal : qty * unitPrice;
 
                     lines.Add($"{qty}x {itemName}");
-                    lines.Add(RightAlign($"{unitPrice:N2} x {qty} = {lineTotal:N2} DA", width));
+                    lines.Add(RightAlign($"{unitPrice:N2} x {qty} = {lineTotal:N2} {labels.Currency}", width));
                 }
             }
 
             lines.Add(line);
 
             // Totals
-            lines.Add(RightAlign($"TOTAL: {job.Total:N2} DA", width));
-            lines.Add($"Paiement: {job.PaymentMethod ?? "N/A"}");
-            lines.Add($"Payé: {job.AmountPaid:N2} DA");
+            lines.Add(RightAlign($"{labels.TotalLabel}: {job.Total:N2} {labels.Currency}", width));
+            lines.Add($"{labels.PaymentLabel}: {job.PaymentMethod ?? "N/A"}");
+            lines.Add($"{labels.PaidLabel}: {job.AmountPaid:N2} {labels.Currency}");
 
             if (job.AmountPaid > job.Total)
             {
                 var change = job.AmountPaid - job.Total;
-                lines.Add($"Monnaie: {change:N2} DA");
+                lines.Add($"{labels.ChangeLabel}: {change:N2} {labels.Currency}");
             }
 
             lines.Add(doubleLine);
 
             // Footer
-            lines.Add(CenterText("Merci pour votre visite!", width));
-            lines.Add(CenterText("À bientôt!", width));
+            lines.Add(CenterText(labels.ThankYou, width));
+            lines.Add(CenterText(labels.ComeBack, width));
 
             return string.Join(Environment.NewLine, lines);
         }

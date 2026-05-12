@@ -17,3 +17,6 @@ bella-dolce*.zip
 bella-dolce*.tar
 *.zip
 *.tar
+PrintAgent/src/bin
+PrintAgent/publish
+PrintAgent/src/obj
