@@ -15,7 +15,7 @@ interface ReceiptPreviewProps {
   storeAddress: string;
   items: ReceiptItem[];
   totalAmount: number;
-  paymentMethod: 'cash' | 'card';
+  paymentMethod: 'cash' | 'card' | 'transfer';
   amountPaid?: number;
   change?: number;
   cashierName: string;
@@ -84,7 +84,7 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
       if (data.status === 'error') {
         setPrintStatus('printer_unavailable');
         setPrintError(data);
-      } else if (data.status === 'queued') {
+      } else if (data.status === 'queued' || data.status === 'success' || data.status === 'printed' || data.status === 'done') {
         setPrintStatus('done');
       } else {
         setPrintStatus('error');
@@ -100,7 +100,7 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   useEffect(() => {
     if (!saleId) return;
     callPrintAPI();
-  }, [saleId, items, totalAmount, amountPaid, paymentMethod, receiptNumber]);
+  }, [saleId]);
 
   useEffect(() => {
     if (printStatus === 'done' || !saleId) {
@@ -117,7 +117,7 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const paymentMethodLabel = paymentMethod === 'cash' ? t('cashPayment') : t('cardPayment');
+  const paymentMethodLabel = paymentMethod === 'cash' ? t('cashPayment') : paymentMethod === 'card' ? t('cardPayment') : t('transfer');
 
   const getPrintStatusColor = () => {
     switch (printStatus) {

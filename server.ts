@@ -1935,31 +1935,66 @@ async function startServer() {
     }
   });
 
+ 
   app.post("/api/print-receipt", requireAuth, async (req: any, res) => {
+    const PRINT_AGENT_URL = process.env.PRINT_AGENT_URL || "http://localhost:5555";
+    const PRINT_AGENT_TIMEOUT = parseInt(process.env.PRINT_AGENT_TIMEOUT || "2000", 10);
     const { saleId, items, total, amountPaid, paymentMethod, receiptNumber } = req.body;
-
+  
     if (!saleId) {
       return res.status(400).json({ error: 'saleId is required' });
     }
-
-    // Check if Print Agent is available
+  
+    // Health check
     try {
-      const healthCheckResponse = await fetch('http://localhost:5555/health', {
-        timeout: 2000,
-        method: 'GET'
+      const healthCheck = await fetch(`${PRINT_AGENT_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(PRINT_AGENT_TIMEOUT)
       });
-
-      if (!healthCheckResponse.ok) {
-        console.warn('Print Agent health check failed:', healthCheckResponse.status);
+  
+      if (!healthCheck.ok) {
+        console.warn('Print Agent health check failed:', healthCheck.status);
         return res.json({ status: 'error', message: 'printer_unavailable' });
       }
     } catch (error) {
       console.warn('Print Agent unreachable:', error);
       return res.json({ status: 'error', message: 'printer_unavailable' });
     }
-
-    console.log('Print job queued:', { saleId, items, total, amountPaid, paymentMethod, receiptNumber });
-    res.json({ status: 'queued', saleId });
+  
+    // Send print job
+    try {
+      const printResponse = await fetch(`${PRINT_AGENT_URL}/print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          SaleId: saleId,
+          ReceiptNumber: receiptNumber || '',
+          Date: new Date().toISOString().split('T')[0],
+          Time: new Date().toTimeString().split(' ')[0],
+          CashierName: req.user?.name || 'Unknown',
+          PaymentMethod: paymentMethod || 'cash',
+          Items: (items || []).map((item: any) => ({
+            Name: item.name,
+            Quantity: item.quantity,
+            UnitPrice: item.unitPrice || item.price || 0,
+            Total: item.total || (item.quantity * (item.unitPrice || item.price || 0))
+          })),
+          Subtotal: total || 0,
+          TaxRate: 0,
+          TaxAmount: 0,
+          Total: total || 0,
+          AmountPaid: amountPaid || 0
+        })
+      });
+  
+      const result = await printResponse.json();
+      console.log('Print Agent response:', result);
+      return res.json(result);
+  
+    } catch (error) {
+      console.error('Print job failed:', error);
+      return res.json({ status: 'error', message: 'print_failed' });
+    }
   });
 
   app.get("/api/sales", requireAuth, async (req: any, res) => {

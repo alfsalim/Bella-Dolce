@@ -11,6 +11,7 @@ interface Sale {
   createdAt: string;
   totalAmount: number;
   paymentMethod: 'CASH' | 'CARD' | 'TRANSFER';
+  items?: string;
 }
 
 interface RecentSalesModalProps {
@@ -93,10 +94,11 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('recentSales')}</h2>
             <button
               onClick={onClose}
-              className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 p-1"
-              aria-label="Close"
+              className="px-3 py-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-sm font-medium flex items-center gap-2"
+              aria-label={t('close')}
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
+              <span>{t('close')}</span>
             </button>
           </div>
 
@@ -208,10 +210,15 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
               receiptNumber={`${new Date(selectedSaleForReceipt.createdAt).toISOString().split('T')[0].replace(/-/g, '')}-001`}
               storeName="Boulangerie Bella-Dolce"
               storeAddress="SIDI-ABDELLAH ALGER"
-              items={[]}
+              items={selectedSaleForReceipt.items ? JSON.parse(selectedSaleForReceipt.items).map((item: any) => ({
+                name: item.name || `Product ${item.productId}`,
+                quantity: item.quantity,
+                unitPrice: item.price || item.unitPrice || 0,
+                lineTotal: (item.price || item.unitPrice || 0) * item.quantity
+              })) : []}
               totalAmount={selectedSaleForReceipt.totalAmount}
               paymentMethod={selectedSaleForReceipt.paymentMethod.toLowerCase() as 'cash' | 'card' | 'transfer'}
-              amountPaid={0}
+              amountPaid={selectedSaleForReceipt.totalAmount}
               change={0}
               cashierName={cashierId}
               dateTime={new Date(selectedSaleForReceipt.createdAt)}

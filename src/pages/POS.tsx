@@ -160,10 +160,12 @@ const POS: React.FC = () => {
         })
       });
 
+      const saleData = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Checkout failed');
+        throw new Error(saleData.error || 'Checkout failed');
       }
+
+      const saleId = saleData.id;
 
       // Deduct shopStock for each sold item
       // stock = shopStock + freezerStock + wasteQuantity (invariant must hold)
@@ -187,6 +189,31 @@ const POS: React.FC = () => {
       if (profile) {
         logActivity(profile.id, profile.name, 'Sale', `Completed sale of ${total} ${currencyUnit}`);
       }
+
+      // Trigger print receipt (non-blocking)
+      authFetch('/api/print-receipt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          saleId,
+          items: cart.map((item) => {
+            const product = products.find(p => p.id === item.productId);
+            return {
+              name: product ? tProduct(product) : `Product ${item.productId}`,
+              quantity: item.quantity,
+              price: item.price,
+              unitPrice: item.price,
+              total: item.price * item.quantity
+            };
+          }),
+          total,
+          amountPaid: amountPaidNum,
+          paymentMethod
+        })
+      }).catch((err) => console.warn('Print receipt failed:', err));
 
       setIsSuccess(true);
       setCart([]);
@@ -324,11 +351,12 @@ const POS: React.FC = () => {
               <>
                 <button
                   onClick={() => setShowRecentSales(true)}
-                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-2 transition-colors shadow-sm"
                   title={t('recentSales')}
                   aria-label={t('recentSales')}
                 >
-                  <History className="w-4 h-4" />
+                  <History className="w-5 h-5" />
+                  <span>{t('recentSales')}</span>
                 </button>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-slate-900 dark:text-white">
@@ -353,11 +381,12 @@ const POS: React.FC = () => {
                 </div>
                 <button
                   onClick={() => setShowRecentSales(true)}
-                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-2 transition-colors shadow-sm"
                   title={t('recentSales')}
                   aria-label={t('recentSales')}
                 >
-                  <History className="w-4 h-4" />
+                  <History className="w-5 h-5" />
+                  <span>{t('recentSales')}</span>
                 </button>
               </>
             )}
