@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import type { ActivityLog, Sale, SaleItem } from '../types';
+import { generateTransactionId } from './transactionId';
 
 function esc(s: string): string {
   return String(s)
@@ -352,9 +353,10 @@ export async function downloadReportsPdf(opts: {
             .map((it) => `${it.quantity}× ${getLineItemLabel(it)}`)
             .join('<br/>');
           return `<tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
-            <td style="padding:10px 8px;width:16%;"><div style="font-weight:800;">${esc(formatSaleDate(sale.createdAt))}</div><div style="font-size:10px;color:#64748b;">${esc(formatSaleTime(sale.createdAt))}</div></td>
-            <td style="padding:10px 8px;width:18%;font-weight:700;">${esc(sale.cashierName || '—')}</td>
-            <td style="padding:10px 8px;width:14%;"><span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:800;padding:4px 8px;border-radius:999px;">${esc(getPaymentLabel(sale.paymentMethod))}</span></td>
+            <td style="padding:10px 8px;width:12%;font-weight:800;font-family:monospace;font-size:10px;color:#d97706;">${esc(generateTransactionId(sale.createdAt))}</td>
+            <td style="padding:10px 8px;width:14%;"><div style="font-weight:800;">${esc(formatSaleDate(sale.createdAt))}</div><div style="font-size:10px;color:#64748b;">${esc(formatSaleTime(sale.createdAt))}</div></td>
+            <td style="padding:10px 8px;width:16%;font-weight:700;">${esc(sale.cashierName || '—')}</td>
+            <td style="padding:10px 8px;width:12%;"><span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:800;padding:4px 8px;border-radius:999px;">${esc(getPaymentLabel(sale.paymentMethod))}</span></td>
             <td style="padding:10px 8px;font-size:10.5px;">${prodLines || '—'}</td>
             <td style="padding:10px 8px;text-align:end;font-weight:800;white-space:nowrap;">${sale.totalAmount.toLocaleString()} ${esc(cu)}</td>
           </tr>`;
@@ -365,6 +367,7 @@ export async function downloadReportsPdf(opts: {
         `<div style="padding:0 18px;">
           <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:14px;font-size:11px;">
             <thead><tr style="background:#f8fafc;color:#64748b;font-size:9px;font-weight:800;text-transform:uppercase;">
+              <th style="padding:10px 8px;text-align:start;">${esc(L.transactionId) || 'TRANSACTION ID'}</th>
               <th style="padding:10px 8px;text-align:start;">${esc(L.timestamp)}</th>
               <th style="padding:10px 8px;text-align:start;">${esc(L.cashier)}</th>
               <th style="padding:10px 8px;text-align:start;">${esc(L.payment)}</th>

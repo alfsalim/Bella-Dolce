@@ -112,6 +112,7 @@ export interface ProductionBatch {
 
 export interface SaleItem {
   productId: string;
+  name?: string;
   quantity: number;
   price: number;
   location?: 'shop' | 'frozen';
@@ -123,8 +124,8 @@ export interface Sale {
   cashierName?: string;
   customerId?: string;
   totalAmount: number;
-  paymentMethod: 'cash' | 'card' | 'mobile';
-  items: SaleItem[];
+  paymentMethod: 'cash' | 'card' | 'mobile' | 'transfer';
+  items: SaleItem[] | string; // string when fetched from DB (JSON), array when in memory
   createdAt: string;
 }
 

@@ -76,6 +76,39 @@ Write-Host "  $timestamp"
 Write-Host "============================================"
 
 # ════════════════════════════════════════════════
+# GIT OPERATIONS — Commit and Push changes
+# ════════════════════════════════════════════════
+Log-Step "0/4 Git: Add, Commit, and Push changes"
+
+# Check if there are changes
+$gitStatus = git status --porcelain 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Log-Warn "Git command failed - skipping git operations"
+} elseif ([string]::IsNullOrWhiteSpace($gitStatus)) {
+    Log-Info "No changes to commit"
+} else {
+    Log-Info "Changes detected - committing..."
+    Log-Info "Changes: `n$gitStatus"
+
+    # Add all changes
+    git add -A
+    if ($LASTEXITCODE -ne 0) { Log-Err "Git add failed" }
+    Log-Ok "Changes staged"
+
+    # Commit with timestamp
+    $commitMsg = "Deploy: $timestamp"
+    git commit -m $commitMsg
+    if ($LASTEXITCODE -ne 0) { Log-Err "Git commit failed" }
+    Log-Ok "Committed: $commitMsg"
+
+    # Push to remote
+    Log-Info "Pushing to remote..."
+    git push
+    if ($LASTEXITCODE -ne 0) { Log-Warn "Git push failed - continuing with deployment" }
+    Log-Ok "Changes pushed to remote"
+}
+
+# ════════════════════════════════════════════════
 # DEV MODE — local Windows Docker
 # ════════════════════════════════════════════════
 if ($MODE -eq "--dev") {

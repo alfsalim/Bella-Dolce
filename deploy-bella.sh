@@ -80,6 +80,47 @@ echo "   $(date '+%Y-%m-%d %H:%M:%S')"
 echo "============================================"
 
 # ════════════════════════════════════════════════
+#   GIT OPERATIONS — Commit and Push changes
+# ════════════════════════════════════════════════
+log_step "0/4  Git: Add, Commit, and Push changes"
+
+if ! git status --porcelain >/dev/null 2>&1; then
+    log_warn "Git command failed — skipping git operations"
+else
+    GIT_STATUS=$(git status --porcelain)
+
+    if [ -z "$GIT_STATUS" ]; then
+        log_info "No changes to commit"
+    else
+        log_info "Changes detected — committing..."
+        echo "$GIT_STATUS" | head -20
+        if [ $(echo "$GIT_STATUS" | wc -l) -gt 20 ]; then
+            echo "   ... and $(( $(echo "$GIT_STATUS" | wc -l) - 20 )) more files"
+        fi
+
+        # Add all changes
+        git add -A
+        [ $? -ne 0 ] && log_err "Git add failed"
+        log_ok "Changes staged"
+
+        # Commit with timestamp
+        COMMIT_MSG="Deploy: $(date '+%Y-%m-%d %H:%M:%S')"
+        git commit -m "$COMMIT_MSG"
+        [ $? -ne 0 ] && log_err "Git commit failed"
+        log_ok "Committed: $COMMIT_MSG"
+
+        # Push to remote
+        log_info "Pushing to remote..."
+        git push
+        if [ $? -ne 0 ]; then
+            log_warn "Git push failed — continuing with deployment"
+        else
+            log_ok "Changes pushed to remote"
+        fi
+    fi
+fi
+
+# ════════════════════════════════════════════════
 #   DEV MODE — local Mac Docker
 # ════════════════════════════════════════════════
 if [ "$MODE" = "--dev" ]; then

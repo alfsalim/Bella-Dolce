@@ -46,7 +46,7 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   onClose,
   saleId,
 }) => {
-  const { t, formatCurrency } = useLanguage();
+  const { t, formatCurrency, isRTL } = useLanguage();
   const [printStatus, setPrintStatus] = useState<PrintStatus>(saleId ? 'printing' : null);
   const [printError, setPrintError] = useState<PrintError | null>(null);
 
@@ -149,13 +149,13 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" dir={isRTL ? 'rtl' : 'ltr'}>
       {printStatus && (
         <div className={`mb-2 p-2 rounded text-center text-sm font-medium ${getPrintStatusColor()}`}>
           {getPrintStatusLabel()}
         </div>
       )}
-      <div role="region" aria-label="receipt" className="flex-1 overflow-y-auto max-h-64 p-4">
+      <div role="region" aria-label="receipt" className="flex-1 overflow-y-auto max-h-64 p-4 text-sm">
         <div className="text-center mb-4">
           <h2 className="font-bold text-lg">{t('storeName') || storeName}</h2>
           <p className="text-sm">{t('storeAddress') || storeAddress}</p>
@@ -165,10 +165,10 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
           <p>{t('receiptNo')} {receiptNumber}</p>
         </div>
 
-        <div className="text-xs mb-4 space-y-1">
+        <div className={`text-xs mb-4 space-y-1 ${isRTL ? 'text-right' : ''}`}>
           <div className="flex justify-between">
             <span>{t('cashier')}:</span>
-            <span>{cashierName}</span>
+            <span>{cashierName || t('unknown')}</span>
           </div>
           <div className="flex justify-between">
             <span>{t('date')}:</span>
@@ -180,26 +180,26 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
           </div>
         </div>
 
-        <div className="border-t border-b border-gray-300 py-2 mb-4">
+        <div className="border-t border-b border-gray-300 dark:border-gray-600 py-2 mb-4">
           <div className="text-xs space-y-1 mb-2">
-            <div className="grid grid-cols-4 gap-1 font-semibold">
-              <span>{t('invoiceItem')}</span>
-              <span className="text-right">{t('qtyAbbrev')}</span>
-              <span className="text-right">{t('unitPrice')}</span>
-              <span className="text-right">{t('total')}</span>
+            <div className={`grid grid-cols-4 gap-1 font-semibold ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <span className={isRTL ? 'text-left' : ''}>{t('invoiceItem')}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{t('qtyAbbrev')}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{t('unitPrice')}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{t('total')}</span>
             </div>
           </div>
           {items.map((item, index) => (
             <div key={index} className="grid grid-cols-4 gap-1 text-xs mb-1">
-              <span className="truncate">{item.name}</span>
-              <span className="text-right">{item.quantity}</span>
-              <span className="text-right">{item.unitPrice}</span>
-              <span className="text-right">{item.lineTotal}</span>
+              <span className={`truncate ${isRTL ? 'text-left' : ''}`}>{item.name}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{item.quantity}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{item.unitPrice}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{item.lineTotal}</span>
             </div>
           ))}
         </div>
 
-        <div className="mb-4 space-y-1 text-sm">
+        <div className={`mb-4 space-y-1 text-sm ${isRTL ? 'text-right' : ''}`}>
           <div className="flex justify-between font-semibold">
             <span>{t('totalAmount')}:</span>
             <span>{formatCurrency(totalAmount)}</span>
@@ -222,7 +222,7 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
           )}
         </div>
 
-        <div className="border-t pt-3 text-center text-xs italic text-gray-600">
+        <div className="border-t border-gray-300 dark:border-gray-600 pt-3 text-center text-xs italic text-gray-600 dark:text-gray-400">
           <p>{t('receiptFooter')}</p>
         </div>
       </div>

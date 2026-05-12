@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Printer, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { authFetch } from '../lib/api-client';
+import { generateTransactionId } from '../lib/transactionId';
 import ReceiptPreview from './ReceiptPreview';
 
 const PAGE_SIZE = 15;
@@ -12,6 +13,7 @@ interface Sale {
   totalAmount: number;
   paymentMethod: 'CASH' | 'CARD' | 'TRANSFER';
   items?: string;
+  cashierName?: string;
 }
 
 interface RecentSalesModalProps {
@@ -69,10 +71,11 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
   }, [isOpen, cashierId]);
 
   const getPaymentMethodLabel = (method: string) => {
-    switch (method) {
-      case 'CASH': return t('cash') || 'Espèces';
-      case 'CARD': return t('card') || 'Carte';
-      case 'TRANSFER': return t('transfer') || 'Virement';
+    const upperMethod = method?.toUpperCase() || '';
+    switch (upperMethod) {
+      case 'CASH': return t('cash');
+      case 'CARD': return t('card');
+      case 'TRANSFER': return t('transfer');
       default: return method;
     }
   };
@@ -127,7 +130,13 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
                   <thead className="sticky top-0 bg-white dark:bg-slate-900">
                     <tr className="border-b border-slate-200 dark:border-slate-700">
                       <th className="text-left p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
+                        {t('transactionId') || 'Transaction ID'}
+                      </th>
+                      <th className="text-left p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
                         {t('time')}
+                      </th>
+                      <th className="text-left p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
+                        {t('products') || 'Products'}
                       </th>
                       <th className="text-left p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
                         {t('amount')}
@@ -146,12 +155,27 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
                         key={sale.id}
                         className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                       >
+                        <td className="p-3 text-slate-900 dark:text-white font-mono text-xs font-bold">
+                          {generateTransactionId(sale.createdAt)}
+                        </td>
                         <td className="p-3 text-slate-900 dark:text-white">
                           {new Date(sale.createdAt).toLocaleTimeString('fr-FR', {
                             hour: '2-digit',
                             minute: '2-digit',
                             second: '2-digit'
                           })}
+                        </td>
+                        <td className="p-3 text-slate-700 dark:text-slate-300 text-xs max-w-xs">
+                          {sale.items ? (() => {
+                            try {
+                              const items = JSON.parse(sale.items);
+                              return items.slice(0, 2).map((item: any) =>
+                                `${item.name || `Product ${item.productId}`} (${item.quantity})`
+                              ).join(', ') + (items.length > 2 ? '...' : '');
+                            } catch {
+                              return t('noProducts') || 'No products';
+                            }
+                          })() : t('noProducts') || 'No products'}
                         </td>
                         <td className="p-3 font-bold text-slate-900 dark:text-white">
                           {sale.totalAmount.toLocaleString('fr-DZ', { minimumFractionDigits: 2 })} DA
@@ -207,7 +231,7 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-sm p-6">
             <ReceiptPreview
-              receiptNumber={`${new Date(selectedSaleForReceipt.createdAt).toISOString().split('T')[0].replace(/-/g, '')}-001`}
+              receiptNumber={generateTransactionId(selectedSaleForReceipt.createdAt)}
               storeName="Boulangerie Bella-Dolce"
               storeAddress="SIDI-ABDELLAH ALGER"
               items={selectedSaleForReceipt.items ? JSON.parse(selectedSaleForReceipt.items).map((item: any) => ({
@@ -220,7 +244,7 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
               paymentMethod={selectedSaleForReceipt.paymentMethod.toLowerCase() as 'cash' | 'card' | 'transfer'}
               amountPaid={selectedSaleForReceipt.totalAmount}
               change={0}
-              cashierName={cashierId}
+              cashierName={selectedSaleForReceipt.cashierName || cashierId}
               dateTime={new Date(selectedSaleForReceipt.createdAt)}
               saleId={selectedSaleForReceipt.id}
               onClose={() => setSelectedSaleForReceipt(null)}

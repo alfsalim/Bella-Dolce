@@ -21,6 +21,8 @@ import { SELLABLE_CATEGORIES } from '../constants';
 import { authFetch } from '../lib/api-client';
 import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 import RecentSalesModal from '../components/RecentSalesModal';
+import ReceiptPreview from '../components/ReceiptPreview';
+import { generateTransactionId } from '../lib/transactionId';
 
 import { logActivity } from '../lib/logger';
 
@@ -42,6 +44,8 @@ const POS: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showRecentSales, setShowRecentSales] = useState(false);
   const [amountPaid, setAmountPaid] = useState<string>('');
+  const [successfulSaleId, setSuccessfulSaleId] = useState<string | null>(null);
+  const [cashierNameForReceipt, setCashierNameForReceipt] = useState<string>('');
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
     if (!product) return 0;
@@ -156,7 +160,15 @@ const POS: React.FC = () => {
           customerId: selectedCustomer || null,
           totalAmount: total,
           paymentMethod,
-          items: cart
+          items: cart.map((item) => {
+            const product = products.find(p => p.id === item.productId);
+            return {
+              productId: item.productId,
+              name: product ? tProduct(product) : `Product ${item.productId}`,
+              quantity: item.quantity,
+              price: item.price
+            };
+          })
         })
       });
 
@@ -215,13 +227,11 @@ const POS: React.FC = () => {
         })
       }).catch((err) => console.warn('Print receipt failed:', err));
 
-      setIsSuccess(true);
       setCart([]);
       setSelectedCustomer('');
-      setTimeout(() => {
-        setIsSuccess(false);
-        setIsCheckoutOpen(false);
-      }, 2000);
+      setIsCheckoutOpen(false);
+      setSuccessfulSaleId(generateTransactionId(saleData.createdAt || new Date()));
+      setCashierNameForReceipt(saleData.cashierName || profile?.name || '');
     } catch (error: any) {
       console.error("Checkout error:", error);
       alert(error.message || 'Checkout failed. Please try again.');
@@ -487,17 +497,8 @@ const POS: React.FC = () => {
       {isCheckoutOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
           <div className="card w-full max-w-md shadow-2xl relative overflow-hidden border-slate-100 dark:border-[#2a1e17]">
-            {isSuccess ? (
-              <div className="py-12 text-center animate-in zoom-in duration-300">
-                <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle2 className="w-12 h-12" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('paymentSuccess')}</h2>
-                <p className="text-slate-500 dark:text-slate-400 font-medium">{t('transactionId')}: #SALE-{Math.random().toString(36).slice(-6).toUpperCase()}</p>
-              </div>
-            ) : (
-              <>
-                <button
+            <>
+              <button
                   onClick={() => {
                     setIsCheckoutOpen(false);
                     setAmountPaid('');
@@ -606,7 +607,36 @@ const POS: React.FC = () => {
                   </button>
                 </div>
               </>
-            )}
+          </div>
+        </div>
+      )}
+
+      {successfulSaleId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-sm p-6">
+            <ReceiptPreview
+              receiptNumber={successfulSaleId}
+              storeName="Boulangerie Bella-Dolce"
+              storeAddress="SIDI-ABDELLAH ALGER"
+              items={cart.map((item) => {
+                const product = products.find(p => p.id === item.productId);
+                return {
+                  name: product ? tProduct(product) : `Product ${item.productId}`,
+                  quantity: item.quantity,
+                  unitPrice: item.price,
+                  lineTotal: item.price * item.quantity
+                };
+              })}
+              totalAmount={total}
+              paymentMethod={paymentMethod}
+              amountPaid={amountPaidNum}
+              change={amountPaidNum - total}
+              cashierName={cashierNameForReceipt}
+              dateTime={new Date()}
+              saleId={successfulSaleId}
+              onClose={() => setSuccessfulSaleId(null)}
+              autoCloseDelay={5000}
+            />
           </div>
         </div>
       )}
