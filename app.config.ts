@@ -17,7 +17,7 @@ const config = {
   QUERY_MAX_ITEMS: 100,
 
   // ── Server ─────────────────────────────────────────────────
-  PORT: 3500,             // overridden by process.env.PORT in production
+  PORT: parseInt(process.env.PORT || '3500', 10),             // overridden by process.env.PORT in production
 
   // ── Product Categories ─────────────────────────────────────
   CATEGORIES: [
