@@ -7,6 +7,8 @@ prisma_data
 .env
 .git
 .DS_Store
+# PrintAgent - ALL build artifacts
 PrintAgent/src/bin
-PrintAgent/publish
 PrintAgent/src/obj
+PrintAgent/publish
+PrintAgent/**/*.nupkg
