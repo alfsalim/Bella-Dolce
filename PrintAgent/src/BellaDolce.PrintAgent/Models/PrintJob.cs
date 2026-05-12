@@ -33,7 +33,6 @@ public class ReceiptLabels
     public string ThankYou { get; set; } = "Merci pour votre visite!";
     public string ComeBack { get; set; } = "À bientôt!";
     public string Currency { get; set; } = "DA";
-    public string ChangeLabel { get; set; } = "Monnaie";
 }
 
 public class PrintJobItem
