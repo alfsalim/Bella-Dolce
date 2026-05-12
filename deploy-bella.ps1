@@ -228,7 +228,7 @@ docker run -d `
     -p "${EXT_PORT}:${INT_PORT}" `
     -e "DATABASE_URL=$DB_URL" `
     -e "NODE_ENV=production" `
-    -e "BELLA_HTTP_ONLY=1" `
+    -e "BELLA_HTTP_ONLY=0" `            # set to 1 to enable http only
     -v "${PROD_DATA_DIR}:/app/data" `
     -v "${PROD_BACKUP_DIR}:/app/backups" `
     --restart unless-stopped `
