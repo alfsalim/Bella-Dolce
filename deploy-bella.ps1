@@ -3,7 +3,7 @@ $IMAGE_NAME = "bella-dolce2-bella-dolce2:latest"
 $TAR_FILE = "bella-dolce.tar"
 $CONTAINER_NAME = "bella-dolce2"
 $EXT_PORT = 3500
-$INT_PORT = 3000
+$INT_PORT = 3500
 $DB_URL = "file:/app/data/dev.db"
 
 # ── Production (Windows Prod) ────────────────────────────
@@ -228,6 +228,7 @@ docker run -d `
     -p "${EXT_PORT}:${INT_PORT}" `
     -e "DATABASE_URL=$DB_URL" `
     -e "NODE_ENV=production" `
+    -e "BELLA_HTTP_ONLY=1" `
     -v "${PROD_DATA_DIR}:/app/data" `
     -v "${PROD_BACKUP_DIR}:/app/backups" `
     --restart unless-stopped `
