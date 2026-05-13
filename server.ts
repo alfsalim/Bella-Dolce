@@ -1026,7 +1026,7 @@ async function resolveAllowedPaths(role: string): Promise<string[]> {
 
 async function startServer() {
   const app = express();
-  const PORT = parseInt(process.env.PORT || String(config.PORT), 10);
+  const PORT = parseInt(process.env.PORT || '3500', 10);
 
   app.use(express.json());
 
@@ -2000,7 +2000,7 @@ async function startServer() {
   app.get("/api/sales", requireAuth, async (req: any, res) => {
     try {
       const prisma = getPrisma();
-      const { date, cashierId, limit = 500, sort = 'desc' } = req.query;
+      const { date, cashierId, limit = config.QUERY_MAX_ITEMS, sort = 'desc' } = req.query;
 
       const userRole: string = (req.user?.role ?? '').trim();
       const canSeeAll = userRole === 'admin' || userRole === 'manager';
@@ -2029,11 +2029,61 @@ async function startServer() {
       const sales = await prisma.sale.findMany({
         where,
         orderBy: { createdAt: sort === 'asc' ? 'asc' : 'desc' },
-        take: Math.min(parseInt(limit) || 500, 500)
+        take: Math.min(parseInt(limit) || config.QUERY_MAX_ITEMS, config.QUERY_MAX_ITEMS)
       });
 
       const hasQueryFilters = date || cashierId;
       res.json(hasQueryFilters ? { sales } : sales);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/events", requireAuth, async (req: any, res) => {
+    try {
+      const prisma = getPrisma();
+      const { type, message, collection, operation } = req.body;
+      if (!type || !message) return res.status(400).json({ error: 'type and message required' });
+      const event = await prisma.event.create({
+        data: { userId: req.user.id, type, message, collection, operation }
+      });
+      res.json({ id: event.id });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.get("/api/events", requireAuth, async (req: any, res) => {
+    try {
+      const prisma = getPrisma();
+      const events = await prisma.event.findMany({
+        where: { userId: req.user.id },
+        orderBy: { createdAt: 'desc' },
+        take: config.QUERY_MAX_ITEMS,
+      });
+      res.json(events);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/events", requireAuth, async (req: any, res) => {
+    try {
+      const prisma = getPrisma();
+      const { count } = await prisma.event.deleteMany({ where: { userId: req.user.id } });
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.get("/api/products/category-usage", requireAuth, async (req: any, res) => {
+    try {
+      const prisma = getPrisma();
+      const { name } = req.query;
+      if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name required' });
+      const count = await prisma.product.count({ where: { category: name } });
+      res.json({ count });
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }

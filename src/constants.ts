@@ -452,6 +452,10 @@ export const TRANSLATIONS: Record<Language, any> = {
     renameCategoryPrompt: "Renommer la catégorie",
     categorySaved: "Catégorie enregistrée",
     categoryDeleted: "Catégorie supprimée",
+    categoryInUse: "Impossible de supprimer — des produits utilisent cette catégorie.",
+    posCategory: "Vente",
+    editCategory: "Modifier la catégorie",
+    visibleInPOS: "Visible en caisse",
     errorSavingCategory: "Erreur lors de l'enregistrement de la catégorie",
     categoryValidationEmpty: "Le nom de catégorie ne peut pas être vide",
     categoryValidationDuplicate: "Cette catégorie existe déjà",
@@ -506,7 +510,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     notificationsPanelTitle: "Notifications",
     notificationsEmpty: "Rien à signaler pour le moment.",
     notificationsOpenOrders: "Voir toutes les commandes",
-    notificationsOpenDashboard: "Ouvrir le tableau de bord",
+    notificationsClearAll: "Effacer les erreurs système",
     notifSystemErrorTitle: "Erreur système",
     notifLowStockProductTitle: "Stock produit bas",
     notifLowStockMaterialTitle: "Stock matière bas",
@@ -1290,6 +1294,10 @@ export const TRANSLATIONS: Record<Language, any> = {
     renameCategoryPrompt: "إعادة تسمية الفئة",
     categorySaved: "تم حفظ الفئة",
     categoryDeleted: "تم حذف الفئة",
+    categoryInUse: "لا يمكن الحذف — توجد منتجات تستخدم هذه الفئة.",
+    posCategory: "بيع",
+    editCategory: "تعديل الفئة",
+    visibleInPOS: "ظاهر في نقطة البيع",
     errorSavingCategory: "حدث خطأ أثناء حفظ الفئة",
     categoryValidationEmpty: "اسم الفئة لا يمكن أن يكون فارغاً",
     categoryValidationDuplicate: "هذه الفئة موجودة بالفعل",
@@ -1344,7 +1352,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     notificationsPanelTitle: "الإشعارات",
     notificationsEmpty: "لا توجد تنبيهات حالياً.",
     notificationsOpenOrders: "عرض كل الطلبات",
-    notificationsOpenDashboard: "فتح لوحة القيادة",
+    notificationsClearAll: "مسح أخطاء النظام",
     notifSystemErrorTitle: "خطأ في النظام",
     notifLowStockProductTitle: "مخزون منتج منخفض",
     notifLowStockMaterialTitle: "مخزون مادة خام منخفض",
@@ -2291,7 +2299,7 @@ export const CATEGORY_NAMES: Record<Language, Record<string, string>> = {
   }
 };
 
-export const CATEGORIES = config.CATEGORIES;
-export const SELLABLE_CATEGORIES = config.SELLABLE_CATEGORIES;
+export const CATEGORIES = ["viennoiserie", "patisserie", "boulangerie", "traiteur", "boissons", "cooking", "maintenance", "cleaning", "others"] as const;
+export const SELLABLE_CATEGORIES = ["viennoiserie", "patisserie", "boulangerie", "traiteur", "boissons"] as const;
 
 export const UNITS = config.UNITS;

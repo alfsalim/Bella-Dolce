@@ -12,7 +12,7 @@ import {
   handleFirestoreError,
   OperationType,
 } from '../lib/db';
-import { readStaffSystemErrors, type SystemErrorEvent } from '../lib/systemErrorNotifications';
+import { readStaffSystemErrors, clearStaffSystemErrors, type SystemErrorEvent } from '../lib/systemErrorNotifications';
 import { QUERY_MAX_ITEMS } from '../constants';
 
 const STAFF_ROLES = ['admin', 'manager', 'cashier', 'baker', 'inventory'] as const;
@@ -190,7 +190,12 @@ export function useStaffNotifications(options: {
   }, [userId]);
 
   const refreshErrors = useCallback(() => {
-    setSystemErrors(readStaffSystemErrors());
+    readStaffSystemErrors().then(setSystemErrors).catch(() => {});
+  }, []);
+
+  const clearEvents = useCallback(async () => {
+    await clearStaffSystemErrors();
+    setSystemErrors([]);
   }, []);
 
   useEffect(() => {
@@ -432,5 +437,6 @@ export function useStaffNotifications(options: {
     digest,
     hasUnread,
     markNotificationsSeen,
+    clearEvents,
   };
 }

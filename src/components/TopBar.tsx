@@ -82,7 +82,7 @@ const TopBar: React.FC<TopBarProps> = ({
     systemAlertsEnabled &&
     (STAFF_NOTIFICATION_BELL_ROLES as readonly string[]).includes(profile.role);
 
-  const { rows: staffNotificationRows, hasUnread: staffNotificationsUnread, markNotificationsSeen } =
+  const { rows: staffNotificationRows, hasUnread: staffNotificationsUnread, markNotificationsSeen, clearEvents } =
     useStaffNotifications({
       userId: user?.uid,
       profile,
@@ -402,17 +402,17 @@ const TopBar: React.FC<TopBarProps> = ({
                           {t('notificationsOpenOrders')}
                         </button>
                       ) : null}
-                      {canAccess('/dashboard') ? (
+                      {staffNotificationRows.some((r) => r.tone === 'danger') ? (
                         <button
                           type="button"
-                          className="w-full text-center text-sm font-semibold text-slate-600 dark:text-slate-400 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800/80"
+                          className="w-full text-center text-sm font-semibold text-red-500 dark:text-red-400 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
+                            clearEvents();
                             setNotificationsOpen(false);
-                            navigate('/dashboard');
                           }}
                         >
-                          {t('notificationsOpenDashboard')}
+                          {t('notificationsClearAll')}
                         </button>
                       ) : null}
                     </div>

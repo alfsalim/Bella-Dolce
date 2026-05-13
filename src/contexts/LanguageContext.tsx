@@ -29,6 +29,7 @@ interface LanguageContextType {
   isRTL: boolean;
   isBilingual: boolean;
   toggleBilingual: () => void;
+  setCategoryNames: (names: { fr: Record<string, string>; ar: Record<string, string> }) => void;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -39,6 +40,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return (saved as Language) || 'fr';
   });
   const [isBilingual, setIsBilingual] = useState(false);
+  const [dbCategoryNames, setDbCategoryNames] = useState<{ fr: Record<string, string>; ar: Record<string, string> }>({ fr: {}, ar: {} });
 
   useEffect(() => {
     localStorage.setItem('language', language);
@@ -79,7 +81,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const tCategory = (category: string) => {
-    return CATEGORY_NAMES[language]?.[category] || category;
+    return dbCategoryNames[language]?.[category] || CATEGORY_NAMES[language]?.[category] || category;
+  };
+
+  const setCategoryNames = (names: { fr: Record<string, string>; ar: Record<string, string> }) => {
+    setDbCategoryNames(names);
   };
 
   const currencyUnit = language === 'ar' ? 'دج' : CURRENCY;
@@ -108,8 +114,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       formatCurrency,
       currencyUnit,
       isRTL, 
-      isBilingual, 
-      toggleBilingual 
+      isBilingual,
+      toggleBilingual,
+      setCategoryNames,
     }}>
       {children}
     </LanguageContext.Provider>

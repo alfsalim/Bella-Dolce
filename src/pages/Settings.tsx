@@ -33,7 +33,7 @@ import {
 import AssetManagement from './AssetManagement';
 
 const Settings: React.FC = () => {
-  const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole, tCategory } = useLanguage();
+  const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole, tCategory, setCategoryNames } = useLanguage();
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -73,6 +73,10 @@ const Settings: React.FC = () => {
   const [newProductCategory, setNewProductCategory] = useState('');
   const [newRawMaterialCategory, setNewRawMaterialCategory] = useState('');
   const [newConsumableCategory, setNewConsumableCategory] = useState('');
+  const [editingCategory, setEditingCategory] = useState<{ type: 'product' | 'rawMaterial' | 'consumable'; oldValue: string } | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryNameAr, setEditCategoryNameAr] = useState('');
+  const [editCategoryIsSellable, setEditCategoryIsSellable] = useState(false);
   const [consumables, setConsumables] = useState<RawMaterial[]>([]);
   const [isConsumableModalOpen, setIsConsumableModalOpen] = useState(false);
   const [editingConsumable, setEditingConsumable] = useState<RawMaterial | null>(null);
@@ -274,11 +278,13 @@ const Settings: React.FC = () => {
         if (snapshot.exists()) {
           const sanitized = sanitizeItemCategoryConfig(snapshot.data());
           setItemCategoryConfig(sanitized);
+          setCategoryNames(sanitized.categoryNames);
           return;
         }
 
         const fallback = getDefaultItemCategoryConfig();
         setItemCategoryConfig(fallback);
+        setCategoryNames(fallback.categoryNames);
         if (!isAdmin) return;
 
         const legacySnap = await getDoc(doc(db, 'settings', 'categories'));
@@ -814,6 +820,7 @@ const Settings: React.FC = () => {
     const sanitized = sanitizeItemCategoryConfig(next);
     await setDoc(doc(db, 'settings', 'item_categories'), sanitized, { merge: true });
     setItemCategoryConfig(sanitized);
+    setCategoryNames(sanitized.categoryNames);
   };
 
   const addCategoryByType = async (type: 'product' | 'rawMaterial' | 'consumable') => {
@@ -828,6 +835,10 @@ const Settings: React.FC = () => {
       await updateItemCategoryConfig({
         ...itemCategoryConfig,
         [type]: [...itemCategoryConfig[type], normalized],
+        categoryNames: {
+          fr: { ...itemCategoryConfig.categoryNames.fr, [normalized]: input.trim() },
+          ar: { ...itemCategoryConfig.categoryNames.ar },
+        },
       });
       if (type === 'product') setNewProductCategory('');
       else if (type === 'rawMaterial') setNewRawMaterialCategory('');
@@ -839,20 +850,46 @@ const Settings: React.FC = () => {
     }
   };
 
-  const renameCategoryByType = async (type: 'product' | 'rawMaterial' | 'consumable', oldValue: string) => {
-    const input = window.prompt(t('renameCategoryPrompt') || 'Rename category', oldValue);
-    if (input == null) return;
-    const normalized = normalizeCategoryName(input);
+  const openEditCategory = (type: 'product' | 'rawMaterial' | 'consumable', oldValue: string) => {
+    setEditingCategory({ type, oldValue });
+    setEditCategoryName(itemCategoryConfig.categoryNames.fr[oldValue] || oldValue);
+    setEditCategoryNameAr(itemCategoryConfig.categoryNames.ar[oldValue] || '');
+    setEditCategoryIsSellable(itemCategoryConfig.sellable.includes(oldValue));
+  };
+
+  const saveEditCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+    const { type, oldValue } = editingCategory;
+    const normalized = normalizeCategoryName(editCategoryName);
     if (!normalized) { setFormFeedback({ type: 'error', message: t('categoryValidationEmpty') }); return; }
+    if (!editCategoryNameAr.trim()) { setFormFeedback({ type: 'error', message: t('categoryValidationEmpty') }); return; }
 
     const siblingList = itemCategoryConfig[type].filter((cat) => cat !== oldValue).map((cat) => cat.toLowerCase());
     if (siblingList.includes(normalized)) { setFormFeedback({ type: 'error', message: t('categoryValidationDuplicate') }); return; }
 
     try {
+      const newSellable = type === 'product'
+        ? editCategoryIsSellable
+          ? Array.from(new Set([...itemCategoryConfig.sellable.filter((c) => c !== oldValue), normalized]))
+          : itemCategoryConfig.sellable.filter((c) => c !== oldValue)
+        : itemCategoryConfig.sellable.map((c) => c === oldValue ? normalized : c);
+
+      const prevFr = { ...itemCategoryConfig.categoryNames.fr };
+      const prevAr = { ...itemCategoryConfig.categoryNames.ar };
+      delete prevFr[oldValue];
+      delete prevAr[oldValue];
+
       await updateItemCategoryConfig({
         ...itemCategoryConfig,
         [type]: itemCategoryConfig[type].map((cat) => (cat === oldValue ? normalized : cat)),
+        sellable: newSellable,
+        categoryNames: {
+          fr: { ...prevFr, [normalized]: editCategoryName.trim() },
+          ar: { ...prevAr, [normalized]: editCategoryNameAr.trim() },
+        },
       });
+      setEditingCategory(null);
       setFormFeedback({ type: 'success', message: t('categorySaved') });
     } catch (error) {
       console.error('Error renaming category:', error);
@@ -864,10 +901,28 @@ const Settings: React.FC = () => {
     if (!window.confirm(t('confirmDelete'))) return;
     if (itemCategoryConfig[type].length <= 1) { setFormFeedback({ type: 'error', message: t('categoryValidationKeepOne') }); return; }
 
+    if (type === 'product') {
+      try {
+        const token = localStorage.getItem('bakery_token');
+        const res = await authFetch(`/api/products/category-usage?name=${encodeURIComponent(value)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const { count } = await res.json();
+        if (count > 0) {
+          toast.error(`${t('categoryInUse')} (${count})`);
+          return;
+        }
+      } catch {
+        toast.error(t('errorSavingCategory'));
+        return;
+      }
+    }
+
     try {
       await updateItemCategoryConfig({
         ...itemCategoryConfig,
         [type]: itemCategoryConfig[type].filter((cat) => cat !== value),
+        ...(type === 'product' ? { sellable: itemCategoryConfig.sellable.filter((cat) => cat !== value) } : {}),
       });
       setFormFeedback({ type: 'success', message: t('categoryDeleted') });
     } catch (error) {
@@ -875,6 +930,7 @@ const Settings: React.FC = () => {
       setFormFeedback({ type: 'error', message: t('errorSavingCategory') });
     }
   };
+
 
   const saveConsumable = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1641,19 +1697,25 @@ const Settings: React.FC = () => {
               </button>
             </div>
             <div className="space-y-2 max-h-[380px] overflow-y-auto pr-2">
-              {itemCategoryConfig.product.map((cat) => (
-                <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
-                  <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => renameCategoryByType('product', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button type="button" onClick={() => deleteCategoryByType('product', cat)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+              {itemCategoryConfig.product.map((cat) => {
+                const isSellable = itemCategoryConfig.sellable.includes(cat);
+                return (
+                  <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
+                      {isSellable && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400">{t('posCategory')}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => openEditCategory('product', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={() => deleteCategoryByType('product', cat)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1676,7 +1738,7 @@ const Settings: React.FC = () => {
                 <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
                   <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => renameCategoryByType('rawMaterial', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
+                    <button type="button" onClick={() => openEditCategory('rawMaterial', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button type="button" onClick={() => deleteCategoryByType('rawMaterial', cat)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
@@ -1706,7 +1768,7 @@ const Settings: React.FC = () => {
                 <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-black border border-slate-100 dark:border-white/5">
                   <span className="font-bold text-slate-700 dark:text-zinc-300">{tCategory(cat)}</span>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => renameCategoryByType('consumable', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
+                    <button type="button" onClick={() => openEditCategory('consumable', cat)} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors">
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button type="button" onClick={() => deleteCategoryByType('consumable', cat)} className="p-1.5 text-slate-400 hover:text-red-600 transition-colors">
@@ -1930,6 +1992,56 @@ const Settings: React.FC = () => {
           </div>
         </div>
       )}
+      {editingCategory && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] w-full max-w-sm border border-slate-100 dark:border-white/10 overflow-hidden">
+            <form onSubmit={saveEditCategory}>
+              <div className="p-6 border-b border-slate-100 dark:border-white/10 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t('editCategory')}</h3>
+                <button type="button" onClick={() => setEditingCategory(null)}><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Nom (FR) <span className="text-red-500">*</span></label>
+                  <input
+                    className="input w-full"
+                    value={editCategoryName}
+                    onChange={(e) => setEditCategoryName(e.target.value)}
+                    autoFocus
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1" dir="rtl">الاسم (AR) <span className="text-red-500">*</span></label>
+                  <input
+                    className="input w-full text-right"
+                    dir="rtl"
+                    value={editCategoryNameAr}
+                    onChange={(e) => setEditCategoryNameAr(e.target.value)}
+                    required
+                  />
+                </div>
+                {editingCategory.type === 'product' && (
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={editCategoryIsSellable}
+                      onChange={(e) => setEditCategoryIsSellable(e.target.checked)}
+                      className="w-4 h-4 rounded accent-primary-600"
+                    />
+                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('posCategory')} — {t('visibleInPOS')}</span>
+                  </label>
+                )}
+              </div>
+              <div className="p-6 border-t border-slate-100 dark:border-white/10 flex justify-end gap-3">
+                <button type="button" onClick={() => setEditingCategory(null)} className="btn-secondary">{t('cancel')}</button>
+                <button type="submit" className="btn-primary">{t('save')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {formFeedback && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-50">
           <Alert type={formFeedback.type} message={formFeedback.message} onDismiss={() => setFormFeedback(null)} />

@@ -17,7 +17,7 @@ import {
 import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/db';
 import { Product, SaleItem, Customer, Promotion } from '../types';
 import { clsx } from 'clsx';
-import { SELLABLE_CATEGORIES } from '../constants';
+import { sanitizeItemCategoryConfig, getDefaultItemCategoryConfig, ItemCategoryConfig } from '../lib/itemCategories';
 import { authFetch } from '../lib/api-client';
 import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 import RecentSalesModal from '../components/RecentSalesModal';
@@ -27,7 +27,7 @@ import { generateTransactionId } from '../lib/transactionId';
 import { logActivity } from '../lib/logger';
 
 const POS: React.FC = () => {
-  const { t, isRTL, tProduct, tCategory, currencyUnit, formatCurrency } = useLanguage();
+  const { t, isRTL, tProduct, tCategory, currencyUnit, formatCurrency, setCategoryNames } = useLanguage();
   const { profile } = useAuth();
   
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,6 +46,7 @@ const POS: React.FC = () => {
   const [amountPaid, setAmountPaid] = useState<string>('');
   const [successfulSaleId, setSuccessfulSaleId] = useState<string | null>(null);
   const [cashierNameForReceipt, setCashierNameForReceipt] = useState<string>('');
+  const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
     if (!product) return 0;
@@ -79,17 +80,26 @@ const POS: React.FC = () => {
       setPromotions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Promotion)));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'promotions'));
 
+    const unsubscribeCategories = onSnapshot(doc(db, 'settings', 'item_categories'), (snapshot) => {
+      if (snapshot.exists()) {
+        const config = sanitizeItemCategoryConfig(snapshot.data());
+        setItemCategoryConfig(config);
+        setCategoryNames(config.categoryNames);
+      }
+    });
+
     return () => {
       unsubscribe();
       unsubscribeCustomers();
       unsubscribePromotions();
+      unsubscribeCategories();
     };
   }, []);
 
   const filteredProducts = products.filter(p => {
     if (p.status === 'frozen') return false;
     if ((p as any).disabled) return false;
-    if (!SELLABLE_CATEGORIES.includes(p.category?.toLowerCase() as any)) return false;
+    if (!itemCategoryConfig.sellable.includes(p.category?.toLowerCase() ?? '')) return false;
     const matchesCategory = activeCategory === 'All' || p.category?.toLowerCase() === activeCategory.toLowerCase();
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCategory && matchesSearch;
@@ -270,7 +280,7 @@ const POS: React.FC = () => {
           >
             {t('allItems')}
           </button>
-          {SELLABLE_CATEGORIES.map(cat => (
+          {itemCategoryConfig.sellable.map((cat: string) => (
             <button 
               key={cat}
               onClick={() => setActiveCategory(cat)}

@@ -1,5 +1,4 @@
-const STORAGE_KEY = 'bd_system_error_events';
-const MAX_EVENTS = 40;
+import { authFetch } from './api-client';
 
 export type SystemErrorEvent = {
   id: string;
@@ -12,22 +11,6 @@ export type SystemErrorEvent = {
 let lastDedupeSig = '';
 let lastDedupeAt = 0;
 const DEDUPE_MS = 20_000;
-
-function pushEvent(evt: SystemErrorEvent) {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    const list: SystemErrorEvent[] = raw ? JSON.parse(raw) : [];
-    list.unshift(evt);
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_EVENTS)));
-  } catch {
-    /* ignore quota / private mode */
-  }
-  try {
-    window.dispatchEvent(new CustomEvent('bd-system-notification'));
-  } catch {
-    /* non-browser */
-  }
-}
 
 /** Record a backend failure for the staff notification bell. Rate-limits identical bursts. */
 export function recordStaffSystemError(detail: {
@@ -42,23 +25,60 @@ export function recordStaffSystemError(detail: {
   lastDedupeSig = sig;
   lastDedupeAt = now;
 
-  const id = `${now}_${Math.random().toString(36).slice(2, 9)}`;
-  pushEvent({
-    id,
-    at: now,
-    collection: detail.collection,
-    operation: detail.operation,
-    message: msg,
-  });
+  // Fire-and-forget — do not block the caller
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('bakery_token') : null;
+  authFetch('/api/events', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      type: 'system_error',
+      message: msg,
+      collection: detail.collection,
+      operation: detail.operation,
+    }),
+  }).catch(() => { /* ignore — we're already handling an error */ });
+
+  try {
+    window.dispatchEvent(new CustomEvent('bd-system-notification'));
+  } catch {
+    /* non-browser */
+  }
 }
 
-export function readStaffSystemErrors(): SystemErrorEvent[] {
+export async function readStaffSystemErrors(): Promise<SystemErrorEvent[]> {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const list = JSON.parse(raw) as SystemErrorEvent[];
-    return Array.isArray(list) ? list : [];
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('bakery_token') : null;
+    if (!token) return [];
+    const res = await authFetch('/api/events', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const events = await res.json();
+    if (!Array.isArray(events)) return [];
+    return events.map((e: any) => ({
+      id: e.id,
+      at: new Date(e.createdAt).getTime(),
+      collection: e.collection ?? undefined,
+      operation: e.operation ?? undefined,
+      message: e.message,
+    }));
   } catch {
     return [];
+  }
+}
+
+export async function clearStaffSystemErrors(): Promise<void> {
+  try {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('bakery_token') : null;
+    if (!token) return;
+    await authFetch('/api/events', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    /* ignore */
   }
 }

@@ -25,6 +25,7 @@ import {
   Printer
 } from 'lucide-react';
 import { authFetch } from '../lib/api-client';
+import { PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
 import { 
   BarChart, 
   XAxis, 
@@ -53,7 +54,6 @@ import { clsx } from 'clsx';
 import Pagination from '../components/Pagination';
 import { downloadReportsPdf } from '../lib/reports-pdf';
 
-const REPORTS_PAGE_SIZE = 100;
 /** Activities list uses a smaller page size so pagination is usable with typical log volumes. */
 const ACTIVITIES_PAGE_SIZE = 25;
 const LINE_ITEMS_PREVIEW = 3;
@@ -162,7 +162,7 @@ const Reports: React.FC = () => {
       setMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
     });
 
-    const unsubscribeActivities = onSnapshot(query(collection(db, 'activityLogs'), orderBy('timestamp', 'desc'), limit(500)), (snapshot) => {
+    const unsubscribeActivities = onSnapshot(query(collection(db, 'activityLogs'), orderBy('timestamp', 'desc'), limit(QUERY_MAX_ITEMS)), (snapshot) => {
       setActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
     });
 
@@ -217,11 +217,11 @@ const Reports: React.FC = () => {
     selectedCashier === 'all' || s.cashierId === selectedCashier
   );
 
-  const transactionTotalPages = Math.ceil(transactionsListSales.length / REPORTS_PAGE_SIZE) || 1;
+  const transactionTotalPages = Math.ceil(transactionsListSales.length / PAGE_SIZE) || 1;
   const safeTransactionPage = Math.min(transactionPage, transactionTotalPages);
   const paginatedTransactions = transactionsListSales.slice(
-    (safeTransactionPage - 1) * REPORTS_PAGE_SIZE,
-    safeTransactionPage * REPORTS_PAGE_SIZE
+    (safeTransactionPage - 1) * PAGE_SIZE,
+    safeTransactionPage * PAGE_SIZE
   );
 
   const totalTransactionCount = transactionsListSales.length;
@@ -267,11 +267,11 @@ const Reports: React.FC = () => {
     return rows;
   }, [reportSalesByDate, productFilterIds]);
 
-  const productReportTotalPages = Math.ceil(productReportRows.length / REPORTS_PAGE_SIZE) || 1;
+  const productReportTotalPages = Math.ceil(productReportRows.length / PAGE_SIZE) || 1;
   const safeProductReportPage = Math.min(productReportPage, productReportTotalPages);
   const paginatedProductReport = productReportRows.slice(
-    (safeProductReportPage - 1) * REPORTS_PAGE_SIZE,
-    safeProductReportPage * REPORTS_PAGE_SIZE
+    (safeProductReportPage - 1) * PAGE_SIZE,
+    safeProductReportPage * PAGE_SIZE
   );
 
   /** Sum of line revenue for rows currently shown (respects product multi-select on By product tab). */
@@ -1242,7 +1242,7 @@ const Reports: React.FC = () => {
             </div>
           )}
 
-          {reportSalesByDate.length >= 500 && (
+          {reportSalesByDate.length >= QUERY_MAX_ITEMS && (
             <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4 rounded-2xl flex items-center gap-4">
               <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
               <p className="text-sm text-amber-800 dark:text-amber-400 font-medium">
@@ -1355,11 +1355,11 @@ const Reports: React.FC = () => {
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   {t('showing') || 'Showing'}{' '}
                   <span className="text-slate-900 dark:text-white">
-                    {totalTransactionCount === 0 ? 0 : (safeTransactionPage - 1) * REPORTS_PAGE_SIZE + 1}
+                    {totalTransactionCount === 0 ? 0 : (safeTransactionPage - 1) * PAGE_SIZE + 1}
                   </span>{' '}
                   {t('rangeTo')}{' '}
                   <span className="text-slate-900 dark:text-white">
-                    {Math.min(safeTransactionPage * REPORTS_PAGE_SIZE, totalTransactionCount)}
+                    {Math.min(safeTransactionPage * PAGE_SIZE, totalTransactionCount)}
                   </span>{' '}
                   {t('of') || 'of'}{' '}
                   <span className="text-slate-900 dark:text-white">{totalTransactionCount}</span>{' '}
@@ -1432,11 +1432,11 @@ const Reports: React.FC = () => {
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   {t('showing') || 'Showing'}{' '}
                   <span className="text-slate-900 dark:text-white">
-                    {productReportRows.length === 0 ? 0 : (safeProductReportPage - 1) * REPORTS_PAGE_SIZE + 1}
+                    {productReportRows.length === 0 ? 0 : (safeProductReportPage - 1) * PAGE_SIZE + 1}
                   </span>{' '}
                   {t('rangeTo')}{' '}
                   <span className="text-slate-900 dark:text-white">
-                    {Math.min(safeProductReportPage * REPORTS_PAGE_SIZE, productReportRows.length)}
+                    {Math.min(safeProductReportPage * PAGE_SIZE, productReportRows.length)}
                   </span>{' '}
                   {t('of') || 'of'}{' '}
                   <span className="text-slate-900 dark:text-white">{productReportRows.length}</span>{' '}
