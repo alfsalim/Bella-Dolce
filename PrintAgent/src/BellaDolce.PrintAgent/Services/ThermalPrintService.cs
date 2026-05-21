@@ -7,16 +7,21 @@ namespace BellaDolce.PrintAgent.Services
 {
     public class ThermalPrintService : IPrintService
     {
+        
         private readonly string _printerName;
         private readonly string? _logoPath;
+        private readonly int _paperWidth;
+        private readonly int _paperHeight;
         private PrintJob? _currentJob;
 
         public string Mode => "printer";
-
-        public ThermalPrintService(string printerName, string? logoPath = null)
+        
+        public ThermalPrintService(string printerName, string? logoPath = null, int paperWidth = 315, int paperHeight = 1200)
         {
             _printerName = printerName;
             _logoPath = logoPath;
+            _paperWidth = paperWidth;
+            _paperHeight = paperHeight;
         }
 
         public Task<PrintResult> PrintAsync(PrintJob job)
@@ -37,7 +42,7 @@ namespace BellaDolce.PrintAgent.Services
                     });
                 }
 
-                doc.DefaultPageSettings.PaperSize = new PaperSize("Receipt", 302, 1200);
+                doc.DefaultPageSettings.PaperSize = new PaperSize("Receipt", _paperWidth, _paperHeight);
                 doc.DefaultPageSettings.Margins = new Margins(5, 5, 5, 5);
                 doc.PrintPage += OnPrintPage;
                 doc.Print();

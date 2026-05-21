@@ -21,17 +21,20 @@ try
     var logoPath = config.GetValue<string>("LogoPath");
     var allowedOrigins = config.GetSection("AllowedOrigins").Get<string[]>();
 
-    if (mode?.Equals("thermal", StringComparison.OrdinalIgnoreCase) == true)
-    {
-        builder.Services.AddSingleton<IPrintService>(new ThermalPrintService(printerName!, logoPath));
-        Log.Information("Print mode: THERMAL ({PrinterName})", printerName);
-    }
-    else
-    {
-        builder.Services.AddSingleton<IPrintService, EmulatorPrintService>();
-        Log.Information("Print mode: EMULATOR");
-    }
-
+   if (mode?.Equals("thermal", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var paperWidthMM = config.GetValue<int>("PaperWidth");
+            var paperHeightMM = config.GetValue<int>("PaperHeight");
+            var paperWidth = (int)(paperWidthMM * 3.937);
+            var paperHeight = (int)(paperHeightMM * 3.937);
+            builder.Services.AddSingleton<IPrintService>(new ThermalPrintService(printerName!, logoPath, paperWidth, paperHeight));
+            Log.Information("Print mode: THERMAL ({PrinterName}, {PaperWidth}mm)", printerName, paperWidthMM);
+        }
+        else
+        {
+            builder.Services.AddSingleton<IPrintService, EmulatorPrintService>();
+            Log.Information("Print mode: EMULATOR");
+        }
     builder.Services.AddControllers();
 
     builder.Services.AddCors(options =>
