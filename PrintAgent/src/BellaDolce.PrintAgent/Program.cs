@@ -27,7 +27,8 @@ try
 
     if (mode?.Equals("thermal", StringComparison.OrdinalIgnoreCase) == true)
     {
-        builder.Services.AddSingleton<IPrintService, ThermalPrintService>();
+        var printerName = builder.Configuration.GetValue<string>("PrintAgent:PrinterName", "POSPrinter POS80");
+        builder.Services.AddSingleton<IPrintService>(new ThermalPrintService(printerName));
         Log.Information("Print mode: THERMAL (real printer)");
     }
     else

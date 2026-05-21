@@ -322,7 +322,7 @@ C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\createdump.exe
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\hostfxr.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\hostpolicy.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\mscordaccore.dll
-C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\mscordaccore_amd64_amd64_8.0.2626.16921.dll
+C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\mscordaccore_amd64_amd64_8.0.2726.22922.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\mscordbi.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\mscorrc.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\publish\msquic.dll

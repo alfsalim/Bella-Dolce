@@ -336,7 +336,6 @@ C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgen
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\hostfxr.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\hostpolicy.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\mscordaccore.dll
-C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\mscordaccore_amd64_amd64_8.0.2626.16921.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\mscordbi.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\mscorrc.dll
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\msquic.dll
@@ -362,3 +361,4 @@ C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgen
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\obj\Release\net8.0\win-x64\BellaDolce.PrintAgent.pdb
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\obj\Release\net8.0\win-x64\BellaDolce.PrintAgent.genruntimeconfig.cache
 C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\obj\Release\net8.0\win-x64\ref\BellaDolce.PrintAgent.dll
+C:\Users\alfsa\Projects\personal\Bella-Dolce\PrintAgent\src\BellaDolce.PrintAgent\bin\Release\net8.0\win-x64\mscordaccore_amd64_amd64_8.0.2726.22922.dll
