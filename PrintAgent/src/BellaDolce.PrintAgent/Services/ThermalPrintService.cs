@@ -8,13 +8,15 @@ namespace BellaDolce.PrintAgent.Services
     public class ThermalPrintService : IPrintService
     {
         private readonly string _printerName;
+        private readonly string? _logoPath;
         private PrintJob? _currentJob;
 
         public string Mode => "printer";
 
-        public ThermalPrintService(string printerName)
+        public ThermalPrintService(string printerName, string? logoPath = null)
         {
             _printerName = printerName;
+            _logoPath = logoPath;
         }
 
         public Task<PrintResult> PrintAsync(PrintJob job)
@@ -95,6 +97,16 @@ namespace BellaDolce.PrintAgent.Services
             }
 
             // === HEADER ===
+             // === LOGO ===
+            if (!string.IsNullOrEmpty(_logoPath) && File.Exists(_logoPath))
+            {
+                using var logo = Image.FromFile(_logoPath);
+                var logoWidth = Math.Min(150, pageWidth);
+                var logoHeight = (int)(logo.Height * ((float)logoWidth / logo.Width));
+                var logoX = (pageWidth - logoWidth) / 2;
+                g.DrawImage(logo, (int)logoX, (int)y, (int)logoWidth, logoHeight);
+                y += logoHeight + 5;
+            }
             DrawCenter(labels.StoreName, fontTitle);
             DrawCenter(labels.StoreSlogan, fontNormal);
             y += 5;

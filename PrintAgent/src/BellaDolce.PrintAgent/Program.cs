@@ -12,44 +12,33 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // Add Serilog
     builder.Host.UseSerilog();
-
-    // Windows Service support
     builder.Host.UseWindowsService();
 
-    // Configure Kestrel to listen on configured port
-    var port = builder.Configuration.GetValue<int>("PrintAgent:Port", 5555);
-    builder.WebHost.UseUrls($"http://localhost:{port}");
-
-    // Register print service based on mode
-    var mode = builder.Configuration.GetValue<string>("PrintAgent:Mode", "emulator");
+    var config = builder.Configuration.GetSection("PrintAgent");
+    var mode = config.GetValue<string>("Mode");
+    var printerName = config.GetValue<string>("PrinterName");
+    var logoPath = config.GetValue<string>("LogoPath");
+    var allowedOrigins = config.GetSection("AllowedOrigins").Get<string[]>();
 
     if (mode?.Equals("thermal", StringComparison.OrdinalIgnoreCase) == true)
     {
-        var printerName = builder.Configuration.GetValue<string>("PrintAgent:PrinterName", "POSPrinter POS80");
-        builder.Services.AddSingleton<IPrintService>(new ThermalPrintService(printerName));
-        Log.Information("Print mode: THERMAL (real printer)");
+        builder.Services.AddSingleton<IPrintService>(new ThermalPrintService(printerName!, logoPath));
+        Log.Information("Print mode: THERMAL ({PrinterName})", printerName);
     }
     else
     {
         builder.Services.AddSingleton<IPrintService, EmulatorPrintService>();
-        Log.Information("Print mode: EMULATOR (console + file output)");
+        Log.Information("Print mode: EMULATOR");
     }
 
-    // Add controllers
     builder.Services.AddControllers();
 
-    // Add CORS for local POS app
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            policy.WithOrigins(
-                    "http://localhost:3500",
-                    "http://localhost:5173",
-                    "http://localhost:3000"
-                )
+            policy.WithOrigins(allowedOrigins ?? Array.Empty<string>())
                 .AllowAnyHeader()
                 .AllowAnyMethod();
         });
@@ -60,7 +49,7 @@ try
     app.UseCors();
     app.MapControllers();
 
-    Log.Information("BellaDolce Print Agent running on http://localhost:{Port} in {Mode} mode", port, mode);
+    Log.Information("BellaDolce Print Agent running in {Mode} mode", mode);
 
     app.Run();
 }

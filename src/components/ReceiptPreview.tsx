@@ -68,6 +68,7 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
           items,
           total: totalAmount,
           amountPaid,
+          change,
           paymentMethod,
           receiptNumber
         })

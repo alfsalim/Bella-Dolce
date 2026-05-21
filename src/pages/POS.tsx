@@ -213,7 +213,7 @@ const POS: React.FC = () => {
       }
 
       // Trigger print receipt (non-blocking)
-      authFetch('/api/print-receipt', {
+      /* authFetch('/api/print-receipt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -235,7 +235,7 @@ const POS: React.FC = () => {
           amountPaid: amountPaidNum,
           paymentMethod
         })
-      }).catch((err) => console.warn('Print receipt failed:', err));
+      }).catch((err) => console.warn('Print receipt failed:', err));*/
 
       setCart([]);
       setSelectedCustomer('');
