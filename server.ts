@@ -1026,7 +1026,7 @@ async function resolveAllowedPaths(role: string): Promise<string[]> {
 
 async function startServer() {
   const app = express();
-  const PORT = parseInt(process.env.PORT || '3500', 10);
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json());
 

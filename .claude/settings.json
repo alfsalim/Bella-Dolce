@@ -8,7 +8,9 @@
       "Bash(sqlite3 prisma/dev.db \"SELECT COUNT\\(*\\) FROM PayrollRun;\")",
       "Bash(sqlite3 prisma/dev.db \"SELECT COUNT\\(*\\) FROM Payslip;\")",
       "Bash(npx prisma *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(ssh 100.114.12.38 \"docker ps -a && echo '---' && docker logs --tail 50 \\\\$\\(docker ps -q | head -1\\) 2>&1\")",
+      "Bash(./deploy-bella.sh --prod)"
     ]
   }
 }

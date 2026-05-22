@@ -35,10 +35,10 @@ const emptyForm = () => ({
   cnasNumber: '',
   department: '',
   hireDate: format(new Date(), 'yyyy-MM-dd'),
-  baseSalary: 0,
-  transportAllowance: 0,
-  performanceBonus: 0,
-  otherAllowances: 0,
+  baseSalary: '',
+  transportAllowance: '',
+  performanceBonus: '',
+  otherAllowances: '',
   contributesToCNAS: true,
   bankRIB: '',
 });
@@ -217,10 +217,10 @@ const Payroll: React.FC = () => {
       hireDate: emp.hireDate
         ? emp.hireDate.substring(0, 10)
         : format(new Date(), 'yyyy-MM-dd'),
-      baseSalary: emp.baseSalary,
-      transportAllowance: emp.transportAllowance ?? 0,
-      performanceBonus: emp.performanceBonus ?? 0,
-      otherAllowances: emp.otherAllowances ?? 0,
+      baseSalary: String(emp.baseSalary ?? ''),
+      transportAllowance: String(emp.transportAllowance ?? ''),
+      performanceBonus: String(emp.performanceBonus ?? ''),
+      otherAllowances: String(emp.otherAllowances ?? ''),
       contributesToCNAS: emp.contributesToCNAS !== false,
       bankRIB: emp.bankRIB ?? '',
     });
@@ -403,7 +403,7 @@ const Payroll: React.FC = () => {
               <input
                 type="number"
                 value={(form as any)[key]}
-                onChange={e => setForm(f => ({ ...f, [key]: Number(e.target.value) }))}
+                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                 className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
               />
             </div>
