@@ -316,6 +316,7 @@ const Reports: React.FC = () => {
   };
 
   const totalRevenue = filteredSalesAnalytics.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalDiscount = filteredSalesAnalytics.reduce((sum, s) => sum + (s.discount ?? 0), 0);
   const totalSalesCountAll = filteredSalesAnalytics.length;
   const avgOrderValue = totalSalesCountAll > 0 ? totalRevenue / totalSalesCountAll : 0;
 
@@ -767,7 +768,7 @@ const Reports: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
@@ -803,6 +804,15 @@ const Reports: React.FC = () => {
               </div>
               <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('avgOrderValue')}</p>
               <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{avgOrderValue.toLocaleString()} {currencyUnit}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center border border-orange-500/20">
+                  <Banknote className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('totalDiscount')}</p>
+              <h3 className="text-2xl font-display font-bold text-orange-600 dark:text-orange-400">{totalDiscount.toLocaleString()} {currencyUnit}</h3>
             </div>
           </div>
 

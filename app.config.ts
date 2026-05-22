@@ -19,6 +19,15 @@ const config = {
   // ── Units of Measure ───────────────────────────────────────
   UNITS: ["kg", "g", "l", "ml", "pcs", "unit"],
 
+  // ── Print Agent ────────────────────────────────────────────
+  PRINT_AGENT_URL_DEV:  "http://localhost:5555",
+  PRINT_AGENT_URL_PROD: "http://192.168.100.64:5555",
+  PRINT_AGENT_TIMEOUT:  2000,
+
+  // ── G50 Tax Service ────────────────────────────────────────
+  G50_SERVICE_URL: "http://localhost:3100",
+  G50_TENANT_ID:   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+
 };
 
 export default config;

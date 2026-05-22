@@ -1914,15 +1914,9 @@ async function startServer() {
         // Stock validation and deduction are handled client-side via Firestore.
         // SQLite is used only for recording the sale transaction.
 
-        // Generate auto-comment based on payment
-        let comment = '';
+        // Compute discount
         const paid = amountPaid ?? 0;
-        if (paid === 0) {
-          comment = 'Free';
-        } else if (totalAmount > paid) {
-          const discount = totalAmount - paid;
-          comment = `discount ${discount.toFixed(0)}DZ`;
-        }
+        const discount = paid === 0 ? totalAmount : (totalAmount > paid ? totalAmount - paid : 0);
 
         // Create sale record
         return await tx.sale.create({
@@ -1935,7 +1929,7 @@ async function startServer() {
             change,
             paymentMethod,
             items: JSON.stringify(items),
-            comment: comment || null,
+            discount: discount > 0 ? discount : null,
             returnComment: returnComment || null
           }
         });
@@ -1952,10 +1946,8 @@ async function startServer() {
  
   app.post("/api/print-receipt", requireAuth, async (req: any, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
-    const PRINT_AGENT_URL = isProduction
-      ? (process.env.PRINT_AGENT_URL_PROD || "http://localhost:5555")
-      : (process.env.PRINT_AGENT_URL || "http://localhost:5555");
-    const PRINT_AGENT_TIMEOUT = parseInt(process.env.PRINT_AGENT_TIMEOUT || "2000", 10);
+    const PRINT_AGENT_URL = isProduction ? config.PRINT_AGENT_URL_PROD : config.PRINT_AGENT_URL_DEV;
+    const PRINT_AGENT_TIMEOUT = config.PRINT_AGENT_TIMEOUT;
     const { saleId, items, total, amountPaid, change, paymentMethod, receiptNumber, cashierName, printLanguage } = req.body;
 
     if (!saleId) {

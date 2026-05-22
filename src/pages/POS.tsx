@@ -562,16 +562,6 @@ const POS: React.FC = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-3">{t('returnedLabel') || 'Returned'}</label>
-                    <textarea
-                      placeholder={t('returnCommentPlaceholder') || 'Add a comment…'}
-                      value={returnComment}
-                      onChange={(e) => setReturnComment(e.target.value)}
-                      className="input w-full bg-white dark:bg-black border-slate-200 dark:border-[#2a1e17] resize-none h-20"
-                    />
-                  </div>
-
                   {paymentMethod === 'cash' && (
                     <div className="space-y-4">
                       <div>

@@ -1,5 +1,6 @@
 // Thin HTTP client — all G50 business logic stays in g50-service
-const G50_BASE_URL = process.env.G50_SERVICE_URL ?? 'http://localhost:3100';
+import config from '../../app.config';
+const G50_BASE_URL = config.G50_SERVICE_URL;
 const G50_API_KEY  = process.env.G50_API_KEY ?? '';
 
 const headers = {
