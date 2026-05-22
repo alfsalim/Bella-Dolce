@@ -14,25 +14,29 @@ public class PrintJob
     public string? CustomerName { get; set; }
     public string Time { get; set; } = string.Empty;
     public string Date { get; set; } = string.Empty;
+    public int ProductCount { get; set; }
+    public int UnitCount { get; set; }
     public ReceiptLabels Labels { get; set; } = new();
 }
 
 public class ReceiptLabels
 {
-    public string StoreName { get; set; } = "Bella Dolce";
-    public string StoreSlogan { get; set; } = "Artisanal Atelier de Pâtisserie";
-    public string ReceiptLabel { get; set; } = "Reçu #";
-    public string DateLabel { get; set; } = "Date";
-    public string CashierLabel { get; set; } = "Caissier";
-    public string TotalLabel { get; set; } = "TOTAL";
-    public string SubtotalLabel { get; set; } = "Sous-total";
-    public string TaxLabel { get; set; } = "TVA";
-    public string PaymentLabel { get; set; } = "Paiement";
-    public string PaidLabel { get; set; } = "Payé";
-    public string ChangeLabel { get; set; } = "Monnaie";
-    public string ThankYou { get; set; } = "Merci pour votre visite!";
-    public string ComeBack { get; set; } = "À bientôt!";
-    public string Currency { get; set; } = "DA";
+    public string StoreName { get; set; } = string.Empty;
+    public string StoreSlogan { get; set; } = string.Empty;
+    public string ReceiptLabel { get; set; } = string.Empty;
+    public string DateLabel { get; set; } = string.Empty;
+    public string CashierLabel { get; set; } = string.Empty;
+    public string TotalLabel { get; set; } = string.Empty;
+    public string SubtotalLabel { get; set; } = string.Empty;
+    public string TaxLabel { get; set; } = string.Empty;
+    public string PaymentLabel { get; set; } = string.Empty;
+    public string PaidLabel { get; set; } = string.Empty;
+    public string ChangeLabel { get; set; } = string.Empty;
+    public string ThankYou { get; set; } = string.Empty;
+    public string ComeBack { get; set; } = string.Empty;
+    public string Currency { get; set; } = string.Empty;
+    public string ProductCountLabel { get; set; } = string.Empty;
+    public string UnitCountLabel { get; set; } = string.Empty;
 }
 
 public class PrintJobItem

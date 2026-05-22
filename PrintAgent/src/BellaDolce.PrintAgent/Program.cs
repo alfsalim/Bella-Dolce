@@ -1,4 +1,5 @@
 using BellaDolce.PrintAgent.Services;
+using BellaDolce.PrintAgent.Models;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -20,6 +21,8 @@ try
     var printerName = config.GetValue<string>("PrinterName");
     var logoPath = config.GetValue<string>("LogoPath");
     var allowedOrigins = config.GetSection("AllowedOrigins").Get<string[]>();
+    var defaultLabels = config.GetSection("Labels").Get<ReceiptLabels>() ?? new ReceiptLabels();
+    builder.Services.AddSingleton(defaultLabels);
 
    if (mode?.Equals("thermal", StringComparison.OrdinalIgnoreCase) == true)
         {

@@ -9,11 +9,13 @@ namespace BellaDolce.PrintAgent.Controllers
     {
         private readonly IPrintService _printService;
         private readonly ILogger<PrintController> _logger;
+        private readonly ReceiptLabels _defaultLabels;
 
-        public PrintController(IPrintService printService, ILogger<PrintController> logger)
+        public PrintController(IPrintService printService, ILogger<PrintController> logger, ReceiptLabels defaultLabels)
         {
             _printService = printService;
             _logger = logger;
+            _defaultLabels = defaultLabels;
         }
 
         // GET /health
@@ -44,6 +46,11 @@ namespace BellaDolce.PrintAgent.Controllers
                 _logger.LogWarning("Print request without saleId");
                 return BadRequest(new { status = "error", message = "saleId is required" });
             }
+
+            if (job.Labels == null)
+                job.Labels = _defaultLabels;
+            else
+                ApplyDefaultLabels(job.Labels, _defaultLabels);
 
             _logger.LogInformation(
                 "Print job received: SaleId={SaleId}, Receipt={Receipt}, Items={Items}, Total={Total}, Mode={Mode}",
@@ -103,6 +110,24 @@ namespace BellaDolce.PrintAgent.Controllers
                 printers = printers,
                 count = printers.Count
             });
+        }
+
+        private static void ApplyDefaultLabels(ReceiptLabels labels, ReceiptLabels defaults)
+        {
+            if (string.IsNullOrEmpty(labels.StoreName)) labels.StoreName = defaults.StoreName;
+            if (string.IsNullOrEmpty(labels.StoreSlogan)) labels.StoreSlogan = defaults.StoreSlogan;
+            if (string.IsNullOrEmpty(labels.ReceiptLabel)) labels.ReceiptLabel = defaults.ReceiptLabel;
+            if (string.IsNullOrEmpty(labels.DateLabel)) labels.DateLabel = defaults.DateLabel;
+            if (string.IsNullOrEmpty(labels.CashierLabel)) labels.CashierLabel = defaults.CashierLabel;
+            if (string.IsNullOrEmpty(labels.TotalLabel)) labels.TotalLabel = defaults.TotalLabel;
+            if (string.IsNullOrEmpty(labels.PaymentLabel)) labels.PaymentLabel = defaults.PaymentLabel;
+            if (string.IsNullOrEmpty(labels.PaidLabel)) labels.PaidLabel = defaults.PaidLabel;
+            if (string.IsNullOrEmpty(labels.ChangeLabel)) labels.ChangeLabel = defaults.ChangeLabel;
+            if (string.IsNullOrEmpty(labels.ThankYou)) labels.ThankYou = defaults.ThankYou;
+            if (string.IsNullOrEmpty(labels.ComeBack)) labels.ComeBack = defaults.ComeBack;
+            if (string.IsNullOrEmpty(labels.Currency)) labels.Currency = defaults.Currency;
+            if (string.IsNullOrEmpty(labels.ProductCountLabel)) labels.ProductCountLabel = defaults.ProductCountLabel;
+            if (string.IsNullOrEmpty(labels.UnitCountLabel)) labels.UnitCountLabel = defaults.UnitCountLabel;
         }
     }
 }

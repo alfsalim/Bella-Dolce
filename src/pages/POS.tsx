@@ -46,6 +46,9 @@ const POS: React.FC = () => {
   const [amountPaid, setAmountPaid] = useState<string>('');
   const [successfulSaleId, setSuccessfulSaleId] = useState<string | null>(null);
   const [cashierNameForReceipt, setCashierNameForReceipt] = useState<string>('');
+  const [receiptItems, setReceiptItems] = useState<Array<{name: string; quantity: number; unitPrice: number; lineTotal: number}>>([]);
+  const [receiptTotal, setReceiptTotal] = useState<number>(0);
+  const [receiptAmountPaid, setReceiptAmountPaid] = useState<number>(0);
   const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
@@ -212,31 +215,17 @@ const POS: React.FC = () => {
         logActivity(profile.id, profile.name, 'Sale', `Completed sale of ${total} ${currencyUnit}`);
       }
 
-      // Trigger print receipt (non-blocking)
-      /* authFetch('/api/print-receipt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          saleId,
-          items: cart.map((item) => {
-            const product = products.find(p => p.id === item.productId);
-            return {
-              name: product ? tProduct(product) : `Product ${item.productId}`,
-              quantity: item.quantity,
-              price: item.price,
-              unitPrice: item.price,
-              total: item.price * item.quantity
-            };
-          }),
-          total,
-          amountPaid: amountPaidNum,
-          paymentMethod
-        })
-      }).catch((err) => console.warn('Print receipt failed:', err));*/
-
+      setReceiptItems(cart.map((item) => {
+        const product = products.find(p => p.id === item.productId);
+        return {
+          name: product ? tProduct(product) : `Product ${item.productId}`,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          lineTotal: item.price * item.quantity
+        };
+      }));
+      setReceiptTotal(total);
+      setReceiptAmountPaid(amountPaidNum);
       setCart([]);
       setSelectedCustomer('');
       setIsCheckoutOpen(false);
@@ -628,23 +617,20 @@ const POS: React.FC = () => {
               receiptNumber={successfulSaleId}
               storeName="Boulangerie Bella-Dolce"
               storeAddress="SIDI-ABDELLAH ALGER"
-              items={cart.map((item) => {
-                const product = products.find(p => p.id === item.productId);
-                return {
-                  name: product ? tProduct(product) : `Product ${item.productId}`,
-                  quantity: item.quantity,
-                  unitPrice: item.price,
-                  lineTotal: item.price * item.quantity
-                };
-              })}
-              totalAmount={total}
+              items={receiptItems}
+              totalAmount={receiptTotal}
               paymentMethod={paymentMethod}
-              amountPaid={amountPaidNum}
-              change={amountPaidNum - total}
+              amountPaid={receiptAmountPaid}
+              change={receiptAmountPaid - receiptTotal}
               cashierName={cashierNameForReceipt}
               dateTime={new Date()}
               saleId={successfulSaleId}
-              onClose={() => setSuccessfulSaleId(null)}
+              onClose={() => {
+                setSuccessfulSaleId(null);
+                setReceiptItems([]);
+                setReceiptTotal(0);
+                setReceiptAmountPaid(0);
+              }}
               autoCloseDelay={5000}
             />
           </div>

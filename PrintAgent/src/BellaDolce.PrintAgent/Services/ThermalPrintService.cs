@@ -102,7 +102,7 @@ namespace BellaDolce.PrintAgent.Services
             }
 
             // === HEADER ===
-             // === LOGO ===
+            // === LOGO ===
             if (!string.IsNullOrEmpty(_logoPath) && File.Exists(_logoPath))
             {
                 using var logo = Image.FromFile(_logoPath);
@@ -112,8 +112,6 @@ namespace BellaDolce.PrintAgent.Services
                 g.DrawImage(logo, (int)logoX, (int)y, (int)logoWidth, logoHeight);
                 y += logoHeight + 5;
             }
-            DrawCenter(labels.StoreName, fontTitle);
-            DrawCenter(labels.StoreSlogan, fontNormal);
             y += 5;
             DrawDash();
 
@@ -141,15 +139,17 @@ namespace BellaDolce.PrintAgent.Services
             }
             DrawDash();
 
+            // === COUNTS ===
+            DrawLeftRight($"{labels.ProductCountLabel}:", $"{job.ProductCount}", fontNormal);
+            DrawLeftRight($"{labels.UnitCountLabel}:", $"{job.UnitCount}", fontNormal);
+            DrawDash();
+
             // === TOTALS ===
             DrawLeftRight($"{labels.TotalLabel}:", $"{job.Total:N2} {labels.Currency}", fontBold);
-            DrawLeftRight($"{labels.PaidLabel}:", $"{job.AmountPaid:N2} {labels.Currency}", fontNormal);
-
-            var change = job.AmountPaid - job.Total;
-            if (change > 0)
-            {
-                DrawLeftRight($"{labels.ChangeLabel}:", $"{change:N2} {labels.Currency}", fontNormal);
-            }
+            if (job.AmountPaid > 0)
+                DrawLeftRight($"{labels.PaidLabel}:", $"{job.AmountPaid:N2} {labels.Currency}", fontNormal);
+            if (job.ChangeGiven > 0)
+                DrawLeftRight($"{labels.ChangeLabel}:", $"{job.ChangeGiven:N2} {labels.Currency}", fontNormal);
 
             DrawLeftRight($"{labels.PaymentLabel}:", job.PaymentMethod ?? "CASH", fontNormal);
             DrawDash();
