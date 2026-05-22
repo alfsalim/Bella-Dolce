@@ -1956,19 +1956,19 @@ async function startServer() {
       ? (process.env.PRINT_AGENT_URL_PROD || "http://localhost:5555")
       : (process.env.PRINT_AGENT_URL || "http://localhost:5555");
     const PRINT_AGENT_TIMEOUT = parseInt(process.env.PRINT_AGENT_TIMEOUT || "2000", 10);
-    const { saleId, items, total, amountPaid, change, paymentMethod, receiptNumber, cashierName } = req.body;
-  
+    const { saleId, items, total, amountPaid, change, paymentMethod, receiptNumber, cashierName, printLanguage } = req.body;
+
     if (!saleId) {
       return res.status(400).json({ error: 'saleId is required' });
     }
-  
+
     // Health check
     try {
       const healthCheck = await fetch(`${PRINT_AGENT_URL}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(PRINT_AGENT_TIMEOUT)
       });
-  
+
       if (!healthCheck.ok) {
         console.warn('Print Agent health check failed:', healthCheck.status);
         return res.json({ status: 'error', message: 'printer_unavailable' });
@@ -1977,7 +1977,34 @@ async function startServer() {
       console.warn('Print Agent unreachable:', error);
       return res.json({ status: 'error', message: 'printer_unavailable' });
     }
-  
+
+    // Translate comment based on printLanguage
+    let translatedComment = '';
+    const printLang = printLanguage || 'USER';
+
+    if (printLang === 'BOTH') {
+      if (amountPaid === 0) {
+        translatedComment = 'Free / مجاني';
+      } else if (total > amountPaid) {
+        const discount = total - amountPaid;
+        translatedComment = `discount ${discount.toFixed(0)}DZ / خصم ${discount.toFixed(0)}DA`;
+      }
+    } else if (printLang === 'FR') {
+      if (amountPaid === 0) {
+        translatedComment = 'Free';
+      } else if (total > amountPaid) {
+        const discount = total - amountPaid;
+        translatedComment = `discount ${discount.toFixed(0)}DZ`;
+      }
+    } else if (printLang === 'AR') {
+      if (amountPaid === 0) {
+        translatedComment = 'مجاني';
+      } else if (total > amountPaid) {
+        const discount = total - amountPaid;
+        translatedComment = `خصم ${discount.toFixed(0)}DA`;
+      }
+    }
+
     // Send print job
     try {
       const printResponse = await fetch(`${PRINT_AGENT_URL}/print`, {
@@ -2003,14 +2030,15 @@ async function startServer() {
           AmountPaid: amountPaid || 0,
           ChangeGiven: change || 0,
           ProductCount: (items || []).length,
-          UnitCount: (items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)
+          UnitCount: (items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
+          Comment: translatedComment
         })
       });
-  
+
       const result = await printResponse.json();
       console.log('Print Agent response:', result);
       return res.json(result);
-  
+
     } catch (error) {
       console.error('Print job failed:', error);
       return res.json({ status: 'error', message: 'print_failed' });
