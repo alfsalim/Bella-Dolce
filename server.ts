@@ -1897,7 +1897,7 @@ async function startServer() {
 
   // Atomic POS sale endpoint — creates sale + deducts stock in a single transaction
   app.post("/api/sale", requireAuth, async (req: any, res) => {
-    const { customerId, totalAmount, amountPaid, change, paymentMethod, items } = req.body;
+    const { customerId, totalAmount, amountPaid, change, paymentMethod, items, returnComment } = req.body;
     const cashierId = req.user.id; // Use authenticated user ID instead of client-provided id
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -1914,6 +1914,16 @@ async function startServer() {
         // Stock validation and deduction are handled client-side via Firestore.
         // SQLite is used only for recording the sale transaction.
 
+        // Generate auto-comment based on payment
+        let comment = '';
+        const paid = amountPaid ?? 0;
+        if (paid === 0) {
+          comment = 'Free';
+        } else if (totalAmount > paid) {
+          const discount = totalAmount - paid;
+          comment = `discount ${discount.toFixed(0)}DZ`;
+        }
+
         // Create sale record
         return await tx.sale.create({
           data: {
@@ -1924,7 +1934,9 @@ async function startServer() {
             amountPaid,
             change,
             paymentMethod,
-            items: JSON.stringify(items)
+            items: JSON.stringify(items),
+            comment: comment || null,
+            returnComment: returnComment || null
           }
         });
       });

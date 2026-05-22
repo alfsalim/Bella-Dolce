@@ -151,6 +151,8 @@ model Sale {
   change        Float?
   paymentMethod String
   items         String
+  comment       String?
+  returnComment String?
   createdAt     DateTime @default(now())
 }
 

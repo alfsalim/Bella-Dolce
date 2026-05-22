@@ -848,6 +848,13 @@ export const TRANSLATIONS: Record<Language, any> = {
     printingError: "Erreur d'impression",
     printerUnavailable: "Imprimante non disponible",
     retryPrint: "Réessayer l'impression",
+    transactionCommentDiscount: "discount {{amount}}DZ",
+    transactionCommentFree: "Free",
+    transactionCommentNoPrint: "No Print",
+    transactionCommentReprint: "Reprint",
+    comment: "Commentaire",
+    returnedLabel: "Retourné",
+    returnCommentPlaceholder: "Ajouter un commentaire…",
   },
   ar: {
     dashboard: "لوحة القيادة",
@@ -1690,6 +1697,13 @@ export const TRANSLATIONS: Record<Language, any> = {
     printingError: "خطأ في الطباعة",
     printerUnavailable: "الطابعة غير متوفرة",
     retryPrint: "إعادة محاولة الطباعة",
+    transactionCommentDiscount: "خصم {{amount}}DA",
+    transactionCommentFree: "مجاني",
+    transactionCommentNoPrint: "لم يتم الطباعة",
+    transactionCommentReprint: "إعادة طباعة",
+    comment: "تعليق",
+    returnedLabel: "مرتجع",
+    returnCommentPlaceholder: "إضافة تعليق…",
   },
 };
 

@@ -16,6 +16,8 @@ interface Sale {
   paymentMethod: 'CASH' | 'CARD' | 'TRANSFER';
   items?: string;
   cashierName?: string;
+  comment?: string;
+  returnComment?: string;
 }
 
 interface RecentSalesModalProps {
@@ -146,6 +148,9 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
                       <th className="text-left p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
                         {t('paymentMethod')}
                       </th>
+                      <th className="text-left p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
+                        {t('comment') || 'Comment'}
+                      </th>
                       <th className="text-center p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
                         {t('reprint')}
                       </th>
@@ -184,6 +189,9 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
                         </td>
                         <td className="p-3 text-slate-700 dark:text-slate-300">
                           {getPaymentMethodLabel(sale.paymentMethod)}
+                        </td>
+                        <td className="p-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
+                          {sale.comment || '—'}
                         </td>
                         <td className="p-3 text-center">
                           <button

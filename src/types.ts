@@ -124,8 +124,12 @@ export interface Sale {
   cashierName?: string;
   customerId?: string;
   totalAmount: number;
+  amountPaid?: number;
+  change?: number;
   paymentMethod: 'cash' | 'card' | 'mobile' | 'transfer';
   items: SaleItem[] | string; // string when fetched from DB (JSON), array when in memory
+  comment?: string;
+  returnComment?: string;
   createdAt: string;
 }
 

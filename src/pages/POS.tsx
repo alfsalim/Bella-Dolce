@@ -49,6 +49,7 @@ const POS: React.FC = () => {
   const [receiptItems, setReceiptItems] = useState<Array<{name: string; quantity: number; unitPrice: number; lineTotal: number}>>([]);
   const [receiptTotal, setReceiptTotal] = useState<number>(0);
   const [receiptAmountPaid, setReceiptAmountPaid] = useState<number>(0);
+  const [returnComment, setReturnComment] = useState<string>('');
   const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
@@ -156,7 +157,6 @@ const POS: React.FC = () => {
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const amountPaidNum = parseFloat(amountPaid) || 0;
-  const isCheckoutDisabled = paymentMethod === 'cash' && amountPaidNum < total;
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
@@ -179,6 +179,7 @@ const POS: React.FC = () => {
           amountPaid: amountPaidNum,
           change: paymentMethod === 'cash' ? amountPaidNum - capturedTotal : 0,
           paymentMethod,
+          returnComment: returnComment || null,
           items: capturedCart.map((item) => {
             const product = products.find(p => p.id === item.productId);
             return {
@@ -231,6 +232,7 @@ const POS: React.FC = () => {
       setReceiptAmountPaid(amountPaidNum);
       setCart([]);
       setSelectedCustomer('');
+      setReturnComment('');
       setIsCheckoutOpen(false);
       setSuccessfulSaleId(generateTransactionId(saleData.createdAt || new Date()));
       setCashierNameForReceipt(saleData.cashierName || profile?.name || '');
@@ -504,10 +506,11 @@ const POS: React.FC = () => {
                   onClick={() => {
                     setIsCheckoutOpen(false);
                     setAmountPaid('');
+                    setReturnComment('');
                   }}
                   className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-6 h-4" />
                 </button>
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">{t('checkout')}</h2>
                 
@@ -559,6 +562,16 @@ const POS: React.FC = () => {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-3">{t('returnedLabel') || 'Returned'}</label>
+                    <textarea
+                      placeholder={t('returnCommentPlaceholder') || 'Add a comment…'}
+                      value={returnComment}
+                      onChange={(e) => setReturnComment(e.target.value)}
+                      className="input w-full bg-white dark:bg-black border-slate-200 dark:border-[#2a1e17] resize-none h-20"
+                    />
+                  </div>
+
                   {paymentMethod === 'cash' && (
                     <div className="space-y-4">
                       <div>
@@ -599,7 +612,7 @@ const POS: React.FC = () => {
 
                   <button
                     onClick={handleCheckout}
-                    disabled={isProcessing || isCheckoutDisabled}
+                    disabled={isProcessing}
                     className="w-full btn-primary py-5 text-xl font-bold rounded-xl active:scale-95 transition-transform disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                   >
                     {isProcessing && (

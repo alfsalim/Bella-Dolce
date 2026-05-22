@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { authFetch } from '../lib/api-client';
+import { TRANSLATIONS } from '../constants';
 
 interface ReceiptItem {
   name: string;
@@ -50,6 +51,12 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   const [printStatus, setPrintStatus] = useState<PrintStatus>(saleId ? 'printing' : null);
   const [printError, setPrintError] = useState<PrintError | null>(null);
 
+  const printLanguage = 'BOTH';
+
+  const getTrans = (key: string, lang: 'fr' | 'ar'): string => {
+    return (TRANSLATIONS[lang] as Record<string, string>)?.[key] || key;
+  };
+
   const callPrintAPI = async () => {
     if (!saleId) return;
 
@@ -70,7 +77,8 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
           amountPaid,
           change,
           paymentMethod,
-          receiptNumber
+          receiptNumber,
+          printLanguage
         })
       });
 
@@ -120,6 +128,19 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
 
   const paymentMethodLabel = paymentMethod === 'cash' ? t('cashPayment') : paymentMethod === 'card' ? t('cardPayment') : t('transfer');
 
+  const getReceiptLabel = (key: string): string => {
+    if (printLanguage === 'BOTH') {
+      const fr = getTrans(key, 'fr');
+      const ar = getTrans(key, 'ar');
+      return `${fr} / ${ar}`;
+    } else if (printLanguage === 'FR') {
+      return getTrans(key, 'fr');
+    } else if (printLanguage === 'AR') {
+      return getTrans(key, 'ar');
+    }
+    return t(key);
+  };
+
   const getPrintStatusColor = () => {
     switch (printStatus) {
       case 'printing':
@@ -168,15 +189,15 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
 
         <div className={`text-xs mb-4 space-y-1 ${isRTL ? 'text-right' : ''}`}>
           <div className="flex justify-between">
-            <span>{t('cashier')}:</span>
+            <span>{getReceiptLabel('cashier')}:</span>
             <span>{cashierName || t('unknown')}</span>
           </div>
           <div className="flex justify-between">
-            <span>{t('date')}:</span>
+            <span>{getReceiptLabel('date')}:</span>
             <span>{formatDate(dateTime)}</span>
           </div>
           <div className="flex justify-between">
-            <span>{t('time')}:</span>
+            <span>{getReceiptLabel('time')}:</span>
             <span>{formatTime(dateTime)}</span>
           </div>
         </div>
@@ -184,10 +205,10 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
         <div className="border-t border-b border-gray-300 dark:border-gray-600 py-2 mb-4">
           <div className="text-xs space-y-1 mb-2">
             <div className={`grid grid-cols-4 gap-1 font-semibold ${isRTL ? 'flex-row-reverse' : ''}`}>
-              <span className={isRTL ? 'text-left' : ''}>{t('invoiceItem')}</span>
-              <span className={isRTL ? 'text-left' : 'text-right'}>{t('qtyAbbrev')}</span>
-              <span className={isRTL ? 'text-left' : 'text-right'}>{t('unitPrice')}</span>
-              <span className={isRTL ? 'text-left' : 'text-right'}>{t('total')}</span>
+              <span className={isRTL ? 'text-left' : ''}>{getReceiptLabel('invoiceItem')}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{getReceiptLabel('qtyAbbrev')}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{getReceiptLabel('unitPrice')}</span>
+              <span className={isRTL ? 'text-left' : 'text-right'}>{getReceiptLabel('total')}</span>
             </div>
           </div>
           {items.map((item, index) => (
@@ -202,21 +223,21 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
 
         <div className={`mb-4 space-y-1 text-sm ${isRTL ? 'text-right' : ''}`}>
           <div className="flex justify-between font-semibold">
-            <span>{t('totalAmount')}:</span>
+            <span>{getReceiptLabel('totalAmount')}:</span>
             <span>{formatCurrency(totalAmount)}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span>{t('paymentMethod')}:</span>
+            <span>{getReceiptLabel('paymentMethod')}:</span>
             <span>{paymentMethodLabel}</span>
           </div>
           {paymentMethod === 'cash' && (
             <>
               <div className="flex justify-between text-xs">
-                <span>{t('amountPaid')}:</span>
+                <span>{getReceiptLabel('amountPaid')}:</span>
                 <span>{formatCurrency(amountPaid || 0)}</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span>{t('changeDue')}:</span>
+                <span>{getReceiptLabel('changeDue')}:</span>
                 <span>{formatCurrency(change || 0)}</span>
               </div>
             </>

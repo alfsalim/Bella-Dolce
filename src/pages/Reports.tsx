@@ -1269,6 +1269,7 @@ const Reports: React.FC = () => {
                       <th className="px-8 py-4">{t('payment') || 'Payment'}</th>
                       <th className="px-8 py-4">{t('products') || 'Products'}</th>
                       <th className="px-8 py-4 text-right">{t('amount') || 'Amount'}</th>
+                      <th className="px-8 py-4">{t('comment') || 'Comment'}</th>
                       <th className="px-8 py-4">Reprint</th>
                     </tr>
                   </thead>
@@ -1331,6 +1332,9 @@ const Reports: React.FC = () => {
                             </td>
                             <td className="px-8 py-5 text-right font-display font-bold text-lg text-slate-900 dark:text-white">
                               {sale.totalAmount.toLocaleString()} {currencyUnit}
+                            </td>
+                            <td className="px-8 py-5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                              {sale.comment || '—'}
                             </td>
                             <td className="px-8 py-5">
                               <button onClick={() => setSelectedSaleForReceipt(sale)} className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors" title={t('reprint')}>
