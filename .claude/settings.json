@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/alfsalim -name \"*print*agent*\" -o -name \"*agent*print*\" 2>/dev/null | grep -v node_modules | grep -v \".git\")",
+      "Read(//Users/alfsalim/**)"
+    ]
+  }
+}

@@ -203,7 +203,13 @@ namespace BellaDolce.PrintAgent.Services
             DrawDash();
 
             // === COMMENT (discount, free, reprint, etc.) ===
-            if (!string.IsNullOrEmpty(job.Comment))
+            var hasBilingualComment = isBilingual && (!string.IsNullOrEmpty(job.CommentFR) || !string.IsNullOrEmpty(job.CommentAR));
+            if (hasBilingualComment)
+            {
+                DrawBilingual(job.CommentFR, "", job.CommentAR, "", fontBold);
+                DrawDash();
+            }
+            else if (!string.IsNullOrEmpty(job.Comment))
             {
                 DrawCenter(job.Comment, fontBold);
                 DrawDash();

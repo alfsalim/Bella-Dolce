@@ -1980,28 +1980,32 @@ async function startServer() {
 
     // Translate comment based on printLanguage
     let translatedComment = '';
+    let translatedCommentFR = '';
+    let translatedCommentAR = '';
     const printLang = printLanguage || 'USER';
 
     if (printLang === 'BOTH') {
       if (amountPaid === 0) {
-        translatedComment = 'Free / مجاني';
+        translatedCommentFR = 'Gratuit';
+        translatedCommentAR = 'مجاني';
       } else if (total > amountPaid) {
         const discount = total - amountPaid;
-        translatedComment = `discount ${discount.toFixed(0)}DZ / خصم ${discount.toFixed(0)}DA`;
+        translatedCommentFR = `Remise DA ${discount.toFixed(0)}`;
+        translatedCommentAR = `خصم دج`;
       }
     } else if (printLang === 'FR') {
       if (amountPaid === 0) {
-        translatedComment = 'Free';
+        translatedComment = 'Gratuit';
       } else if (total > amountPaid) {
         const discount = total - amountPaid;
-        translatedComment = `discount ${discount.toFixed(0)}DZ`;
+        translatedComment = `Remise DA ${discount.toFixed(0)}`;
       }
     } else if (printLang === 'AR') {
       if (amountPaid === 0) {
         translatedComment = 'مجاني';
       } else if (total > amountPaid) {
         const discount = total - amountPaid;
-        translatedComment = `خصم ${discount.toFixed(0)}DA`;
+        translatedComment = `خصم دج ${discount.toFixed(0)}`;
       }
     }
 
@@ -2032,6 +2036,8 @@ async function startServer() {
           ProductCount: (items || []).length,
           UnitCount: (items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
           Comment: translatedComment,
+          CommentFR: translatedCommentFR,
+          CommentAR: translatedCommentAR,
           PrintLanguage: printLang
         })
       });

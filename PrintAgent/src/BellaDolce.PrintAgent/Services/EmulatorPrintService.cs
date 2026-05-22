@@ -64,77 +64,120 @@ namespace BellaDolce.PrintAgent.Services
 
         private string BuildReceiptText(PrintJob job)
         {
-            var width = 40;
-            var line = new string('─', width);
-            var doubleLine = new string('═', width);
+            var effectiveLanguageMode = string.IsNullOrEmpty(job.PrintLanguage) ? "BOTH" : job.PrintLanguage;
+            var isBilingual = effectiveLanguageMode.Equals("BOTH", StringComparison.OrdinalIgnoreCase);
+            var width = isBilingual ? 80 : 40;
+            var halfWidth = width / 2;
+            var dash = new string('-', isBilingual ? 20 : 40);
+            var doubleDash = new string('═', width);
             var lines = new List<string>();
             var labels = job.Labels;
 
-            // Header
-            lines.Add(CenterText(labels.StoreName, width));
-            lines.Add(CenterText(labels.StoreSlogan, width));
-            lines.Add(doubleLine);
+            void AddDash() => lines.Add(dash);
 
-            // Receipt info
-            lines.Add($"{labels.ReceiptLabel}: {job.ReceiptNumber ?? "N/A"}");
-            lines.Add($"{labels.DateLabel}: {DateTime.Now:dd/MM/yyyy HH:mm:ss}");
-            lines.Add($"{labels.CashierLabel}: {job.CashierName ?? "N/A"}");
-            lines.Add(line);
+            void AddBilingual(string leftFR, string rightFR, string leftAR, string rightAR)
+            {
+                if (!isBilingual)
+                {
+                    lines.Add(LeftRight(leftFR, rightFR, halfWidth));
+                    return;
+                }
+                var frCol = LeftRight(leftFR, rightFR, halfWidth);
+                var arCol = LeftRight(leftAR, rightAR, halfWidth);
+                lines.Add(frCol + arCol);
+            }
 
-            // Items
-            if (job.Items != null && job.Items.Count > 0)
+            // === HEADER ===
+            AddDash();
+
+            // === RECEIPT INFO ===
+            AddBilingual($"{labels.ReceiptLabel}:", job.ReceiptNumber ?? "N/A",
+                         $"{labels.ReceiptLabel_AR}:", job.ReceiptNumber ?? "N/A");
+            AddBilingual($"{labels.DateLabel}:", job.Date ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+                         $"{labels.DateLabel_AR}:", job.Date ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm"));
+            AddBilingual($"{labels.CashierLabel}:", job.CashierName ?? "N/A",
+                         $"{labels.CashierLabel_AR}:", job.CashierName ?? "N/A");
+            AddDash();
+
+            // === ITEMS ===
+            if (job.Items != null)
             {
                 foreach (var item in job.Items)
                 {
-                    var itemName = item.Name ?? "---";
-                    var qty = item.Quantity;
-                    var unitPrice = item.UnitPrice;
-                    var lineTotal = item.LineTotal > 0 ? item.LineTotal : qty * unitPrice;
-
-                    lines.Add($"{qty}x {itemName}");
-                    lines.Add(RightAlign($"{unitPrice:N2} x {qty} = {lineTotal:N2} {labels.Currency}", width));
+                    var qty = $"{item.Quantity}x {item.Name}";
+                    var price = $"{item.LineTotal:N2} {labels.Currency}";
+                    AddBilingual(qty, price, qty, price);
+                    lines.Add($"  @ {item.UnitPrice:N2} {labels.Currency}");
                 }
             }
+            AddDash();
 
-            lines.Add(line);
+            // === COUNTS ===
+            AddBilingual($"{labels.ProductCountLabel}:", $"{job.ProductCount}",
+                         $"{labels.ProductCountLabel_AR}:", $"{job.ProductCount}");
+            AddBilingual($"{labels.UnitCountLabel}:", $"{job.UnitCount}",
+                         $"{labels.UnitCountLabel_AR}:", $"{job.UnitCount}");
+            AddDash();
 
-            // Totals
-            lines.Add(RightAlign($"{labels.TotalLabel}: {job.Total:N2} {labels.Currency}", width));
-            lines.Add($"{labels.PaymentLabel}: {job.PaymentMethod ?? "N/A"}");
-            lines.Add($"{labels.PaidLabel}: {job.AmountPaid:N2} {labels.Currency}");
+            // === TOTALS ===
+            AddBilingual($"{labels.TotalLabel}:", $"{job.Total:N2} {labels.Currency}",
+                         $"{labels.TotalLabel_AR}:", $"{job.Total:N2} {labels.Currency}");
+            if (job.AmountPaid > 0)
+                AddBilingual($"{labels.PaidLabel}:", $"{job.AmountPaid:N2} {labels.Currency}",
+                             $"{labels.PaidLabel_AR}:", $"{job.AmountPaid:N2} {labels.Currency}");
+            if (job.ChangeGiven > 0)
+                AddBilingual($"{labels.ChangeLabel}:", $"{job.ChangeGiven:N2} {labels.Currency}",
+                             $"{labels.ChangeLabel_AR}:", $"{job.ChangeGiven:N2} {labels.Currency}");
+            AddBilingual($"{labels.PaymentLabel}:", job.PaymentMethod ?? "CASH",
+                         $"{labels.PaymentLabel_AR}:", job.PaymentMethod ?? "CASH");
+            AddDash();
 
-            if (job.AmountPaid > job.Total)
+            // === COMMENT (discount, free, etc.) ===
+            var hasBilingualComment = isBilingual && (!string.IsNullOrEmpty(job.CommentFR) || !string.IsNullOrEmpty(job.CommentAR));
+            if (hasBilingualComment)
             {
-                var change = job.AmountPaid - job.Total;
-                lines.Add($"{labels.ChangeLabel}: {change:N2} {labels.Currency}");
+                AddBilingual(job.CommentFR, "", job.CommentAR, "");
+                AddDash();
             }
-
-            if (!string.IsNullOrEmpty(job.Comment))
+            else if (!string.IsNullOrEmpty(job.Comment))
             {
-                lines.Add(line);
                 lines.Add(CenterText(job.Comment, width));
+                AddDash();
             }
 
-            lines.Add(doubleLine);
-
-            // Footer
-            lines.Add(CenterText(labels.ThankYou, width));
-            lines.Add(CenterText(labels.ComeBack, width));
+            // === FOOTER ===
+            lines.Add(doubleDash);
+            if (isBilingual)
+            {
+                var frCol = CenterText(labels.ThankYou, halfWidth);
+                var arCol = CenterText(labels.ThankYou_AR, halfWidth);
+                lines.Add(frCol + arCol);
+                var frCol2 = CenterText(labels.ComeBack, halfWidth);
+                var arCol2 = CenterText(labels.ComeBack_AR, halfWidth);
+                lines.Add(frCol2 + arCol2);
+            }
+            else
+            {
+                lines.Add(CenterText(labels.ThankYou, width));
+                lines.Add(CenterText(labels.ComeBack, width));
+            }
 
             return string.Join(Environment.NewLine, lines);
         }
 
         private string CenterText(string text, int width)
         {
+            if (string.IsNullOrEmpty(text)) return new string(' ', width);
             if (text.Length >= width) return text;
             var padding = (width - text.Length) / 2;
             return text.PadLeft(padding + text.Length).PadRight(width);
         }
 
-        private string RightAlign(string text, int width)
+        private string LeftRight(string left, string right, int width)
         {
-            if (text.Length >= width) return text;
-            return text.PadLeft(width);
+            var combined = $"{left} {right}";
+            if (combined.Length >= width) return combined.PadRight(width);
+            return left + right.PadLeft(width - left.Length);
         }
     }
 }
