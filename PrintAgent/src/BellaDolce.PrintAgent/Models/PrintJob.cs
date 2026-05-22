@@ -16,6 +16,8 @@ public class PrintJob
     public string Date { get; set; } = string.Empty;
     public int ProductCount { get; set; }
     public int UnitCount { get; set; }
+    public string Comment { get; set; } = string.Empty;
+    public string PrintLanguage { get; set; } = "BOTH";
     public ReceiptLabels Labels { get; set; } = new();
 }
 

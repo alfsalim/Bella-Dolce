@@ -2031,7 +2031,8 @@ async function startServer() {
           ChangeGiven: change || 0,
           ProductCount: (items || []).length,
           UnitCount: (items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
-          Comment: translatedComment
+          Comment: translatedComment,
+          PrintLanguage: printLang
         })
       });
 

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "5rEODfImSHc=",
+  "dgSpecHash": "90vcHjIheMY=",
   "success": true,
   "projectFilePath": "C:\\Users\\alfsa\\Projects\\personal\\Bella-Dolce\\PrintAgent\\src\\BellaDolce.PrintAgent\\BellaDolce.PrintAgent.csproj",
   "expectedPackageFiles": [
@@ -47,10 +47,7 @@
     "C:\\Users\\alfsa\\.nuget\\packages\\system.drawing.common\\8.0.1\\system.drawing.common.8.0.1.nupkg.sha512",
     "C:\\Users\\alfsa\\.nuget\\packages\\system.serviceprocess.servicecontroller\\8.0.1\\system.serviceprocess.servicecontroller.8.0.1.nupkg.sha512",
     "C:\\Users\\alfsa\\.nuget\\packages\\system.text.encodings.web\\8.0.0\\system.text.encodings.web.8.0.0.nupkg.sha512",
-    "C:\\Users\\alfsa\\.nuget\\packages\\system.text.json\\8.0.0\\system.text.json.8.0.0.nupkg.sha512",
-    "C:\\Users\\alfsa\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\8.0.27\\microsoft.netcore.app.runtime.win-x64.8.0.27.nupkg.sha512",
-    "C:\\Users\\alfsa\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\8.0.27\\microsoft.windowsdesktop.app.runtime.win-x64.8.0.27.nupkg.sha512",
-    "C:\\Users\\alfsa\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\8.0.27\\microsoft.aspnetcore.app.runtime.win-x64.8.0.27.nupkg.sha512"
+    "C:\\Users\\alfsa\\.nuget\\packages\\system.text.json\\8.0.0\\system.text.json.8.0.0.nupkg.sha512"
   ],
   "logs": []
 }

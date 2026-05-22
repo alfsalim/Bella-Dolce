@@ -74,7 +74,8 @@ namespace BellaDolce.PrintAgent.Services
             var pageWidth = e.PageBounds.Width - 10;
             var y = 5f;
             var lineHeight = 14f;
-            var isBilingual = _languageMode.Equals("BOTH", StringComparison.OrdinalIgnoreCase);
+            var effectiveLanguageMode = string.IsNullOrEmpty(job.PrintLanguage) ? _languageMode : job.PrintLanguage;
+            var isBilingual = effectiveLanguageMode.Equals("BOTH", StringComparison.OrdinalIgnoreCase);
 
             var fontTitle = new Font("Arial", 12, FontStyle.Bold);
             var fontNormal = new Font("Arial", 9, FontStyle.Regular);
@@ -200,6 +201,13 @@ namespace BellaDolce.PrintAgent.Services
                 $"{labels.PaymentLabel_AR}:", job.PaymentMethod ?? "CASH",
                 fontNormal);
             DrawDash();
+
+            // === COMMENT (discount, free, reprint, etc.) ===
+            if (!string.IsNullOrEmpty(job.Comment))
+            {
+                DrawCenter(job.Comment, fontBold);
+                DrawDash();
+            }
 
             // === FOOTER ===
             y += 5;

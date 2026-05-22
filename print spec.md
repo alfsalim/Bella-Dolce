@@ -298,28 +298,31 @@ POST /api/print-receipt
 
 Request body:
 
-
-
 {
-  "cashier": "REDA",
-  "customer": "KARIM BOUGHIAS",
-  "dateTime": "2026-05-10T16:10:00",
-  "paymentMethod": "cash",
-  "items": [
+  "SaleId": "sale-abc-123",
+  "ReceiptNumber": "20260510-001",
+  "Date": "2026-05-10",
+  "Time": "16:10:00",
+  "CashierName": "REDA",
+  "PaymentMethod": "cash",
+  "Items": [
     {
-      "name": "PAIN SEMOULE BOULA",
-      "qty": 3,
-      "unitPrice": 20.00,
-      "amount": 60.00
+      "Name": "PAIN SEMOULE BOULA",
+      "Quantity": 3,
+      "UnitPrice": 20.00,
+      "LineTotal": 60.00
     }
   ],
-  "productCount": 7,
-  "unitCount": 10,
-  "total": 1544.00,
-  "amountReceived": 2055.00,
-  "changeGiven": 511.00,
-  "language": "fr",
-  "transactionId": "abc-123-def"
+  "Subtotal": 1544.00,
+  "TaxRate": 0,
+  "TaxAmount": 0,
+  "Total": 1544.00,
+  "AmountPaid": 2055.00,
+  "ChangeGiven": 511.00,
+  "ProductCount": 7,
+  "UnitCount": 10,
+  "Comment": "discount 100DZ / خصم 100DA",
+  "PrintLanguage": "BOTH"
 }
 
 

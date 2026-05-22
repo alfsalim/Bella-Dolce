@@ -109,6 +109,12 @@ namespace BellaDolce.PrintAgent.Services
                 lines.Add($"{labels.ChangeLabel}: {change:N2} {labels.Currency}");
             }
 
+            if (!string.IsNullOrEmpty(job.Comment))
+            {
+                lines.Add(line);
+                lines.Add(CenterText(job.Comment, width));
+            }
+
             lines.Add(doubleLine);
 
             // Footer
