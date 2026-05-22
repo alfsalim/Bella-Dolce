@@ -52,21 +52,10 @@ namespace BellaDolce.PrintAgent.Controllers
             else
                 ApplyDefaultLabels(job.Labels, _defaultLabels);
 
-            _logger.LogInformation(
-                "Print job received: SaleId={SaleId}, Receipt={Receipt}, Items={Items}, Total={Total}, Mode={Mode}",
-                job.SaleId,
-                job.ReceiptNumber ?? "N/A",
-                job.Items?.Count ?? 0,
-                job.Total,
-                _printService.Mode
-            );
-
             var result = await _printService.PrintAsync(job);
 
             if (result.Success)
             {
-                _logger.LogInformation("Print job completed: {Message}", result.Message);
-
                 var response = new Dictionary<string, object>
                 {
                     { "status", "printed" },
@@ -126,6 +115,7 @@ namespace BellaDolce.PrintAgent.Controllers
             if (string.IsNullOrEmpty(labels.ThankYou)) labels.ThankYou = defaults.ThankYou;
             if (string.IsNullOrEmpty(labels.ComeBack)) labels.ComeBack = defaults.ComeBack;
             if (string.IsNullOrEmpty(labels.Currency)) labels.Currency = defaults.Currency;
+            if (string.IsNullOrEmpty(labels.Currency_AR)) labels.Currency_AR = defaults.Currency_AR;
             if (string.IsNullOrEmpty(labels.ProductCountLabel)) labels.ProductCountLabel = defaults.ProductCountLabel;
             if (string.IsNullOrEmpty(labels.UnitCountLabel)) labels.UnitCountLabel = defaults.UnitCountLabel;
         }

@@ -323,33 +323,20 @@ const POS: React.FC = () => {
                   </div>
                 </div>
               <div className="p-2 sm:p-3 flex flex-col flex-1 justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base mb-1 sm:mb-2 line-clamp-1 sm:line-clamp-2" title={tProduct(product)}>{tProduct(product)}</h3>
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest hidden sm:block">{tCategory(product.category)}</span>
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base line-clamp-1 flex-1" title={tProduct(product)}>{tProduct(product)}</h3>
+                  <span className={clsx(
+                    "text-xs sm:text-sm font-bold whitespace-nowrap",
+                    activePromotion ? "text-red-600 dark:text-red-400" : "text-primary-600 dark:text-primary-400"
+                  )}>
+                    {effectivePrice.toLocaleString()} {currencyUnit}
+                  </span>
                 </div>
-                <div className="flex items-end justify-between mt-1 sm:mt-4 gap-2">
-                  <div className="flex flex-col min-w-0 overflow-hidden">
-                    {activePromotion && (
-                      <span className="text-xs line-through text-slate-400 dark:text-slate-500">
-                        {product.sellingPrice.toLocaleString()} {currencyUnit}
-                      </span>
-                    )}
-                    <span className={clsx(
-                      "text-base sm:text-xl font-bold",
-                      activePromotion ? "text-red-600 dark:text-red-400" : "text-primary-600 dark:text-primary-400"
-                    )}>
-                      {effectivePrice.toLocaleString()} {currencyUnit}
-                    </span>
-                    {activePromotion && (
-                      <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider truncate">
-                        {activePromotion.campaignName}
-                      </span>
-                    )}
-                  </div>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90 shrink-0">
-                    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                </div>
+                {activePromotion && (
+                  <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider truncate mt-0.5">
+                    {activePromotion.campaignName}
+                  </span>
+                )}
               </div>
             </button>
               );
@@ -406,7 +393,7 @@ const POS: React.FC = () => {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-3 no-scrollbar max-h-[400px] lg:max-h-none">
+          <div className="flex-1 overflow-y-auto p-6 space-y-3 no-scrollbar max-h-[500px] lg:max-h-none">
             {cart.length > 0 ? cart.map((item) => {
               const product = products.find(p => p.id === item.productId);
               return (

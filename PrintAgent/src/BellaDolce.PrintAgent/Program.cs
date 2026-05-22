@@ -1,10 +1,22 @@
 using BellaDolce.PrintAgent.Services;
 using BellaDolce.PrintAgent.Models;
 using Serilog;
+using Serilog.Events;
+
+var tempConfig = new ConfigurationBuilder()
+    .AddJsonFile("appsettings.json")
+    .Build();
+
+var fileLogLevelStr = tempConfig["PrintAgent:FileLogLevel"] ?? "Error";
+var fileLogLevel = Enum.Parse<LogEventLevel>(fileLogLevelStr, ignoreCase: true);
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
-    .WriteTo.File("./logs/print-agent-.log", rollingInterval: RollingInterval.Day)
+    .WriteTo.File("./logs/print-agent-.log",
+        rollingInterval: RollingInterval.Day,
+        fileSizeLimitBytes: 10_485_760, // 10 MB
+        retainedFileCountLimit: 7,
+        restrictedToMinimumLevel: fileLogLevel)
     .CreateLogger();
 
 try
