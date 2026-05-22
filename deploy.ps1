@@ -88,6 +88,7 @@ Log-Info "DB URL    : $DB_URL"
 docker run -d `
     --name $CONTAINER_NAME `
     -p "${EXT_PORT}:${INT_PORT}" `
+    -e PORT=$INT_PORT `
     -e DATABASE_URL=$DB_URL `
     -e NODE_ENV=production `
     -v "${DATA_DIR}:/app/data" `

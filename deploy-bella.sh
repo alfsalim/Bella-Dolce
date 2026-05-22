@@ -58,13 +58,79 @@ schema_sync() {
     fi
 }
 
-# ── Usage ─────────────────────────────────────────────────
-MODE=$1
+# ── Incremental: rebuild frontend, copy dist/ into container ──
+incremental_frontend() {
+    local container=$1 dhost=${2:-""}
+    log_step "Incremental: rebuilding frontend"
+    npm run build
+    [ $? -ne 0 ] && log_err "npm run build failed"
+    log_ok "Frontend built"
+    if [ -n "$dhost" ]; then
+        DOCKER_HOST="$dhost" docker cp dist/. "$container":/app/dist/
+    else
+        docker cp dist/. "$container":/app/dist/
+    fi
+    [ $? -ne 0 ] && log_err "docker cp dist/ failed"
+    log_ok "Frontend files updated (no restart needed)"
+}
+
+# ── Incremental: copy server files + restart container ────────
+incremental_server() {
+    local container=$1 dhost=${2:-""}
+    log_step "Incremental: copying server files + restarting"
+    for f in server.ts app.config.ts; do
+        if echo "$CHANGED_FILES" | grep -qF "$f"; then
+            if [ -n "$dhost" ]; then
+                DOCKER_HOST="$dhost" docker cp "$f" "$container":/app/"$f"
+            else
+                docker cp "$f" "$container":/app/"$f"
+            fi
+            [ $? -ne 0 ] && log_err "docker cp $f failed"
+            log_ok "Copied $f"
+        fi
+    done
+    if [ -n "$dhost" ]; then
+        DOCKER_HOST="$dhost" docker restart "$container"
+    else
+        docker restart "$container"
+    fi
+    [ $? -ne 0 ] && log_err "docker restart $container failed"
+    log_ok "Container restarted"
+}
+
+# ── Guard: fallback to full if container not running ──────────
+incremental_guard() {
+    local container=$1 dhost=${2:-""}
+    local running
+    if [ -n "$dhost" ]; then
+        running=$(DOCKER_HOST="$dhost" docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)
+    else
+        running=$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)
+    fi
+    if [ "$running" != "true" ]; then
+        log_warn "Container $container is not running — falling back to full deploy"
+        DEPLOY_TYPE="full"
+    fi
+}
+
+# ── Argument Parsing ──────────────────────────────────────
+MODE=""
+FULL_DEPLOY=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --prod) MODE="--prod" ;;
+        --dev)  MODE="--dev"  ;;
+        --full) FULL_DEPLOY=true ;;
+        *) echo "Unknown argument: $arg"; exit 1 ;;
+    esac
+done
+
 if [ "$MODE" != "--prod" ] && [ "$MODE" != "--dev" ]; then
     echo ""
     echo "Usage:"
-    echo "  ./deploy-bella.sh --dev     Deploy locally on Mac (port $DEV_EXT_PORT)"
-    echo "  ./deploy-bella.sh --prod    Deploy to Windows Server (port $EXT_PORT)"
+    echo "  ./deploy-bella.sh --dev [--full]     Deploy locally on Mac (port $DEV_EXT_PORT)"
+    echo "  ./deploy-bella.sh --prod [--full]    Deploy to Windows Server (port $EXT_PORT)"
     echo ""
     exit 1
 fi
@@ -78,6 +144,21 @@ else
 fi
 echo "   $(date '+%Y-%m-%d %H:%M:%S')"
 echo "============================================"
+
+# ════════════════════════════════════════════════
+#   CAPTURE CHANGED FILES — must run BEFORE git operations
+# ════════════════════════════════════════════════
+CHANGED_FILES=""
+if git rev-parse HEAD >/dev/null 2>&1; then
+    CHANGED_FILES=$(printf "%s\n%s\n%s" \
+        "$(git diff --name-only 2>/dev/null)" \
+        "$(git diff --name-only --cached 2>/dev/null)" \
+        "$(git ls-files --others --exclude-standard 2>/dev/null)" \
+        | sort -u | grep -v '^$')
+else
+    FULL_DEPLOY=true  # No commits yet — always full
+fi
+log_info "Changed files detected: $(echo "$CHANGED_FILES" | wc -l)"
 
 # ════════════════════════════════════════════════
 #   GIT OPERATIONS — Commit and Push changes
@@ -121,53 +202,94 @@ else
 fi
 
 # ════════════════════════════════════════════════
+#   DETERMINE DEPLOY TYPE — full vs incremental
+# ════════════════════════════════════════════════
+needs_full_rebuild() {
+    echo "$CHANGED_FILES" | grep -qE \
+        '(^|/)package(-lock)?\.json$|(^|/)Dockerfile$|(^|/)entrypoint\.sh$|(^|/)vite\.config\.ts$|(^|/)tsconfig\.json$|(^|/)prisma/schema\.prisma$'
+}
+has_server_changes() {
+    echo "$CHANGED_FILES" | grep -qE '^(server\.ts|app\.config\.ts)$'
+}
+has_frontend_changes() {
+    echo "$CHANGED_FILES" | grep -qE '^(src/|public/|index\.html)'
+}
+
+if [ "$FULL_DEPLOY" = true ]; then
+    DEPLOY_TYPE="full"
+elif [ -z "$CHANGED_FILES" ]; then
+    echo ">> Nothing to deploy — no file changes detected. Use --full to force."
+    exit 0
+elif needs_full_rebuild; then
+    DEPLOY_TYPE="full"
+    log_info "Full rebuild required (dependency/config/schema change detected)"
+elif has_server_changes || has_frontend_changes; then
+    DEPLOY_TYPE="incremental"
+    log_info "Incremental deploy selected"
+else
+    echo ">> Nothing to deploy — changed files require no container update."
+    exit 0
+fi
+
+# ════════════════════════════════════════════════
 #   DEV MODE — local Mac Docker
 # ════════════════════════════════════════════════
 if [ "$MODE" = "--dev" ]; then
 
-    # Step 1: Build for local ARM (native Mac M3)
-    log_step "1/4  Building image for local Mac (linux/arm64)"
-    log_info "Image    : $IMAGE_NAME"
-    log_info "Platform : native ARM64 (Mac M3)"
-    docker build -t "$IMAGE_NAME" .
-    [ $? -ne 0 ] && log_err "Docker build failed."
-    log_ok "Image built"
+    if [ "$DEPLOY_TYPE" = "incremental" ]; then
+        incremental_guard "$DEV_CONTAINER_NAME" ""
+    fi
 
-    # Step 2: Ensure dev data directory exists — never wipe it
-    log_step "2/4  Checking dev data directory"
-    if [ ! -d "$DEV_DATA_DIR" ]; then
-        log_warn "Dev data dir not found — creating $DEV_DATA_DIR"
-        mkdir -p "$DEV_DATA_DIR"
-        log_ok "Created: $DEV_DATA_DIR"
+    if [ "$DEPLOY_TYPE" = "full" ]; then
+
+        # Step 1: Build for local ARM (native Mac M3)
+        log_step "1/4  Building image for local Mac (linux/arm64)"
+        log_info "Image    : $IMAGE_NAME"
+        log_info "Platform : native ARM64 (Mac M3)"
+        docker build -t "$IMAGE_NAME" .
+        [ $? -ne 0 ] && log_err "Docker build failed."
+        log_ok "Image built"
+
+        # Step 2: Ensure dev data directory exists — never wipe it
+        log_step "2/4  Checking dev data directory"
+        if [ ! -d "$DEV_DATA_DIR" ]; then
+            log_warn "Dev data dir not found — creating $DEV_DATA_DIR"
+            mkdir -p "$DEV_DATA_DIR"
+            log_ok "Created: $DEV_DATA_DIR"
+        else
+            log_ok "Dev data exists — preserving: $DEV_DATA_DIR"
+        fi
+
+        # Step 3: Stop old dev container
+        log_step "3/4  Starting dev container"
+        if docker ps -a --format "{{.Names}}" | grep -q "^${DEV_CONTAINER_NAME}$"; then
+            log_info "Stopping old dev container..."
+            docker stop "$DEV_CONTAINER_NAME" > /dev/null 2>&1
+            docker rm "$DEV_CONTAINER_NAME" > /dev/null 2>&1
+            log_ok "Old dev container removed"
+        fi
+
+        docker run -d \
+            --name "$DEV_CONTAINER_NAME" \
+            -p "$DEV_EXT_PORT:$INT_PORT" \
+            -e PORT="$INT_PORT" \
+            -e DATABASE_URL="$DB_URL" \
+            -e NODE_ENV=production \
+            -e BELLA_HTTP_ONLY=1 \
+            -v "$DEV_DATA_DIR:/app/data" \
+            -v "$HOME/bella-dolce-backups:/app/backups" \
+            --restart unless-stopped \
+            "$IMAGE_NAME"
+        [ $? -ne 0 ] && log_err "Failed to start dev container."
+
+        # Step 4: Schema sync
+        log_step "4/4  Schema sync"
+        schema_sync "$DEV_CONTAINER_NAME"
     else
-        log_ok "Dev data exists — preserving: $DEV_DATA_DIR"
+        log_step "Incremental deploy (dev)"
+        has_frontend_changes && incremental_frontend "$DEV_CONTAINER_NAME" ""
+        has_server_changes   && incremental_server  "$DEV_CONTAINER_NAME" ""
     fi
-
-    # Step 3: Stop old dev container
-    log_step "3/4  Starting dev container"
-    if docker ps -a --format "{{.Names}}" | grep -q "^${DEV_CONTAINER_NAME}$"; then
-        log_info "Stopping old dev container..."
-        docker stop "$DEV_CONTAINER_NAME" > /dev/null 2>&1
-        docker rm "$DEV_CONTAINER_NAME" > /dev/null 2>&1
-        log_ok "Old dev container removed"
-    fi
-
-    docker run -d \
-        --name "$DEV_CONTAINER_NAME" \
-        -p "$DEV_EXT_PORT:$INT_PORT" \
-        -e PORT="$INT_PORT" \
-        -e DATABASE_URL="$DB_URL" \
-        -e NODE_ENV=production \
-        -e BELLA_HTTP_ONLY=1 \
-        -v "$DEV_DATA_DIR:/app/data" \
-        -v "$HOME/bella-dolce-backups:/app/backups" \
-        --restart unless-stopped \
-        "$IMAGE_NAME"
-    [ $? -ne 0 ] && log_err "Failed to start dev container."
-
-    # Step 4: Schema sync
-    log_step "4/4  Schema sync"
-    schema_sync "$DEV_CONTAINER_NAME"
 
     STATUS=$(docker ps --filter "name=$DEV_CONTAINER_NAME" --format "{{.Status}}")
     echo ""
@@ -190,64 +312,75 @@ if [ "$DEPLOY_MODE" = "tailscale" ] && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
 
     REMOTE="tcp://$WINDOWS_TAILSCALE_IP:2375"
 
-    # Step 1: Stop old container on Windows
-    log_step "1/3  Connecting to Windows via Tailscale"
-    log_info "Target : $WINDOWS_TAILSCALE_IP:2375"
-    log_info "Stopping old container..."
-    DOCKER_HOST="$REMOTE" docker stop "$CONTAINER_NAME" 2>/dev/null
-    DOCKER_HOST="$REMOTE" docker rm   "$CONTAINER_NAME" 2>/dev/null
+    if [ "$DEPLOY_TYPE" = "incremental" ]; then
+        incremental_guard "$CONTAINER_NAME" "$REMOTE"
+    fi
 
-    # Step 2: Build and push image
-    log_step "2/3  Building and pushing image"
+    if [ "$DEPLOY_TYPE" = "full" ]; then
+        # Step 1: Stop old container on Windows
+        log_step "1/3  Connecting to Windows via Tailscale"
+        log_info "Target : $WINDOWS_TAILSCALE_IP:2375"
+        log_info "Stopping old container..."
+        DOCKER_HOST="$REMOTE" docker stop "$CONTAINER_NAME" 2>/dev/null
+        DOCKER_HOST="$REMOTE" docker rm   "$CONTAINER_NAME" 2>/dev/null
 
-    if DOCKER_HOST="$REMOTE" docker image inspect node:24-slim >/dev/null 2>&1; then
-        # Fast path — base image already on Windows, build remotely (context-only transfer)
-        log_info "Base image cached on Windows — remote build (few MB transfer)"
-        DOCKER_HOST="$REMOTE" docker build --platform linux/amd64 -t "$IMAGE_NAME" .
-        [ $? -ne 0 ] && log_err "Remote build failed on Windows."
-    else
-        # Cold path — base image missing on Windows (first deploy or clean machine)
-        # Build on Mac and push compressed image (~120MB vs 400MB raw)
-        log_info "Base image not on Windows — building on Mac and pushing compressed (one-time ~120MB)"
-        log_info "Subsequent deploys will use fast remote build with layer cache"
-        if ! docker info >/dev/null 2>&1; then
-            log_err "Mac Docker engine is not running. Open Docker Desktop and wait for the engine to start (green indicator), then retry."
-        fi
-        docker buildx build --platform linux/amd64 --load -t "$IMAGE_NAME" .
-        [ $? -ne 0 ] && log_err "Local build on Mac failed."
-        docker save "$IMAGE_NAME" | gzip | DOCKER_HOST="$REMOTE" docker load
-        [ $? -ne 0 ] && log_err "Failed to push image to Windows."
-        # Also seed node:24-slim so warm-path builds work on next deploy (Windows has no Docker Hub access)
-        log_info "Seeding node:24-slim to Windows for future builds..."
-        docker buildx build --platform linux/amd64 --load -t node-base-seed - <<'SEED_EOF'
+        # Step 2: Build and push image
+        log_step "2/3  Building and pushing image"
+
+        if DOCKER_HOST="$REMOTE" docker image inspect node:24-slim >/dev/null 2>&1; then
+            # Fast path — base image already on Windows, build remotely (context-only transfer)
+            log_info "Base image cached on Windows — remote build (few MB transfer)"
+            DOCKER_HOST="$REMOTE" docker build --platform linux/amd64 -t "$IMAGE_NAME" .
+            [ $? -ne 0 ] && log_err "Remote build failed on Windows."
+        else
+            # Cold path — base image missing on Windows (first deploy or clean machine)
+            # Build on Mac and push compressed image (~120MB vs 400MB raw)
+            log_info "Base image not on Windows — building on Mac and pushing compressed (one-time ~120MB)"
+            log_info "Subsequent deploys will use fast remote build with layer cache"
+            if ! docker info >/dev/null 2>&1; then
+                log_err "Mac Docker engine is not running. Open Docker Desktop and wait for the engine to start (green indicator), then retry."
+            fi
+            docker buildx build --platform linux/amd64 --load -t "$IMAGE_NAME" .
+            [ $? -ne 0 ] && log_err "Local build on Mac failed."
+            docker save "$IMAGE_NAME" | gzip | DOCKER_HOST="$REMOTE" docker load
+            [ $? -ne 0 ] && log_err "Failed to push image to Windows."
+            # Also seed node:24-slim so warm-path builds work on next deploy (Windows has no Docker Hub access)
+            log_info "Seeding node:24-slim to Windows for future builds..."
+            docker buildx build --platform linux/amd64 --load -t node-base-seed - <<'SEED_EOF'
 FROM node:24-slim
 SEED_EOF
-        docker save node-base-seed | gzip | DOCKER_HOST="$REMOTE" docker load && \
-            DOCKER_HOST="$REMOTE" docker tag node-base-seed node:24-slim && \
-            docker rmi node-base-seed 2>/dev/null || true
-        log_ok "Base image seeded on Windows"
+            docker save node-base-seed | gzip | DOCKER_HOST="$REMOTE" docker load && \
+                DOCKER_HOST="$REMOTE" docker tag node-base-seed node:24-slim && \
+                docker rmi node-base-seed 2>/dev/null || true
+            log_ok "Base image seeded on Windows"
+        fi
+        log_ok "Image ready on Windows"
+        [ $? -ne 0 ] && log_err "Docker build failed on Windows."
+        log_ok "Image built on Windows"
+
+        # Step 3: Start container
+        log_step "3/3  Starting container"
+        DOCKER_HOST="$REMOTE" docker run -d \
+            --name "$CONTAINER_NAME" \
+            -p "$EXT_PORT:$INT_PORT" \
+            -e PORT="$INT_PORT" \
+            -e DATABASE_URL="$DB_URL" \
+            -e NODE_ENV=production \
+            -e BELLA_HTTP_ONLY=1 \
+            -v "$PROD_DATA_DIR:/app/data" \
+            -v "$PROD_BACKUP_DIR:/app/backups" \
+            --restart unless-stopped \
+            "$IMAGE_NAME"
+        [ $? -ne 0 ] && log_err "Failed to start container on Windows."
+
+        # Step 3b: Schema sync
+        log_step "3b/3  Schema sync"
+        schema_sync "$CONTAINER_NAME" "$REMOTE"
+    else
+        log_step "Incremental deploy (prod)"
+        has_frontend_changes && incremental_frontend "$CONTAINER_NAME" "$REMOTE"
+        has_server_changes   && incremental_server  "$CONTAINER_NAME" "$REMOTE"
     fi
-    log_ok "Image ready on Windows"
-    [ $? -ne 0 ] && log_err "Docker build failed on Windows."
-    log_ok "Image built on Windows"
-
-    # Step 3: Start container
-    log_step "3/3  Starting container"
-    DOCKER_HOST="$REMOTE" docker run -d \
-        --name "$CONTAINER_NAME" \
-        -p "$EXT_PORT:$INT_PORT" \
-        -e PORT="$INT_PORT" \
-        -e DATABASE_URL="$DB_URL" \
-        -e NODE_ENV=production \
-        -v "$PROD_DATA_DIR:/app/data" \
-        -v "$PROD_BACKUP_DIR:/app/backups" \
-        --restart unless-stopped \
-        "$IMAGE_NAME"
-    [ $? -ne 0 ] && log_err "Failed to start container on Windows."
-
-    # Step 3b: Schema sync
-    log_step "3b/3  Schema sync"
-    schema_sync "$CONTAINER_NAME" "$REMOTE"
 
     STATUS=$(DOCKER_HOST="$REMOTE" docker ps --filter "name=$CONTAINER_NAME" --format "{{.Status}}")
     echo ""

@@ -3,7 +3,7 @@ $IMAGE_NAME = "bella-dolce2-bella-dolce2:latest"
 $TAR_FILE = "bella-dolce.tar"
 $CONTAINER_NAME = "bella-dolce2"
 $EXT_PORT = 3500
-$INT_PORT = 3500
+$INT_PORT = 3000
 $DB_URL = "file:/app/data/dev.db"
 
 # ── Production (Windows Prod) ────────────────────────────
@@ -53,13 +53,126 @@ function Schema-Sync {
     }
 }
 
+# ── Decision logic for deploy type ──────────────────────
+function Needs-FullRebuild {
+    param([string[]]$changedFiles)
+    foreach ($file in $changedFiles) {
+        if ($file -match '(^|/)package(-lock)?\.json$|(^|/)Dockerfile$|(^|/)entrypoint\.sh$|(^|/)vite\.config\.ts$|(^|/)tsconfig\.json$|(^|/)prisma[/\\]schema\.prisma$') {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Has-ServerChanges {
+    param([string[]]$changedFiles)
+    foreach ($file in $changedFiles) {
+        if ($file -match '^(server\.ts|app\.config\.ts)$') {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Has-FrontendChanges {
+    param([string[]]$changedFiles)
+    foreach ($file in $changedFiles) {
+        if ($file -match '^(src[/\\]|public[/\\]|index\.html)') {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Incremental-Frontend {
+    param(
+        [string]$ContainerName,
+        [string]$DockerHost = ""
+    )
+    Log-Step "Incremental: rebuilding frontend"
+    npm run build
+    if ($LASTEXITCODE -ne 0) { Log-Err "npm run build failed" }
+    Log-Ok "Frontend built"
+
+    if ($DockerHost -ne "") {
+        $env:DOCKER_HOST = $DockerHost
+    }
+    docker cp "dist/." "${ContainerName}:/app/dist/"
+    $result = $LASTEXITCODE
+    if ($DockerHost -ne "") {
+        Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+    }
+    if ($result -ne 0) { Log-Err "docker cp dist/ failed" }
+    Log-Ok "Frontend files updated (no restart needed)"
+}
+
+function Incremental-Server {
+    param(
+        [string]$ContainerName,
+        [string]$DockerHost = "",
+        [string[]]$ChangedFiles
+    )
+    Log-Step "Incremental: copying server files + restarting"
+
+    if ($DockerHost -ne "") {
+        $env:DOCKER_HOST = $DockerHost
+    }
+
+    foreach ($file in @("server.ts", "app.config.ts")) {
+        if ($ChangedFiles -contains $file) {
+            docker cp "$file" "${ContainerName}:/app/$file"
+            if ($LASTEXITCODE -ne 0) { Log-Err "docker cp $file failed" }
+            Log-Ok "Copied $file"
+        }
+    }
+
+    docker restart $ContainerName
+    $result = $LASTEXITCODE
+    if ($DockerHost -ne "") {
+        Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+    }
+    if ($result -ne 0) { Log-Err "docker restart $ContainerName failed" }
+    Log-Ok "Container restarted"
+}
+
+function Incremental-Guard {
+    param(
+        [string]$ContainerName,
+        [string]$DockerHost = ""
+    )
+    if ($DockerHost -ne "") {
+        $env:DOCKER_HOST = $DockerHost
+    }
+    $running = docker inspect -f '{{.State.Running}}' $ContainerName 2>$null
+    if ($DockerHost -ne "") {
+        Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+    }
+
+    if ($running -ne "true") {
+        Log-Warn "Container $ContainerName is not running - falling back to full deploy"
+        return $false
+    }
+    return $true
+}
+
 # ── Parse arguments ──────────────────────────────────────
-$MODE = $args[0]
+$MODE = ""
+$FULL_DEPLOY = $false
+
+foreach ($arg in $args) {
+    switch ($arg) {
+        "--prod"  { $MODE = "--prod" }
+        "--dev"   { $MODE = "--dev" }
+        "--full"  { $FULL_DEPLOY = $true }
+        default   { Write-Host "Unknown argument: $arg"; exit 1 }
+    }
+}
+
 if ($MODE -ne "--prod" -and $MODE -ne "--dev") {
     Write-Host ""
     Write-Host "Usage:"
-    Write-Host "  .\deploy-bella.ps1 --dev   Deploy locally on Windows (port $DEV_EXT_PORT)"
-    Write-Host "  .\deploy-bella.ps1 --prod  Deploy to Prod Windows Server (port $EXT_PORT)"
+    Write-Host "  .\deploy-bella.ps1 --dev [--full]   Deploy locally on Windows (port $DEV_EXT_PORT)"
+    Write-Host "  .\deploy-bella.ps1 --prod [--full]  Deploy to Prod Windows Server (port $EXT_PORT)"
     Write-Host ""
     exit 1
 }
@@ -74,6 +187,24 @@ if ($MODE -eq "--dev") {
 }
 Write-Host "  $timestamp"
 Write-Host "============================================"
+
+# ════════════════════════════════════════════════
+# CAPTURE CHANGED FILES — must run BEFORE git operations
+# ════════════════════════════════════════════════
+$CHANGED_FILES = @()
+try {
+    if (git rev-parse HEAD 2>$null) {
+        $untracked = git ls-files --others --exclude-standard 2>$null
+        $unstaged = git diff --name-only 2>$null
+        $staged = git diff --name-only --cached 2>$null
+        $CHANGED_FILES = @($unstaged, $staged, $untracked) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
+    } else {
+        $FULL_DEPLOY = $true
+    }
+} catch {
+    Log-Warn "Failed to capture git changes"
+}
+Log-Info "Changed files: $($CHANGED_FILES.Count)"
 
 # ════════════════════════════════════════════════
 # GIT OPERATIONS — Commit and Push changes
@@ -109,55 +240,91 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ════════════════════════════════════════════════
+# DETERMINE DEPLOY TYPE — full vs incremental
+# ════════════════════════════════════════════════
+if ($FULL_DEPLOY -eq $true) {
+    $DEPLOY_TYPE = "full"
+} elseif ($CHANGED_FILES.Count -eq 0) {
+    Write-Host ">> Nothing to deploy - no file changes detected. Use --full to force."
+    exit 0
+} elseif (Needs-FullRebuild -changedFiles $CHANGED_FILES) {
+    $DEPLOY_TYPE = "full"
+    Log-Info "Full rebuild required (dependency/config/schema change detected)"
+} elseif ((Has-ServerChanges -changedFiles $CHANGED_FILES) -or (Has-FrontendChanges -changedFiles $CHANGED_FILES)) {
+    $DEPLOY_TYPE = "incremental"
+    Log-Info "Incremental deploy selected"
+} else {
+    Write-Host ">> Nothing to deploy - changed files require no container update."
+    exit 0
+}
+
+# ════════════════════════════════════════════════
 # DEV MODE — local Windows Docker
 # ════════════════════════════════════════════════
 if ($MODE -eq "--dev") {
 
-    # Step 1: Build image
-    Log-Step "1/4 Building image for local Windows"
-    Log-Info "Image: $IMAGE_NAME"
-    docker build -t $IMAGE_NAME .
-    if ($LASTEXITCODE -ne 0) { Log-Err "Docker build failed." }
-    Log-Ok "Image built"
+    if ($DEPLOY_TYPE -eq "incremental") {
+        if (-not (Incremental-Guard -ContainerName $DEV_CONTAINER_NAME)) {
+            $DEPLOY_TYPE = "full"
+        }
+    }
 
-    # Step 2: Ensure dev data directory exists
-    Log-Step "2/4 Checking dev data directory"
-    if (-not (Test-Path $DEV_DATA_DIR)) {
-        Log-Warn "Dev data dir not found - creating $DEV_DATA_DIR"
-        New-Item -ItemType Directory -Path $DEV_DATA_DIR -Force | Out-Null
-        Log-Ok "Created: $DEV_DATA_DIR"
+    if ($DEPLOY_TYPE -eq "full") {
+        # Step 1: Build image
+        Log-Step "1/4 Building image for local Windows"
+        Log-Info "Image: $IMAGE_NAME"
+        docker build -t $IMAGE_NAME .
+        if ($LASTEXITCODE -ne 0) { Log-Err "Docker build failed." }
+        Log-Ok "Image built"
+
+        # Step 2: Ensure dev data directory exists
+        Log-Step "2/4 Checking dev data directory"
+        if (-not (Test-Path $DEV_DATA_DIR)) {
+            Log-Warn "Dev data dir not found - creating $DEV_DATA_DIR"
+            New-Item -ItemType Directory -Path $DEV_DATA_DIR -Force | Out-Null
+            Log-Ok "Created: $DEV_DATA_DIR"
+        } else {
+            Log-Ok "Dev data exists - preserving: $DEV_DATA_DIR"
+        }
+        if (-not (Test-Path $DEV_BACKUP_DIR)) {
+            New-Item -ItemType Directory -Path $DEV_BACKUP_DIR -Force | Out-Null
+        }
+
+        # Step 3: Stop old dev container and start new one
+        Log-Step "3/4 Starting dev container"
+        $existing = docker ps -a --format "{{.Names}}" | Where-Object { $_ -eq $DEV_CONTAINER_NAME }
+        if ($existing) {
+            Log-Info "Stopping old dev container..."
+            docker stop $DEV_CONTAINER_NAME 2>$null | Out-Null
+            docker rm $DEV_CONTAINER_NAME 2>$null | Out-Null
+            Log-Ok "Old dev container removed"
+        }
+
+        docker run -d `
+            --name $DEV_CONTAINER_NAME `
+            -p "${DEV_EXT_PORT}:${INT_PORT}" `
+            -e "PORT=$INT_PORT" `
+            -e "DATABASE_URL=$DB_URL" `
+            -e "NODE_ENV=production" `
+            -e "BELLA_HTTP_ONLY=1" `
+            -v "${DEV_DATA_DIR}:/app/data" `
+            -v "${DEV_BACKUP_DIR}:/app/backups" `
+            --restart unless-stopped `
+            $IMAGE_NAME
+        if ($LASTEXITCODE -ne 0) { Log-Err "Failed to start dev container." }
+
+        # Step 4: Schema sync
+        Log-Step "4/4 Schema sync"
+        Schema-Sync -ContainerName $DEV_CONTAINER_NAME
     } else {
-        Log-Ok "Dev data exists - preserving: $DEV_DATA_DIR"
+        Log-Step "Incremental deploy (dev)"
+        if (Has-FrontendChanges -changedFiles $CHANGED_FILES) {
+            Incremental-Frontend -ContainerName $DEV_CONTAINER_NAME
+        }
+        if (Has-ServerChanges -changedFiles $CHANGED_FILES) {
+            Incremental-Server -ContainerName $DEV_CONTAINER_NAME -ChangedFiles $CHANGED_FILES
+        }
     }
-    if (-not (Test-Path $DEV_BACKUP_DIR)) {
-        New-Item -ItemType Directory -Path $DEV_BACKUP_DIR -Force | Out-Null
-    }
-
-    # Step 3: Stop old dev container and start new one
-    Log-Step "3/4 Starting dev container"
-    $existing = docker ps -a --format "{{.Names}}" | Where-Object { $_ -eq $DEV_CONTAINER_NAME }
-    if ($existing) {
-        Log-Info "Stopping old dev container..."
-        docker stop $DEV_CONTAINER_NAME 2>$null | Out-Null
-        docker rm $DEV_CONTAINER_NAME 2>$null | Out-Null
-        Log-Ok "Old dev container removed"
-    }
-
-    docker run -d `
-        --name $DEV_CONTAINER_NAME `
-        -p "${DEV_EXT_PORT}:${INT_PORT}" `
-        -e "DATABASE_URL=$DB_URL" `
-        -e "NODE_ENV=production" `
-        -e "BELLA_HTTP_ONLY=1" `
-        -v "${DEV_DATA_DIR}:/app/data" `
-        -v "${DEV_BACKUP_DIR}:/app/backups" `
-        --restart unless-stopped `
-        $IMAGE_NAME
-    if ($LASTEXITCODE -ne 0) { Log-Err "Failed to start dev container." }
-
-    # Step 4: Schema sync
-    Log-Step "4/4 Schema sync"
-    Schema-Sync -ContainerName $DEV_CONTAINER_NAME
 
     $status = docker ps --filter "name=$DEV_CONTAINER_NAME" --format "{{.Status}}"
     Write-Host ""
@@ -177,71 +344,88 @@ if ($MODE -eq "--dev") {
 
 $REMOTE = "tcp://${WINDOWS_TAILSCALE_IP}:2375"
 
-# Step 1: Stop old container on Prod
-Log-Step "1/3 Connecting to Prod Windows via Tailscale"
-Log-Info "Target: ${WINDOWS_TAILSCALE_IP}:2375"
-Log-Info "Stopping old container..."
-$env:DOCKER_HOST = $REMOTE
-docker stop $CONTAINER_NAME 2>$null | Out-Null
-docker rm $CONTAINER_NAME 2>$null | Out-Null
-Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+if ($DEPLOY_TYPE -eq "incremental") {
+    if (-not (Incremental-Guard -ContainerName $CONTAINER_NAME -DockerHost $REMOTE)) {
+        $DEPLOY_TYPE = "full"
+    }
+}
 
-# Step 2: Build and push image
-Log-Step "2/3 Building and pushing image"
-
-# Check if base image exists on prod
-$env:DOCKER_HOST = $REMOTE
-$baseCheck = docker image inspect node:24-slim 2>$null
-Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
-
-if ($LASTEXITCODE -eq 0) {
-    # Fast path — base image cached on Prod, build remotely
-    Log-Info "Base image cached on Prod - remote build"
+if ($DEPLOY_TYPE -eq "full") {
+    # Step 1: Stop old container on Prod
+    Log-Step "1/3 Connecting to Prod Windows via Tailscale"
+    Log-Info "Target: ${WINDOWS_TAILSCALE_IP}:2375"
+    Log-Info "Stopping old container..."
     $env:DOCKER_HOST = $REMOTE
-    docker build --platform linux/amd64 -t $IMAGE_NAME .
-    $buildResult = $LASTEXITCODE
+    docker stop $CONTAINER_NAME 2>$null | Out-Null
+    docker rm $CONTAINER_NAME 2>$null | Out-Null
     Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
-    if ($buildResult -ne 0) { Log-Err "Remote build failed on Prod." }
+
+    # Step 2: Build and push image
+    Log-Step "2/3 Building and pushing image"
+
+    # Check if base image exists on prod
+    $env:DOCKER_HOST = $REMOTE
+    $baseCheck = docker image inspect node:24-slim 2>$null
+    Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+
+    if ($LASTEXITCODE -eq 0) {
+        # Fast path — base image cached on Prod, build remotely
+        Log-Info "Base image cached on Prod - remote build"
+        $env:DOCKER_HOST = $REMOTE
+        docker build --platform linux/amd64 -t $IMAGE_NAME .
+        $buildResult = $LASTEXITCODE
+        Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+        if ($buildResult -ne 0) { Log-Err "Remote build failed on Prod." }
+    } else {
+        # Cold path — build locally and push
+        Log-Info "Base image not on Prod - building locally and pushing"
+        docker build --platform linux/amd64 -t $IMAGE_NAME .
+        if ($LASTEXITCODE -ne 0) { Log-Err "Local build failed." }
+
+        Log-Info "Saving and transferring image (this may take a few minutes)..."
+        docker save $IMAGE_NAME | docker -H $REMOTE load
+        if ($LASTEXITCODE -ne 0) { Log-Err "Failed to push image to Prod." }
+
+        # Seed base image on Prod for future fast builds
+        Log-Info "Seeding node:24-slim to Prod for future builds..."
+        docker pull --platform linux/amd64 node:24-slim 2>$null
+        docker save node:24-slim | docker -H $REMOTE load
+        Log-Ok "Base image seeded on Prod"
+    }
+    Log-Ok "Image ready on Prod"
+
+    # Step 3: Start container on Prod
+    Log-Step "3/3 Starting container on Prod"
+    $env:DOCKER_HOST = $REMOTE
+    docker run -d `
+        --name $CONTAINER_NAME `
+        -p "${EXT_PORT}:${INT_PORT}" `
+        -e "PORT=$INT_PORT" `
+        -e "DATABASE_URL=$DB_URL" `
+        -e "NODE_ENV=production" `
+        -e "BELLA_HTTP_ONLY=0" `
+        -v "${PROD_DATA_DIR}:/app/data" `
+        -v "${PROD_BACKUP_DIR}:/app/backups" `
+        --restart unless-stopped `
+        $IMAGE_NAME
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+        Log-Err "Failed to start container on Prod."
+    }
+    Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
+
+    # Schema sync
+    Log-Step "3b/3 Schema sync"
+    Schema-Sync -ContainerName $CONTAINER_NAME -DockerHost $REMOTE
 } else {
-    # Cold path — build locally and push
-    Log-Info "Base image not on Prod - building locally and pushing"
-    docker build --platform linux/amd64 -t $IMAGE_NAME .
-    if ($LASTEXITCODE -ne 0) { Log-Err "Local build failed." }
-
-    Log-Info "Saving and transferring image (this may take a few minutes)..."
-    docker save $IMAGE_NAME | docker -H $REMOTE load
-    if ($LASTEXITCODE -ne 0) { Log-Err "Failed to push image to Prod." }
-
-    # Seed base image on Prod for future fast builds
-    Log-Info "Seeding node:24-slim to Prod for future builds..."
-    docker pull --platform linux/amd64 node:24-slim 2>$null
-    docker save node:24-slim | docker -H $REMOTE load
-    Log-Ok "Base image seeded on Prod"
+    Log-Step "Incremental deploy (prod)"
+    if (Has-FrontendChanges -changedFiles $CHANGED_FILES) {
+        Incremental-Frontend -ContainerName $CONTAINER_NAME -DockerHost $REMOTE
+    }
+    if (Has-ServerChanges -changedFiles $CHANGED_FILES) {
+        Incremental-Server -ContainerName $CONTAINER_NAME -DockerHost $REMOTE -ChangedFiles $CHANGED_FILES
+    }
 }
-Log-Ok "Image ready on Prod"
-
-# Step 3: Start container on Prod
-Log-Step "3/3 Starting container on Prod"
-$env:DOCKER_HOST = $REMOTE
-docker run -d `
-    --name $CONTAINER_NAME `
-    -p "${EXT_PORT}:${INT_PORT}" `
-    -e "DATABASE_URL=$DB_URL" `
-    -e "NODE_ENV=production" `
-    -e "BELLA_HTTP_ONLY=0" `
-    -v "${PROD_DATA_DIR}:/app/data" `
-    -v "${PROD_BACKUP_DIR}:/app/backups" `
-    --restart unless-stopped `
-    $IMAGE_NAME
-if ($LASTEXITCODE -ne 0) {
-    Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
-    Log-Err "Failed to start container on Prod."
-}
-Remove-Item Env:\DOCKER_HOST -ErrorAction SilentlyContinue
-
-# Schema sync
-Log-Step "3b/3 Schema sync"
-Schema-Sync -ContainerName $CONTAINER_NAME -DockerHost $REMOTE
 
 $env:DOCKER_HOST = $REMOTE
 $status = docker ps --filter "name=$CONTAINER_NAME" --format "{{.Status}}"
