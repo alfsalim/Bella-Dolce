@@ -1,10 +1,9 @@
-import React from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  AlertTriangle, 
-  CheckCircle2, 
-  ArrowUpRight, 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  TrendingUp,
+  TrendingDown,
+  CheckCircle2,
+  ArrowUpRight,
   ArrowDownRight,
   Activity,
   ShieldCheck,
@@ -13,34 +12,130 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import { authFetch, getAuthHeaders } from '../../lib/api-client';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell
 } from 'recharts';
+
+type Period = 'day' | 'month' | 'year';
 
 const FinancialDashboard: React.FC = () => {
   const { formatCurrency, tf } = useLanguage();
+  const [period, setPeriod] = useState<Period>('month');
+  const [sales, setSales] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
 
-  // Mock data for the dashboard
-  const pnlData = [
-    { name: '08:00', revenue: 4500, expenses: 3200 },
-    { name: '10:00', revenue: 12000, expenses: 4500 },
-    { name: '12:00', revenue: 18000, expenses: 6000 },
-    { name: '14:00', revenue: 15000, expenses: 5500 },
-    { name: '16:00', revenue: 22000, expenses: 7000 },
-    { name: '18:00', revenue: 28000, expenses: 8500 },
-    { name: '20:00', revenue: 15000, expenses: 6000 },
+  const riskScore = 82;
+
+  useEffect(() => {
+    authFetch('/api/sales', { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setSales(Array.isArray(d) ? d : d.sales ?? []))
+      .catch(() => {});
+
+    authFetch('/api/db/purchases', { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setInvoices(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  const chartData = useMemo(() => {
+    const now = new Date();
+
+    if (period === 'day') {
+      const buckets = Array.from({ length: 24 }, (_, h) => ({
+        name: `${String(h).padStart(2, '0')}:00`,
+        revenue: 0,
+        expenses: 0,
+      }));
+      const todayStr = now.toDateString();
+      sales.forEach(s => {
+        const d = new Date(s.createdAt);
+        if (d.toDateString() === todayStr)
+          buckets[d.getHours()].revenue += s.totalAmount ?? 0;
+      });
+      invoices.forEach(i => {
+        const d = new Date(i.date ?? i.createdAt);
+        if (d.toDateString() === todayStr)
+          buckets[d.getHours()].expenses += i.totalAmount ?? 0;
+      });
+      return buckets;
+    }
+
+    if (period === 'month') {
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const buckets = Array.from({ length: daysInMonth }, (_, i) => ({
+        name: String(i + 1),
+        revenue: 0,
+        expenses: 0,
+      }));
+      sales.forEach(s => {
+        const d = new Date(s.createdAt);
+        if (d.getFullYear() === year && d.getMonth() === month)
+          buckets[d.getDate() - 1].revenue += s.totalAmount ?? 0;
+      });
+      invoices.forEach(i => {
+        const d = new Date(i.date ?? i.createdAt);
+        if (d.getFullYear() === year && d.getMonth() === month)
+          buckets[d.getDate() - 1].expenses += i.totalAmount ?? 0;
+      });
+      return buckets;
+    }
+
+    // year
+    const year = now.getFullYear();
+    const monthNames = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    const buckets = monthNames.map(name => ({ name, revenue: 0, expenses: 0 }));
+    sales.forEach(s => {
+      const d = new Date(s.createdAt);
+      if (d.getFullYear() === year)
+        buckets[d.getMonth()].revenue += s.totalAmount ?? 0;
+    });
+    invoices.forEach(i => {
+      const d = new Date(i.date ?? i.createdAt);
+      if (d.getFullYear() === year)
+        buckets[d.getMonth()].expenses += i.totalAmount ?? 0;
+    });
+    return buckets;
+  }, [sales, invoices, period]);
+
+  const { totalRevenue, totalExpenses } = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    const inPeriod = (ts: any) => {
+      const d = new Date(ts);
+      if (period === 'day') return d.toDateString() === now.toDateString();
+      if (period === 'month') return d.getFullYear() === year && d.getMonth() === month;
+      return d.getFullYear() === year;
+    };
+
+    const rev = sales
+      .filter(s => inPeriod(s.createdAt))
+      .reduce((sum, s) => sum + (s.totalAmount ?? 0), 0);
+    const exp = invoices
+      .filter(i => inPeriod(i.date ?? i.createdAt))
+      .reduce((sum, i) => sum + (i.totalAmount ?? 0), 0);
+
+    return { totalRevenue: rev, totalExpenses: exp };
+  }, [sales, invoices, period]);
+
+  const netProfit = totalRevenue - totalExpenses;
+
+  const periodButtons: { key: Period; label: string }[] = [
+    { key: 'day',   label: tf('day')   || 'Jour' },
+    { key: 'month', label: tf('month') || 'Mois' },
+    { key: 'year',  label: tf('year')  || 'Année' },
   ];
-
-  const riskScore = 82; // Out of 100
 
   return (
     <div className="space-y-6">
@@ -53,14 +148,14 @@ const FinancialDashboard: React.FC = () => {
             </div>
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-full flex items-center gap-1">
               <ArrowUpRight className="w-3 h-3" />
-              +12.5%
+              {tf('revenue')}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             <BilingualLabel tKey="revenue" tf />
           </p>
           <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-1">
-            {formatCurrency(145200)}
+            {formatCurrency(totalRevenue)}
           </p>
         </div>
 
@@ -71,14 +166,14 @@ const FinancialDashboard: React.FC = () => {
             </div>
             <span className="text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded-full flex items-center gap-1">
               <ArrowDownRight className="w-3 h-3" />
-              -2.4%
+              {tf('expenses')}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             <BilingualLabel tKey="expenses" tf />
           </p>
           <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-1">
-            {formatCurrency(82400)}
+            {formatCurrency(totalExpenses)}
           </p>
         </div>
 
@@ -94,8 +189,8 @@ const FinancialDashboard: React.FC = () => {
           <p className="text-sm text-slate-500 dark:text-slate-400">
             <BilingualLabel tKey="netProfit" tf />
           </p>
-          <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-1">
-            {formatCurrency(62800)}
+          <p className={`text-2xl font-display font-bold mt-1 ${netProfit >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
+            {formatCurrency(netProfit)}
           </p>
         </div>
 
@@ -112,7 +207,7 @@ const FinancialDashboard: React.FC = () => {
             <BilingualLabel tKey="riskScore" tf />
           </p>
           <div className="mt-2 h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-amber-500 transition-all duration-1000"
               style={{ width: `${riskScore}%` }}
             />
@@ -127,20 +222,35 @@ const FinancialDashboard: React.FC = () => {
             <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
               <BilingualLabel tKey="revenueVsExpenses" tf />
             </h3>
-            <div className="flex items-center gap-4 text-xs font-medium">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-primary-500" />
-                <span className="text-slate-500 dark:text-slate-400">{tf('revenue')}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-rose-500" />
-                <span className="text-slate-500 dark:text-slate-400">{tf('expenses')}</span>
+            <div className="flex items-center gap-2">
+              {periodButtons.map(btn => (
+                <button
+                  key={btn.key}
+                  onClick={() => setPeriod(btn.key)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                    period === btn.key
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-zinc-700'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+              <div className="flex items-center gap-3 text-xs font-medium ml-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-primary-500" />
+                  <span className="text-slate-500 dark:text-slate-400">{tf('revenue')}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-rose-500" />
+                  <span className="text-slate-500 dark:text-slate-400">{tf('expenses')}</span>
+                </div>
               </div>
             </div>
           </div>
           <div className="h-[300px] min-h-[280px] w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={pnlData}>
+              <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
@@ -148,38 +258,40 @@ const FinancialDashboard: React.FC = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 12, fill: '#64748b' }} 
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fontSize: 12, fill: '#64748b' }}
-                  tickFormatter={(value) => `${value / 1000}k`}
+                  interval={period === 'month' ? 4 : period === 'day' ? 3 : 0}
                 />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#fff', 
-                    borderRadius: '12px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' 
-                  }} 
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#3b82f6" 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    borderRadius: '12px',
+                    border: 'none',
+                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                  }}
+                  formatter={(value: number) => [formatCurrency(value)]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#3b82f6"
                   strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorRev)" 
+                  fillOpacity={1}
+                  fill="url(#colorRev)"
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="expenses" 
-                  stroke="#f43f5e" 
+                <Area
+                  type="monotone"
+                  dataKey="expenses"
+                  stroke="#f43f5e"
                   strokeWidth={3}
                   fill="transparent"
                 />

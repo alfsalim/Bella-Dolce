@@ -13,15 +13,18 @@ import {
   onSnapshot,
   db
 } from '../lib/db';
-import { 
-  Account, 
-  JournalEntry, 
-  JournalLine, 
+import {
+  Account,
+  JournalEntry,
+  JournalLine,
   JournalStatus,
   OperationType,
   FinancialEmployee,
-  UserProfile
+  UserProfile,
+  PayrollRun,
+  Payslip
 } from '../types';
+import { authFetch, getAuthHeaders } from '../lib/api-client';
 import { handleFirestoreError } from '../lib/db';
 import { format } from 'date-fns';
 
@@ -132,8 +135,8 @@ export const financeService = {
   },
 
   // Payroll Calculation Logic
-  calculatePayroll(baseSalary: number, transport: number, bonus: number) {
-    const gross = baseSalary + transport + bonus;
+  calculatePayroll(baseSalary: number, transport: number, bonus: number, otherAllowances = 0) {
+    const gross = baseSalary + transport + bonus + otherAllowances;
     const cnasEmployee = gross * 0.09;
     const taxableGross = gross - cnasEmployee;
     
@@ -214,5 +217,105 @@ export const financeService = {
       handleFirestoreError(error, OperationType.GET, 'users');
       throw error;
     }
-  }
+  },
+
+  async updateFinancialEmployee(id: string, data: Partial<FinancialEmployee>): Promise<void> {
+    const res = await authFetch(`/api/db/financialEmployees/${id}`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+  },
+
+  async getPayrollRuns(): Promise<PayrollRun[]> {
+    const res = await authFetch('/api/db/payrollRuns', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch payroll runs');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getPayslipsForRun(runId: string): Promise<Payslip[]> {
+    const res = await authFetch(`/api/db/payslips?runId=${runId}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch payslips');
+    const data = await res.json();
+    return (Array.isArray(data) ? data : []).filter((p: Payslip) => p.runId === runId);
+  },
+
+  async createPayrollRun(
+    period: string,
+    employees: FinancialEmployee[],
+    adjustments: Record<string, { bonus: number; other: number }>
+  ): Promise<PayrollRun> {
+    // Compute payslips
+    const payslips = employees.map(emp => {
+      const adj = adjustments[emp.id] ?? { bonus: 0, other: 0 };
+      const calc = this.calculatePayroll(
+        emp.baseSalary,
+        emp.transportAllowance ?? 0,
+        (emp.performanceBonus ?? 0) + adj.bonus,
+        (emp.otherAllowances ?? 0) + adj.other
+      );
+      return { emp, adj, calc };
+    });
+
+    const totalGross = payslips.reduce((s, p) => s + p.calc.gross, 0);
+    const totalNet   = payslips.reduce((s, p) => s + p.calc.net, 0);
+    const totalCNAS  = payslips.reduce((s, p) => s + p.calc.cnasEmployee, 0);
+    const totalIRG   = payslips.reduce((s, p) => s + p.calc.irg, 0);
+
+    // Create the run
+    const runRes = await authFetch('/api/db/payrollRuns', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        period,
+        executionDate: new Date().toISOString(),
+        totalGross,
+        totalNet,
+        totalCNAS,
+        totalIRG,
+        employeeCount: employees.length,
+        status: 'BROUILLON',
+      }),
+    });
+    if (!runRes.ok) throw new Error('Failed to create payroll run');
+    const run: PayrollRun = await runRes.json();
+
+    // Create payslips
+    await Promise.all(payslips.map(({ emp, adj, calc }) =>
+      authFetch('/api/db/payslips', {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          runId: run.id,
+          employeeId: emp.id,
+          employeeName: emp.name,
+          period,
+          baseSalary: emp.baseSalary,
+          transportAllowance: emp.transportAllowance ?? 0,
+          performanceBonus: (emp.performanceBonus ?? 0) + adj.bonus,
+          otherAllowances: (emp.otherAllowances ?? 0) + adj.other,
+          grossSalary: calc.gross,
+          cnasEmployee: calc.cnasEmployee,
+          taxableGross: calc.taxableGross,
+          irgRetained: calc.irg,
+          netSalary: calc.net,
+          cnasEmployer: calc.cnasEmployer,
+          totalEmployerCost: calc.totalEmployerCost,
+        }),
+      })
+    ));
+
+    return run;
+  },
+
+  async approvePayrollRun(runId: string, approvedBy: string): Promise<void> {
+    const res = await authFetch(`/api/db/payrollRuns/${runId}`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'APPROUVÉ', approvedBy }),
+    });
+    if (!res.ok) throw new Error('Failed to approve payroll run');
+  },
 };

@@ -307,6 +307,7 @@ export interface PayrollRun {
   period: string; // YYYY-MM
   executionDate: string;
   totalGross: number;
+  totalCNAS: number;
   totalCNASEmployee: number; // 9%
   totalIRG: number;
   totalNet: number;
@@ -323,19 +324,21 @@ export interface Payslip {
   id: string;
   runId: string;
   employeeId: string;
+  employeeName: string;
   period: string;
   baseSalary: number;
   transportAllowance: number;
   performanceBonus: number;
-  overtimeHours: number;
-  overtimeAmount: number;
+  otherAllowances: number;
+  overtimeHours?: number;
+  overtimeAmount?: number;
   grossSalary: number;
   cnasEmployee: number;
   taxableGross: number;
-  irgAbatement: number;
-  netFiscalSalary: number;
+  irgAbatement?: number;
+  netFiscalSalary?: number;
   irgRetained: number;
-  otherDeductions: number;
+  otherDeductions?: number;
   netSalary: number;
   cnasEmployer: number;
   totalEmployerCost: number;

@@ -3,7 +3,12 @@
     "allow": [
       "Bash(find /Users/alfsalim -name \"*print*agent*\" -o -name \"*agent*print*\" 2>/dev/null | grep -v node_modules | grep -v \".git\")",
       "Read(//Users/alfsalim/**)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(sqlite3 prisma/dev.db \"SELECT COUNT\\(*\\) FROM FinancialEmployee;\")",
+      "Bash(sqlite3 prisma/dev.db \"SELECT COUNT\\(*\\) FROM PayrollRun;\")",
+      "Bash(sqlite3 prisma/dev.db \"SELECT COUNT\\(*\\) FROM Payslip;\")",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

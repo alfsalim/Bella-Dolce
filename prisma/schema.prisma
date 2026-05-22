@@ -233,20 +233,33 @@ model PayrollRun {
   id            String   @id @default(uuid())
   period        String
   executionDate DateTime
+  totalGross    Float    @default(0)
   totalNet      Float
+  totalCNAS     Float    @default(0)
+  totalIRG      Float    @default(0)
+  employeeCount Int      @default(0)
   status        String   @default("BROUILLON")
+  approvedBy    String?
   createdAt     DateTime @default(now())
 }
 
 model Payslip {
-  id                String @id @default(uuid())
-  runId             String
-  employeeId        String
-  period            String
-  baseSalary        Float
-  grossSalary       Float
-  netSalary         Float
-  totalEmployerCost Float
+  id                 String @id @default(uuid())
+  runId              String
+  employeeId         String
+  employeeName       String @default("")
+  period             String
+  baseSalary         Float
+  transportAllowance Float  @default(0)
+  performanceBonus   Float  @default(0)
+  otherAllowances    Float  @default(0)
+  grossSalary        Float
+  cnasEmployee       Float  @default(0)
+  taxableGross       Float  @default(0)
+  irgRetained        Float  @default(0)
+  netSalary          Float
+  cnasEmployer       Float  @default(0)
+  totalEmployerCost  Float
 }
 
 model SupplierInvoice {
