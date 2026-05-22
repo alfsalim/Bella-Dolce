@@ -23,7 +23,7 @@ const config = {
   PRINT_AGENT_URL_DEV:  "http://localhost:5555",
   PRINT_AGENT_URL_PROD: "http://192.168.100.64:5555",
   PRINT_AGENT_TIMEOUT:  2000,
-  PRINT_LANGUAGE: "BOTH", // USER | BOTH | FR | AR
+  PRINT_LANGUAGE: "FR", // USER | BOTH | FR | AR
 
   // ── G50 Tax Service ────────────────────────────────────────
   G50_SERVICE_URL: "http://localhost:3100",

@@ -155,6 +155,7 @@ if [ "$MODE" = "--dev" ]; then
     docker run -d \
         --name "$DEV_CONTAINER_NAME" \
         -p "$DEV_EXT_PORT:$INT_PORT" \
+        -e PORT="$INT_PORT" \
         -e DATABASE_URL="$DB_URL" \
         -e NODE_ENV=production \
         -e BELLA_HTTP_ONLY=1 \
@@ -235,6 +236,7 @@ SEED_EOF
     DOCKER_HOST="$REMOTE" docker run -d \
         --name "$CONTAINER_NAME" \
         -p "$EXT_PORT:$INT_PORT" \
+        -e PORT="$INT_PORT" \
         -e DATABASE_URL="$DB_URL" \
         -e NODE_ENV=production \
         -v "$PROD_DATA_DIR:/app/data" \
