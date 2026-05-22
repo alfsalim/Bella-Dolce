@@ -92,7 +92,7 @@ const FinancialDashboard: React.FC = () => {
 
     // year
     const year = now.getFullYear();
-    const monthNames = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    const monthNames = tf('monthNames') as unknown as string[] || ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
     const buckets = monthNames.map(name => ({ name, revenue: 0, expenses: 0 }));
     sales.forEach(s => {
       const d = new Date(s.createdAt);

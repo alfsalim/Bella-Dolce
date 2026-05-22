@@ -28,6 +28,85 @@ const PAYROLL_ELIGIBLE_ROLES = new Set([
   'admin', 'manager', 'cashier', 'baker', 'delivery_guy', 'inventory',
 ]);
 
+// ─── SalaryForm must live OUTSIDE Payroll to preserve input focus across renders ───
+type SalaryFormValues = ReturnType<typeof emptyForm>;
+const SalaryForm = ({
+  form, setForm, tf,
+}: {
+  form: SalaryFormValues;
+  setForm: React.Dispatch<React.SetStateAction<SalaryFormValues>>;
+  tf: (key: string) => string;
+}) => (
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="space-y-4">
+      <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">{tf('sectionAdministrative')}</h4>
+      <div className="space-y-3">
+        {[
+          { key: 'matricule', label: 'matriculeLabel', placeholder: 'placeholderPayrollMatricule', numeric: false },
+          { key: 'nin', label: 'ninLabel', placeholder: 'placeholderNationalId', numeric: true },
+          { key: 'cnasNumber', label: 'cnasNumberLabel', placeholder: '', numeric: true },
+        ].map(({ key, label, placeholder, numeric }) => (
+          <div key={key}>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf(label)}</label>
+            <input
+              type="text"
+              inputMode={numeric ? 'numeric' : 'text'}
+              pattern={numeric ? '[0-9]*' : undefined}
+              value={(form as any)[key]}
+              onChange={e => { if (!numeric || /^\d*$/.test(e.target.value)) setForm(f => ({ ...f, [key]: e.target.value })); }}
+              placeholder={placeholder ? tf(placeholder) : ''}
+              className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+            />
+          </div>
+        ))}
+        <div>
+          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('hireDateLabel')}</label>
+          <input
+            type="date"
+            value={form.hireDate}
+            onChange={e => setForm(f => ({ ...f, hireDate: e.target.value }))}
+            className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div className="space-y-4">
+      <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">{tf('sectionFinancial')}</h4>
+      <div className="space-y-3">
+        {[
+          { key: 'baseSalary', label: 'baseSalaryCurrency' },
+          { key: 'transportAllowance', label: 'transportAllowanceLabel' },
+          { key: 'performanceBonus', label: 'payrollBonusLabel' },
+          { key: 'otherAllowances', label: 'otherAllowancesLabel' },
+        ].map(({ key, label }) => (
+          <div key={key}>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf(label)}</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={(form as any)[key]}
+              onChange={e => { if (/^\d*$/.test(e.target.value)) setForm(f => ({ ...f, [key]: e.target.value })); }}
+              className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+            />
+          </div>
+        ))}
+        <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl">
+          <input
+            type="checkbox"
+            id="cnas-check"
+            checked={form.contributesToCNAS}
+            onChange={e => setForm(f => ({ ...f, contributesToCNAS: e.target.checked }))}
+            className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+          />
+          <label htmlFor="cnas-check" className="text-sm font-bold text-slate-700 dark:text-slate-200">{tf('payrollCnasLabel')}</label>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 // ─── Employee form fields ────────────────────────────────────────────────────
 const emptyForm = () => ({
   matricule: '',
@@ -348,80 +427,6 @@ const Payroll: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Salary form fields (shared between add and edit)
-  // ─────────────────────────────────────────────────────────────────────────
-  const SalaryForm = ({
-    form, setForm,
-  }: {
-    form: typeof addForm;
-    setForm: React.Dispatch<React.SetStateAction<typeof addForm>>;
-  }) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div className="space-y-4">
-        <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">{tf('sectionAdministrative')}</h4>
-        <div className="space-y-3">
-          {[
-            { key: 'matricule', label: 'matriculeLabel', placeholder: 'placeholderPayrollMatricule' },
-            { key: 'nin', label: 'ninLabel', placeholder: 'placeholderNationalId' },
-            { key: 'cnasNumber', label: 'cnasNumberLabel', placeholder: '' },
-          ].map(({ key, label, placeholder }) => (
-            <div key={key}>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf(label)}</label>
-              <input
-                type="text"
-                value={(form as any)[key]}
-                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                placeholder={placeholder ? tf(placeholder) : ''}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-              />
-            </div>
-          ))}
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf('hireDateLabel')}</label>
-            <input
-              type="date"
-              value={form.hireDate}
-              onChange={e => setForm(f => ({ ...f, hireDate: e.target.value }))}
-              className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <h4 className="text-xs font-bold text-primary-600 uppercase tracking-widest">{tf('sectionFinancial')}</h4>
-        <div className="space-y-3">
-          {[
-            { key: 'baseSalary', label: 'baseSalaryCurrency' },
-            { key: 'transportAllowance', label: 'transportAllowanceLabel' },
-            { key: 'performanceBonus', label: 'payrollBonusLabel' },
-            { key: 'otherAllowances', label: 'otherAllowancesLabel' },
-          ].map(({ key, label }) => (
-            <div key={key}>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">{tf(label)}</label>
-              <input
-                type="number"
-                value={(form as any)[key]}
-                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-              />
-            </div>
-          ))}
-          <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl">
-            <input
-              type="checkbox"
-              id="cnas-check"
-              checked={form.contributesToCNAS}
-              onChange={e => setForm(f => ({ ...f, contributesToCNAS: e.target.checked }))}
-              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-            />
-            <label htmlFor="cnas-check" className="text-sm font-bold text-slate-700 dark:text-slate-200">{tf('payrollCnasLabel')}</label>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -797,7 +802,7 @@ const Payroll: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <SalaryForm form={addForm} setForm={setAddForm} />
+                <SalaryForm form={addForm} setForm={setAddForm} tf={tf} />
               )}
             </div>
 
@@ -836,7 +841,7 @@ const Payroll: React.FC = () => {
               </button>
             </div>
             <div className="p-6 max-h-[70vh] overflow-y-auto">
-              <SalaryForm form={editForm} setForm={setEditForm} />
+              <SalaryForm form={editForm} setForm={setEditForm} tf={tf} />
             </div>
             <div className="p-6 bg-slate-50 dark:bg-zinc-800/50 flex items-center justify-end gap-3">
               <button onClick={() => setEditingEmployee(null)} className="px-6 py-2 text-slate-600 dark:text-slate-400 font-bold hover:text-slate-900 dark:hover:text-white transition-colors">{t('cancel')}</button>
@@ -918,17 +923,21 @@ const Payroll: React.FC = () => {
                           <td className="px-4 py-3 text-right text-slate-500">{formatCurrency(emp.transportAllowance ?? 0)}</td>
                           <td className="px-4 py-3 text-right">
                             <input
-                              type="number"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={getAdj(emp.id).bonus}
-                              onChange={e => setAdj(emp.id, 'bonus', Number(e.target.value))}
+                              onChange={e => { if (/^\d*$/.test(e.target.value)) setAdj(emp.id, 'bonus', Number(e.target.value)); }}
                               className="w-24 px-2 py-1 text-right bg-slate-50 dark:bg-zinc-800 border-none rounded-lg focus:ring-2 focus:ring-primary-500 outline-none text-sm"
                             />
                           </td>
                           <td className="px-4 py-3 text-right">
                             <input
-                              type="number"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={getAdj(emp.id).other}
-                              onChange={e => setAdj(emp.id, 'other', Number(e.target.value))}
+                              onChange={e => { if (/^\d*$/.test(e.target.value)) setAdj(emp.id, 'other', Number(e.target.value)); }}
                               className="w-24 px-2 py-1 text-right bg-slate-50 dark:bg-zinc-800 border-none rounded-lg focus:ring-2 focus:ring-primary-500 outline-none text-sm"
                             />
                           </td>

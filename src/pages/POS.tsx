@@ -245,8 +245,8 @@ const POS: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 h-full lg:h-[calc(100vh-160px)]">
-      <div className="flex-1 flex flex-col gap-6 min-w-0">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 h-full lg:h-[calc(100vh-160px)]">
+      <div className="flex-1 flex flex-col gap-3 lg:gap-6 min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('pos')}</h1>
           <div className="relative max-w-xs w-full">
@@ -290,7 +290,7 @@ const POS: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-2 no-scrollbar min-h-0">
+        <div className="flex-1 overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-2 no-scrollbar min-h-0 auto-rows-max content-start">
           {isLoading ? (
             <div className="col-span-full flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-600 gap-4">
               <div className="w-10 h-10 border-4 border-primary-200 dark:border-primary-900 border-t-primary-600 dark:border-t-primary-400 rounded-full animate-spin" />
@@ -305,9 +305,9 @@ const POS: React.FC = () => {
               key={product.id}
               onClick={() => addToCart(product)}
               disabled={getShopSellableStock(product) <= 0}
-              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col h-full min-h-0 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
-                <div className="h-28 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
+                <div className="h-20 sm:h-28 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
                   <img
                     src={product.imageUrl || `https://picsum.photos/seed/${product.name}/300/200`}
                     alt={product.name}
@@ -322,12 +322,12 @@ const POS: React.FC = () => {
                     <Plus className="text-white opacity-0 group-hover:opacity-100 w-8 h-8 drop-shadow-lg" />
                   </div>
                 </div>
-              <div className="p-3 flex flex-col flex-1 justify-between">
+              <div className="p-2 sm:p-3 flex flex-col flex-1 justify-between">
                 <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-base mb-2 line-clamp-2" title={tProduct(product)}>{tProduct(product)}</h3>
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{tCategory(product.category)}</span>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base mb-1 sm:mb-2 line-clamp-1 sm:line-clamp-2" title={tProduct(product)}>{tProduct(product)}</h3>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest hidden sm:block">{tCategory(product.category)}</span>
                 </div>
-                <div className="flex items-end justify-between mt-4 gap-2">
+                <div className="flex items-end justify-between mt-1 sm:mt-4 gap-2">
                   <div className="flex flex-col min-w-0 overflow-hidden">
                     {activePromotion && (
                       <span className="text-xs line-through text-slate-400 dark:text-slate-500">
@@ -335,7 +335,7 @@ const POS: React.FC = () => {
                       </span>
                     )}
                     <span className={clsx(
-                      "text-xl font-bold",
+                      "text-base sm:text-xl font-bold",
                       activePromotion ? "text-red-600 dark:text-red-400" : "text-primary-600 dark:text-primary-400"
                     )}>
                       {effectivePrice.toLocaleString()} {currencyUnit}
@@ -346,8 +346,8 @@ const POS: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <div className="w-10 h-10 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90 shrink-0">
-                    <Plus className="w-5 h-5" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary-600 dark:bg-primary-600 flex items-center justify-center text-white transition-all active:scale-90 shrink-0">
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                 </div>
               </div>

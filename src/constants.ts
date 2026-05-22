@@ -856,6 +856,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     comment: "Commentaire",
     returnedLabel: "Retourné",
     returnCommentPlaceholder: "Ajouter un commentaire…",
+    monthNames: ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'],
   },
   ar: {
     dashboard: "لوحة القيادة",
@@ -1706,6 +1707,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     comment: "تعليق",
     returnedLabel: "مرتجع",
     returnCommentPlaceholder: "إضافة تعليق…",
+    monthNames: ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'],
   },
 };
 
@@ -1903,6 +1905,7 @@ export const FINANCIAL_TRANSLATIONS: Record<Language, any> = {
     cnasNumberLabel: "N° CNAS",
     hireDateLabel: "Date d'embauche",
     baseSalaryCurrency: "Salaire de base (DZD)",
+    payrollBonusLabel: "Prime de performance",
     otherAllowancesLabel: "Autres indemnités",
     payrollRunsModuleSoon: "Module des bulletins de paie à venir",
     payrollCnasIrgReporting: "Rapports CNAS/IRG automatiques actifs",
@@ -2015,6 +2018,10 @@ export const FINANCIAL_TRANSLATIONS: Record<Language, any> = {
     assetFinancePeriodFrom: "Du",
     assetFinancePeriodTo: "Au",
     administration: "Administration",
+    day: "Jour",
+    month: "Mois",
+    year: "Année",
+    monthNames: ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'],
   },
   ar: {
     finance: "المالية",
@@ -2158,6 +2165,7 @@ export const FINANCIAL_TRANSLATIONS: Record<Language, any> = {
     cnasNumberLabel: "رقم الضمان الاجتماعي",
     hireDateLabel: "تاريخ التوظيف",
     baseSalaryCurrency: "الراتب الأساسي (دج)",
+    payrollBonusLabel: "علاوة الأداء",
     otherAllowancesLabel: "بدلات أخرى",
     payrollRunsModuleSoon: "قريباً: وحدة تشغيل الرواتب",
     payrollCnasIrgReporting: "تقارير الض.اج/ض.د نشطة تلقائياً",
@@ -2270,6 +2278,10 @@ export const FINANCIAL_TRANSLATIONS: Record<Language, any> = {
     assetFinancePeriodFrom: "من",
     assetFinancePeriodTo: "إلى",
     administration: "الإدارة",
+    day: "يوم",
+    month: "شهر",
+    year: "سنة",
+    monthNames: ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'],
   }
 };
 
