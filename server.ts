@@ -1987,17 +1987,17 @@ async function startServer() {
       }
     } else if (printLang === 'FR') {
       if (amountPaid === 0) {
-        translatedComment = 'Gratuit';
+        translatedCommentFR = 'Gratuit';
       } else if (total > amountPaid) {
         const discount = total - amountPaid;
-        translatedComment = `Remise DA ${discount.toFixed(0)}`;
+        translatedCommentFR = `Remise DA ${discount.toFixed(0)}`;
       }
     } else if (printLang === 'AR') {
       if (amountPaid === 0) {
-        translatedComment = 'مجاني';
+        translatedCommentAR = 'مجاني';
       } else if (total > amountPaid) {
         const discount = total - amountPaid;
-        translatedComment = `خصم دج ${discount.toFixed(0)}`;
+        translatedCommentAR = `خصم دج ${discount.toFixed(0)}`;
       }
     }
 
