@@ -147,6 +147,8 @@ model Sale {
   cashierName   String?
   customerId    String?
   totalAmount   Float
+  amountPaid    Float?
+  change        Float?
   paymentMethod String
   items         String
   createdAt     DateTime @default(now())

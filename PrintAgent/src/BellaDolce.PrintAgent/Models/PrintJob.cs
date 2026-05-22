@@ -21,6 +21,7 @@ public class PrintJob
 
 public class ReceiptLabels
 {
+    // French labels
     public string StoreName { get; set; } = string.Empty;
     public string StoreSlogan { get; set; } = string.Empty;
     public string ReceiptLabel { get; set; } = string.Empty;
@@ -37,6 +38,23 @@ public class ReceiptLabels
     public string Currency { get; set; } = string.Empty;
     public string ProductCountLabel { get; set; } = string.Empty;
     public string UnitCountLabel { get; set; } = string.Empty;
+
+    // Arabic labels (for bilingual printing)
+    public string StoreName_AR { get; set; } = string.Empty;
+    public string StoreSlogan_AR { get; set; } = string.Empty;
+    public string ReceiptLabel_AR { get; set; } = string.Empty;
+    public string DateLabel_AR { get; set; } = string.Empty;
+    public string CashierLabel_AR { get; set; } = string.Empty;
+    public string TotalLabel_AR { get; set; } = string.Empty;
+    public string SubtotalLabel_AR { get; set; } = string.Empty;
+    public string TaxLabel_AR { get; set; } = string.Empty;
+    public string PaymentLabel_AR { get; set; } = string.Empty;
+    public string PaidLabel_AR { get; set; } = string.Empty;
+    public string ChangeLabel_AR { get; set; } = string.Empty;
+    public string ThankYou_AR { get; set; } = string.Empty;
+    public string ComeBack_AR { get; set; } = string.Empty;
+    public string ProductCountLabel_AR { get; set; } = string.Empty;
+    public string UnitCountLabel_AR { get; set; } = string.Empty;
 }
 
 public class PrintJobItem

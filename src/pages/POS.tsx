@@ -161,6 +161,10 @@ const POS: React.FC = () => {
   const handleCheckout = async () => {
     if (cart.length === 0) return;
     setIsProcessing(true);
+
+    const capturedTotal = total;
+    const capturedCart = [...cart];
+
     try {
       const token = localStorage.getItem('bakery_token');
       const res = await authFetch('/api/sale', {
@@ -171,9 +175,11 @@ const POS: React.FC = () => {
         },
         body: JSON.stringify({
           customerId: selectedCustomer || null,
-          totalAmount: total,
+          totalAmount: capturedTotal,
+          amountPaid: amountPaidNum,
+          change: paymentMethod === 'cash' ? amountPaidNum - capturedTotal : 0,
           paymentMethod,
-          items: cart.map((item) => {
+          items: capturedCart.map((item) => {
             const product = products.find(p => p.id === item.productId);
             return {
               productId: item.productId,
@@ -190,12 +196,9 @@ const POS: React.FC = () => {
         throw new Error(saleData.error || 'Checkout failed');
       }
 
-      const saleId = saleData.id;
-
       // Deduct shopStock for each sold item
       // stock = shopStock + freezerStock + wasteQuantity (invariant must hold)
-      const saleItems = [...cart];
-      for (const item of saleItems) {
+      for (const item of capturedCart) {
         try {
           const productRef = doc(db, 'products', item.productId);
           const productSnap = await getDoc(productRef);
@@ -212,10 +215,10 @@ const POS: React.FC = () => {
       }
 
       if (profile) {
-        logActivity(profile.id, profile.name, 'Sale', `Completed sale of ${total} ${currencyUnit}`);
+        logActivity(profile.id, profile.name, 'Sale', `Completed sale of ${capturedTotal} ${currencyUnit}`);
       }
 
-      setReceiptItems(cart.map((item) => {
+      setReceiptItems(capturedCart.map((item) => {
         const product = products.find(p => p.id === item.productId);
         return {
           name: product ? tProduct(product) : `Product ${item.productId}`,
@@ -224,7 +227,7 @@ const POS: React.FC = () => {
           lineTotal: item.price * item.quantity
         };
       }));
-      setReceiptTotal(total);
+      setReceiptTotal(capturedTotal);
       setReceiptAmountPaid(amountPaidNum);
       setCart([]);
       setSelectedCustomer('');

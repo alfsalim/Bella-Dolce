@@ -11,6 +11,8 @@ interface Sale {
   id: string;
   createdAt: string;
   totalAmount: number;
+  amountPaid?: number;
+  change?: number;
   paymentMethod: 'CASH' | 'CARD' | 'TRANSFER';
   items?: string;
   cashierName?: string;
@@ -242,8 +244,8 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
               })) : []}
               totalAmount={selectedSaleForReceipt.totalAmount}
               paymentMethod={selectedSaleForReceipt.paymentMethod.toLowerCase() as 'cash' | 'card' | 'transfer'}
-              amountPaid={selectedSaleForReceipt.totalAmount}
-              change={0}
+              amountPaid={selectedSaleForReceipt.amountPaid || selectedSaleForReceipt.totalAmount}
+              change={selectedSaleForReceipt.change || 0}
               cashierName={selectedSaleForReceipt.cashierName || cashierId}
               dateTime={new Date(selectedSaleForReceipt.createdAt)}
               saleId={selectedSaleForReceipt.id}

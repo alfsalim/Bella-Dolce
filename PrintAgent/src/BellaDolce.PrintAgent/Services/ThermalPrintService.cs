@@ -7,21 +7,22 @@ namespace BellaDolce.PrintAgent.Services
 {
     public class ThermalPrintService : IPrintService
     {
-        
         private readonly string _printerName;
         private readonly string? _logoPath;
         private readonly int _paperWidth;
         private readonly int _paperHeight;
+        private readonly string _languageMode;
         private PrintJob? _currentJob;
 
         public string Mode => "printer";
-        
-        public ThermalPrintService(string printerName, string? logoPath = null, int paperWidth = 315, int paperHeight = 1200)
+
+        public ThermalPrintService(string printerName, string? logoPath = null, int paperWidth = 315, int paperHeight = 1200, string languageMode = "BOTH")
         {
             _printerName = printerName;
             _logoPath = logoPath;
             _paperWidth = paperWidth;
             _paperHeight = paperHeight;
+            _languageMode = languageMode;
         }
 
         public Task<PrintResult> PrintAsync(PrintJob job)
@@ -73,6 +74,7 @@ namespace BellaDolce.PrintAgent.Services
             var pageWidth = e.PageBounds.Width - 10;
             var y = 5f;
             var lineHeight = 14f;
+            var isBilingual = _languageMode.Equals("BOTH", StringComparison.OrdinalIgnoreCase);
 
             var fontTitle = new Font("Arial", 12, FontStyle.Bold);
             var fontNormal = new Font("Arial", 9, FontStyle.Regular);
@@ -95,18 +97,36 @@ namespace BellaDolce.PrintAgent.Services
                 y += font.GetHeight() + 2;
             }
 
+            void DrawBilingual(string leftFR, string rightFR, string leftAR, string rightAR, Font font)
+            {
+                if (!isBilingual)
+                {
+                    DrawLeftRight(leftFR, rightFR, font);
+                    return;
+                }
+
+                var midPoint = pageWidth / 2;
+                g.DrawString(leftFR, font, Brushes.Black, 5, y);
+                var rightSize = g.MeasureString(rightFR, font);
+                g.DrawString(rightFR, font, Brushes.Black, midPoint - rightSize.Width - 5, y);
+
+                var arLeftSize = g.MeasureString(leftAR, font);
+                g.DrawString(leftAR, font, Brushes.Black, pageWidth - arLeftSize.Width - 5, y);
+                g.DrawString(rightAR, font, Brushes.Black, midPoint + 5, y);
+                y += font.GetHeight() + 2;
+            }
+
             void DrawDash()
             {
-                g.DrawString(new string('-', 40), fontSmall, Brushes.Black, 5, y);
+                g.DrawString(new string('-', isBilingual ? 20 : 40), fontSmall, Brushes.Black, 5, y);
                 y += lineHeight;
             }
 
             // === HEADER ===
-            // === LOGO ===
             if (!string.IsNullOrEmpty(_logoPath) && File.Exists(_logoPath))
             {
                 using var logo = Image.FromFile(_logoPath);
-                var logoWidth = Math.Min(150, pageWidth);
+                var logoWidth = Math.Min(isBilingual ? 75 : 150, pageWidth);
                 var logoHeight = (int)(logo.Height * ((float)logoWidth / logo.Width));
                 var logoX = (pageWidth - logoWidth) / 2;
                 g.DrawImage(logo, (int)logoX, (int)y, (int)logoWidth, logoHeight);
@@ -116,9 +136,18 @@ namespace BellaDolce.PrintAgent.Services
             DrawDash();
 
             // === RECEIPT INFO ===
-            DrawLeftRight($"{labels.ReceiptLabel}:", job.ReceiptNumber ?? "N/A", fontNormal);
-            DrawLeftRight($"{labels.DateLabel}:", job.Date ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm"), fontNormal);
-            DrawLeftRight($"{labels.CashierLabel}:", job.CashierName ?? "N/A", fontNormal);
+            DrawBilingual(
+                $"{labels.ReceiptLabel}:", job.ReceiptNumber ?? "N/A",
+                $"{labels.ReceiptLabel_AR}:", job.ReceiptNumber ?? "N/A",
+                fontNormal);
+            DrawBilingual(
+                $"{labels.DateLabel}:", job.Date ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+                $"{labels.DateLabel_AR}:", job.Date ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+                fontNormal);
+            DrawBilingual(
+                $"{labels.CashierLabel}:", job.CashierName ?? "N/A",
+                $"{labels.CashierLabel_AR}:", job.CashierName ?? "N/A",
+                fontNormal);
             DrawDash();
 
             // === ITEMS ===
@@ -128,11 +157,11 @@ namespace BellaDolce.PrintAgent.Services
                 {
                     var qty = $"{item.Quantity}x {item.Name}";
                     var price = $"{item.LineTotal:N2} {labels.Currency}";
-                    DrawLeftRight(qty, price, fontNormal);
+                    DrawBilingual(qty, price, qty, price, fontNormal);
 
                     if (item.UnitPrice > 0)
                     {
-                        g.DrawString($"   @ {item.UnitPrice:N2} {labels.Currency}", fontSmall, Brushes.Black, 10, y);
+                        g.DrawString($"@ {item.UnitPrice:N2} {labels.Currency}", fontSmall, Brushes.Black, 10, y);
                         y += fontSmall.GetHeight() + 1;
                     }
                 }
@@ -140,26 +169,66 @@ namespace BellaDolce.PrintAgent.Services
             DrawDash();
 
             // === COUNTS ===
-            DrawLeftRight($"{labels.ProductCountLabel}:", $"{job.ProductCount}", fontNormal);
-            DrawLeftRight($"{labels.UnitCountLabel}:", $"{job.UnitCount}", fontNormal);
+            DrawBilingual(
+                $"{labels.ProductCountLabel}:", $"{job.ProductCount}",
+                $"{labels.ProductCountLabel_AR}:", $"{job.ProductCount}",
+                fontNormal);
+            DrawBilingual(
+                $"{labels.UnitCountLabel}:", $"{job.UnitCount}",
+                $"{labels.UnitCountLabel_AR}:", $"{job.UnitCount}",
+                fontNormal);
             DrawDash();
 
             // === TOTALS ===
-            DrawLeftRight($"{labels.TotalLabel}:", $"{job.Total:N2} {labels.Currency}", fontBold);
+            DrawBilingual(
+                $"{labels.TotalLabel}:", $"{job.Total:N2} {labels.Currency}",
+                $"{labels.TotalLabel_AR}:", $"{job.Total:N2} {labels.Currency}",
+                fontBold);
             if (job.AmountPaid > 0)
-                DrawLeftRight($"{labels.PaidLabel}:", $"{job.AmountPaid:N2} {labels.Currency}", fontNormal);
+                DrawBilingual(
+                    $"{labels.PaidLabel}:", $"{job.AmountPaid:N2} {labels.Currency}",
+                    $"{labels.PaidLabel_AR}:", $"{job.AmountPaid:N2} {labels.Currency}",
+                    fontNormal);
             if (job.ChangeGiven > 0)
-                DrawLeftRight($"{labels.ChangeLabel}:", $"{job.ChangeGiven:N2} {labels.Currency}", fontNormal);
+                DrawBilingual(
+                    $"{labels.ChangeLabel}:", $"{job.ChangeGiven:N2} {labels.Currency}",
+                    $"{labels.ChangeLabel_AR}:", $"{job.ChangeGiven:N2} {labels.Currency}",
+                    fontNormal);
 
-            DrawLeftRight($"{labels.PaymentLabel}:", job.PaymentMethod ?? "CASH", fontNormal);
+            DrawBilingual(
+                $"{labels.PaymentLabel}:", job.PaymentMethod ?? "CASH",
+                $"{labels.PaymentLabel_AR}:", job.PaymentMethod ?? "CASH",
+                fontNormal);
             DrawDash();
 
             // === FOOTER ===
             y += 5;
-            DrawCenter(labels.ThankYou, fontNormal);
-            DrawCenter(labels.ComeBack, fontNormal);
-            y += 10;
+            if (isBilingual)
+            {
+                var thankYouSize = g.MeasureString(labels.ThankYou, fontNormal);
+                g.DrawString(labels.ThankYou, fontNormal, Brushes.Black, (pageWidth / 4) - (thankYouSize.Width / 2), y);
+                var thankYouARSize = g.MeasureString(labels.ThankYou_AR, fontNormal);
+                g.DrawString(labels.ThankYou_AR, fontNormal, Brushes.Black, (pageWidth * 3 / 4) - (thankYouARSize.Width / 2), y);
+                y += fontNormal.GetHeight() + 2;
+            }
+            else
+            {
+                DrawCenter(labels.ThankYou, fontNormal);
+            }
 
+            if (isBilingual)
+            {
+                var comeBackSize = g.MeasureString(labels.ComeBack, fontNormal);
+                g.DrawString(labels.ComeBack, fontNormal, Brushes.Black, (pageWidth / 4) - (comeBackSize.Width / 2), y);
+                var comeBackARSize = g.MeasureString(labels.ComeBack_AR, fontNormal);
+                g.DrawString(labels.ComeBack_AR, fontNormal, Brushes.Black, (pageWidth * 3 / 4) - (comeBackARSize.Width / 2), y);
+            }
+            else
+            {
+                DrawCenter(labels.ComeBack, fontNormal);
+            }
+
+            y += 10;
             e.HasMorePages = false;
 
             fontTitle.Dispose();

@@ -18,20 +18,21 @@ try
 
     var config = builder.Configuration.GetSection("PrintAgent");
     var mode = config.GetValue<string>("Mode");
+    var languageMode = config.GetValue<string>("LanguageMode") ?? "BOTH";
     var printerName = config.GetValue<string>("PrinterName");
     var logoPath = config.GetValue<string>("LogoPath");
     var allowedOrigins = config.GetSection("AllowedOrigins").Get<string[]>();
     var defaultLabels = config.GetSection("Labels").Get<ReceiptLabels>() ?? new ReceiptLabels();
     builder.Services.AddSingleton(defaultLabels);
 
-   if (mode?.Equals("thermal", StringComparison.OrdinalIgnoreCase) == true)
+    if (mode?.Equals("thermal", StringComparison.OrdinalIgnoreCase) == true)
         {
             var paperWidthMM = config.GetValue<int>("PaperWidth");
             var paperHeightMM = config.GetValue<int>("PaperHeight");
             var paperWidth = (int)(paperWidthMM * 3.937);
             var paperHeight = (int)(paperHeightMM * 3.937);
-            builder.Services.AddSingleton<IPrintService>(new ThermalPrintService(printerName!, logoPath, paperWidth, paperHeight));
-            Log.Information("Print mode: THERMAL ({PrinterName}, {PaperWidth}mm)", printerName, paperWidthMM);
+            builder.Services.AddSingleton<IPrintService>(new ThermalPrintService(printerName!, logoPath, paperWidth, paperHeight, languageMode));
+            Log.Information("Print mode: THERMAL ({PrinterName}, {PaperWidth}mm, Language: {LanguageMode})", printerName, paperWidthMM, languageMode);
         }
         else
         {

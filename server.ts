@@ -1897,9 +1897,9 @@ async function startServer() {
 
   // Atomic POS sale endpoint — creates sale + deducts stock in a single transaction
   app.post("/api/sale", requireAuth, async (req: any, res) => {
-    const { customerId, totalAmount, paymentMethod, items } = req.body;
+    const { customerId, totalAmount, amountPaid, change, paymentMethod, items } = req.body;
     const cashierId = req.user.id; // Use authenticated user ID instead of client-provided id
-    
+
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'No items in sale' });
     }
@@ -1921,6 +1921,8 @@ async function startServer() {
             cashierName,
             customerId: customerId || null,
             totalAmount,
+            amountPaid,
+            change,
             paymentMethod,
             items: JSON.stringify(items)
           }
@@ -1937,7 +1939,10 @@ async function startServer() {
 
  
   app.post("/api/print-receipt", requireAuth, async (req: any, res) => {
-    const PRINT_AGENT_URL = process.env.PRINT_AGENT_URL || "http://localhost:5555";
+    const isProduction = process.env.NODE_ENV === 'production';
+    const PRINT_AGENT_URL = isProduction
+      ? (process.env.PRINT_AGENT_URL_PROD || "http://localhost:5555")
+      : (process.env.PRINT_AGENT_URL || "http://localhost:5555");
     const PRINT_AGENT_TIMEOUT = parseInt(process.env.PRINT_AGENT_TIMEOUT || "2000", 10);
     const { saleId, items, total, amountPaid, change, paymentMethod, receiptNumber, cashierName } = req.body;
   
