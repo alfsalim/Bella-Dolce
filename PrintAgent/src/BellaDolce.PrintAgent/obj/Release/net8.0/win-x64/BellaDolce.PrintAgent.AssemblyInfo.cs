@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BellaDolce.PrintAgent")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a7e659422d501fc621c442c02d2745d77f2ac1bf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7750cf4c92ea28ba45077d5cc7c0820adb00e05e")]
 [assembly: System.Reflection.AssemblyProductAttribute("BellaDolce.PrintAgent")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BellaDolce.PrintAgent")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
