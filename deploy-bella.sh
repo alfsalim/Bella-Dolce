@@ -98,7 +98,7 @@ incremental_server() {
     log_ok "Container restarted"
 }
 
-# ── Guard: fallback to full if container not running ──────────
+# ── Guard: fallback to full if container not running or port mapping wrong ──────────
 incremental_guard() {
     local container=$1 dhost=${2:-""}
     local running
@@ -109,6 +109,20 @@ incremental_guard() {
     fi
     if [ "$running" != "true" ]; then
         log_warn "Container $container is not running — falling back to full deploy"
+        DEPLOY_TYPE="full"
+        return
+    fi
+
+    # Check port mapping: internal port 3000 must map to external port 3500
+    local mapped_port
+    if [ -n "$dhost" ]; then
+        mapped_port=$(DOCKER_HOST="$dhost" docker inspect -f '{{range $k, $v := .NetworkSettings.Ports}}{{if eq $k "3000/tcp"}}{{range $v}}{{.HostPort}}{{end}}{{end}}{{end}}' "$container" 2>/dev/null)
+    else
+        mapped_port=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Ports}}{{if eq $k "3000/tcp"}}{{range $v}}{{.HostPort}}{{end}}{{end}}{{end}}' "$container" 2>/dev/null)
+    fi
+
+    if [ "$mapped_port" != "$EXT_PORT" ]; then
+        log_warn "Port mapping incorrect (got $mapped_port, expected $EXT_PORT) — falling back to full deploy"
         DEPLOY_TYPE="full"
     fi
 }
@@ -276,6 +290,7 @@ if [ "$MODE" = "--dev" ]; then
             -e DATABASE_URL="$DB_URL" \
             -e NODE_ENV=production \
             -e BELLA_HTTP_ONLY=1 \
+            -e REDIS_URL="redis://redis:6379" \
             -v "$DEV_DATA_DIR:/app/data" \
             -v "$HOME/bella-dolce-backups:/app/backups" \
             --restart unless-stopped \
@@ -367,6 +382,7 @@ SEED_EOF
             -e DATABASE_URL="$DB_URL" \
             -e NODE_ENV=production \
             -e BELLA_HTTP_ONLY=1 \
+            -e REDIS_URL="redis://redis:6379" \
             -v "$PROD_DATA_DIR:/app/data" \
             -v "$PROD_BACKUP_DIR:/app/backups" \
             --restart unless-stopped \
