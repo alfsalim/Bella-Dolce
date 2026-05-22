@@ -323,8 +323,13 @@ const POS: React.FC = () => {
                   </div>
                 </div>
               <div className="p-2 sm:p-3 flex flex-col flex-1 justify-between">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base line-clamp-1 flex-1" title={tProduct(product)}>{tProduct(product)}</h3>
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base line-clamp-2" title={tProduct(product)}>{tProduct(product)}</h3>
+                <div className="flex items-baseline justify-between gap-2 mt-1.5">
+                  {activePromotion && (
+                    <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider truncate flex-1">
+                      {activePromotion.campaignName}
+                    </span>
+                  )}
                   <span className={clsx(
                     "text-xs sm:text-sm font-bold whitespace-nowrap",
                     activePromotion ? "text-red-600 dark:text-red-400" : "text-primary-600 dark:text-primary-400"
@@ -332,11 +337,6 @@ const POS: React.FC = () => {
                     {effectivePrice.toLocaleString()} {currencyUnit}
                   </span>
                 </div>
-                {activePromotion && (
-                  <span className="text-[10px] font-bold text-red-600/90 dark:text-red-400/90 uppercase tracking-wider truncate mt-0.5">
-                    {activePromotion.campaignName}
-                  </span>
-                )}
               </div>
             </button>
               );
