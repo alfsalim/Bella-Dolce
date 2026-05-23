@@ -129,6 +129,7 @@ export interface Sale {
   paymentMethod: 'cash' | 'card' | 'mobile' | 'transfer';
   items: SaleItem[] | string; // string when fetched from DB (JSON), array when in memory
   comment?: string;
+  discount?: number;
   returnComment?: string;
   createdAt: string;
 }

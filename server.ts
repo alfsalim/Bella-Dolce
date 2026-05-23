@@ -1950,7 +1950,7 @@ async function startServer() {
 
   // Atomic POS sale endpoint — creates sale + deducts stock in a single transaction
   app.post("/api/sale", requireAuth, async (req: any, res) => {
-    const { customerId, totalAmount, amountPaid, change, paymentMethod, items, returnComment } = req.body;
+    const { customerId, totalAmount, amountPaid, change, paymentMethod, items, comment, returnComment } = req.body;
     const cashierId = req.user.id; // Use authenticated user ID instead of client-provided id
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -1983,6 +1983,7 @@ async function startServer() {
             paymentMethod,
             items: JSON.stringify(items),
             discount: discount > 0 ? discount : null,
+            comment: comment || null,
             returnComment: returnComment || null
           }
         });
@@ -2027,7 +2028,7 @@ async function startServer() {
     let translatedComment = '';
     let translatedCommentFR = '';
     let translatedCommentAR = '';
-    const printLang = printLanguage || 'USER';
+    const printLang = printLanguage || 'BOTH';
 
     if (printLang === 'BOTH') {
       if (amountPaid === 0) {
@@ -2100,17 +2101,29 @@ async function startServer() {
   app.get("/api/sales", requireAuth, async (req: any, res) => {
     try {
       const prisma = getPrisma();
-      const { date, cashierId, limit = config.QUERY_MAX_ITEMS, sort = 'desc' } = req.query;
+      const { date, cashierId, limit = config.QUERY_MAX_ITEMS, sort = 'desc', from, to } = req.query;
 
       const userRole: string = (req.user?.role ?? '').trim();
       const canSeeAll = userRole === 'admin' || userRole === 'manager';
 
       const where: any = {};
 
-      if (date) {
-        const startOfDay = new Date(date);
+      if (from || to) {
+        where.createdAt = {};
+        if (from) {
+          const start = new Date(from as string);
+          start.setHours(0, 0, 0, 0);
+          where.createdAt.gte = start;
+        }
+        if (to) {
+          const end = new Date(to as string);
+          end.setHours(23, 59, 59, 999);
+          where.createdAt.lte = end;
+        }
+      } else if (date) {
+        const startOfDay = new Date(date as string);
         startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(date);
+        const endOfDay = new Date(date as string);
         endOfDay.setHours(23, 59, 59, 999);
 
         where.createdAt = {
@@ -2126,10 +2139,13 @@ async function startServer() {
         where.cashierId = cashierId;
       }
 
+      // When a date range is provided, fetch all matching records (no cap)
+      const takeOption = (from || to) ? undefined : Math.min(parseInt(limit as string) || config.QUERY_MAX_ITEMS, config.QUERY_MAX_ITEMS);
+
       const sales = await prisma.sale.findMany({
         where,
         orderBy: { createdAt: sort === 'asc' ? 'asc' : 'desc' },
-        take: Math.min(parseInt(limit) || config.QUERY_MAX_ITEMS, config.QUERY_MAX_ITEMS)
+        ...(takeOption !== undefined ? { take: takeOption } : {})
       });
 
       const hasQueryFilters = date || cashierId;

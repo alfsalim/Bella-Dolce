@@ -52,7 +52,7 @@ import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/db';
 import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
 import { clsx } from 'clsx';
 import Pagination from '../components/Pagination';
-import { downloadReportsPdf } from '../lib/reports-pdf';
+import { downloadReportsPdf } from '../lib/export';
 
 /** Activities list uses a smaller page size so pagination is usable with typical log volumes. */
 const ACTIVITIES_PAGE_SIZE = 25;
@@ -67,7 +67,7 @@ function parseSaleItems(sale: Sale): (SaleItem & { name?: string })[] {
 }
 
 const Reports: React.FC = () => {
-  const { t, tProduct, tCategory, currencyUnit, isRTL, language } = useLanguage();
+  const { t, tProduct, tCategory, currencyUnit, formatCurrency, isRTL, language } = useLanguage();
   const dateLocale = language === 'ar' ? dateFnsArSA : dateFnsFr;
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'analytics' | 'sales' | 'activities'>('analytics');
@@ -134,7 +134,11 @@ const Reports: React.FC = () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('bakery_token');
-        const res = await authFetch('/api/sales', {
+        // Use the wider of analytics or report range so both tabs are covered
+        const from = analyticsStart < reportStart ? analyticsStart : reportStart;
+        const to = analyticsEnd > reportEnd ? analyticsEnd : reportEnd;
+        const params = new URLSearchParams({ from, to });
+        const res = await authFetch(`/api/sales?${params}`, {
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
@@ -149,7 +153,9 @@ const Reports: React.FC = () => {
       }
     };
     fetchSales();
-    
+  }, [analyticsStart, analyticsEnd, reportStart, reportEnd]);
+
+  useEffect(() => {
     const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     });
@@ -1279,6 +1285,7 @@ const Reports: React.FC = () => {
                       <th className="px-8 py-4">{t('payment') || 'Payment'}</th>
                       <th className="px-8 py-4">{t('products') || 'Products'}</th>
                       <th className="px-8 py-4 text-right">{t('amount') || 'Amount'}</th>
+                      <th className="px-8 py-4 text-right">{t('discount') || 'Discount'}</th>
                       <th className="px-8 py-4">{t('comment') || 'Comment'}</th>
                       <th className="px-8 py-4">Reprint</th>
                     </tr>
@@ -1342,6 +1349,13 @@ const Reports: React.FC = () => {
                             </td>
                             <td className="px-8 py-5 text-right font-display font-bold text-lg text-slate-900 dark:text-white">
                               {sale.totalAmount.toLocaleString()} {currencyUnit}
+                            </td>
+                            <td className="px-8 py-5 text-right text-sm font-medium">
+                              {sale.discount ? (
+                                <span className="text-rose-600 font-bold">
+                                  {`-${sale.discount.toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencyUnit}`}
+                                </span>
+                              ) : '—'}
                             </td>
                             <td className="px-8 py-5 text-xs font-medium text-slate-600 dark:text-slate-400">
                               {sale.comment || '—'}

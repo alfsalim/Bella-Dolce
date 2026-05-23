@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
+import { downloadPayslipPdf } from '../../lib/export';
 
 const PAYROLL_ELIGIBLE_ROLES = new Set([
   'admin', 'manager', 'cashier', 'baker', 'delivery_guy', 'inventory',
@@ -712,6 +713,7 @@ const Payroll: React.FC = () => {
                         <button
                           onClick={() => setPrintPayslip(slip)}
                           className="p-2 text-slate-400 hover:text-primary-600 transition-colors"
+                          title={tf('printPayslip')}
                         >
                           <Printer className="w-4 h-4" />
                         </button>
@@ -1015,10 +1017,39 @@ const Payroll: React.FC = () => {
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">{tf('payslip')}</h3>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    const emp = employees.find(e => e.id === printPayslip.employeeId);
+                    downloadPayslipPdf({
+                      filename: `bulletin-${printPayslip.employeeName.replace(/\s+/g, '-')}-${printPayslip.period}.pdf`,
+                      currencyUnit: 'DA',
+                      labels: {
+                        payslip: tf('payslip'),
+                        employee: tf('employee'),
+                        matriculeLabel: tf('matriculeLabel'),
+                        ninLabel: tf('ninLabel'),
+                        sectionFinancial: tf('sectionFinancial'),
+                        baseSalary: tf('baseSalary'),
+                        transportAllowanceLabel: tf('transportAllowanceLabel'),
+                        payrollBonusLabel: tf('payrollBonusLabel'),
+                        otherAllowancesLabel: tf('otherAllowancesLabel'),
+                        grossSalary: tf('grossSalary'),
+                        deductions: tf('deductions'),
+                        cnasEmployee: tf('cnasEmployee'),
+                        taxableGross: tf('taxableGross'),
+                        irgRetained: tf('irgRetained'),
+                        netSalary: tf('netSalary'),
+                        employerCost: tf('employerCost'),
+                      },
+                      slip: {
+                        ...printPayslip,
+                        matricule: emp?.matricule,
+                        nin: emp?.nin,
+                      },
+                    });
+                  }}
                   className="flex items-center gap-2 px-3 py-2 text-sm font-bold bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
                 >
-                  <Printer className="w-4 h-4" />{tf('printPayslip')}
+                  <Download className="w-4 h-4" />{tf('printPayslip')}
                 </button>
                 <button onClick={() => setPrintPayslip(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-colors">
                   <X className="w-6 h-6 text-slate-400" />

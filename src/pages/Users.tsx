@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { PAGE_SIZE } from '../constants';
-import { 
-  Users as UsersIcon, 
-  Plus, 
-  Search, 
-  Shield, 
-  Mail, 
+import {
+  Users as UsersIcon,
+  Plus,
+  Search,
+  Shield,
+  Mail,
   Calendar,
   MoreVertical,
   ShieldCheck,
@@ -20,7 +20,9 @@ import {
   CheckCircle2,
   XCircle,
   Database,
-  RefreshCw
+  RefreshCw,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, limit, setDoc, where, getDocs, writeBatch, handleFirestoreError, OperationType, getCountFromServer } from '../lib/db';
 import { UserProfile, Role, ActivityLog } from '../types';
@@ -40,8 +42,8 @@ const Users: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
 
   const [auditLogs, setAuditLogs] = useState<ActivityLog[]>([]);
-  const [logsLimit, setLogsLimit] = useState(25);
-  const [hasMoreLogs, setHasMoreLogs] = useState(true);
+  const [auditPage, setAuditPage] = useState(1);
+  const AUDIT_PAGE_SIZE = 10;
   const [searchTerm, setSearchTerm] = useState('');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -49,6 +51,9 @@ const Users: React.FC = () => {
   const [inviteData, setInviteData] = useState({ name: '', username: '', password: '', role: 'cashier' as Role });
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
+  const [logsPage, setLogsPage] = useState(1);
+  const LOGS_PAGE_SIZE = 10;
   const [selectedUserForLogs, setSelectedUserForLogs] = useState<UserProfile | null>(null);
   const [userLogs, setUserLogs] = useState<ActivityLog[]>([]);
   const [newPassword, setNewPassword] = useState('');
@@ -92,18 +97,18 @@ const Users: React.FC = () => {
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, 'users'));
 
-    const logsQ = query(collection(db, 'activityLogs'), orderBy('timestamp', 'desc'), limit(logsLimit));
+    const logsQ = query(collection(db, 'activityLogs'), orderBy('timestamp', 'desc'), limit(500));
     const unsubscribeLogs = onSnapshot(logsQ, (snapshot) => {
-      const newLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog));
-      setAuditLogs(newLogs);
-      setHasMoreLogs(newLogs.length === logsLimit);
+      setAuditLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'activityLogs'));
 
     return () => {
       unsubscribe();
       unsubscribeLogs();
     };
-  }, [PAGE_SIZE, currentPage, logsLimit]);
+  }, [PAGE_SIZE, currentPage]);
+
+  useEffect(() => { setLogsPage(1); }, [selectedUserForLogs]);
 
   useEffect(() => {
     if (selectedUserForLogs) {
@@ -269,120 +274,154 @@ const Users: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="card flex items-center gap-4 py-4 border-slate-100 dark:border-[#2a1e17]">
+      <div className="space-y-6">
+        <div className="space-y-6">
+          <div className="card flex items-center gap-3 py-4 border-slate-100 dark:border-[#2a1e17]">
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 w-5 h-5" />
-              <input 
-                type="text" 
-                placeholder={t('search')} 
+              <input
+                type="text"
+                placeholder={t('search')}
                 className="input pl-12 bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#1a1512] rounded-xl shrink-0">
+              <button
+                onClick={() => setViewMode('list')}
+                className={clsx('p-2 rounded-lg transition-all', viewMode === 'list' ? 'bg-white dark:bg-zinc-800 shadow text-primary-600' : 'text-slate-400 hover:text-slate-600')}
+                title={t('listView')}
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('card')}
+                className={clsx('p-2 rounded-lg transition-all', viewMode === 'card' ? 'bg-white dark:bg-zinc-800 shadow text-primary-600' : 'text-slate-400 hover:text-slate-600')}
+                title={t('cardView')}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          <div className="card p-0 overflow-hidden border-slate-100 dark:border-[#2a1e17]">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-slate-400 dark:text-slate-600 text-xs font-bold uppercase tracking-widest border-b border-slate-100 dark:border-[#2a1e17]">
-                  <th className="px-8 py-5">{t('member')}</th>
-                  <th className="px-8 py-5">{t('username')}</th>
-                  <th className="px-8 py-5">{t('role')}</th>
-                  <th className="px-8 py-5">{t('joined')}</th>
-                  <th className="px-8 py-5 text-right">{t('actions')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-[#1a1512]">
-                {users.filter(u => 
-                  (u.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
-                  (u.username?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-                ).map((user) => (
-                  <tr key={user.id} className="group hover:bg-slate-50/50 dark:hover:bg-[#1a1512]/50 transition-all">
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold">
-                          {user.name?.charAt(0) || '?'}
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{user.name || t('unknownUser')}</p>
-                        </div>
+          {viewMode === 'list' ? (
+            <div className="card p-0 overflow-hidden border-slate-100 dark:border-[#2a1e17]">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-slate-400 dark:text-slate-600 text-xs font-bold uppercase tracking-widest border-b border-slate-100 dark:border-[#2a1e17]">
+                      <th className="px-6 py-5 text-start">{t('member')}</th>
+                      <th className="px-6 py-5 text-start">{t('username')}</th>
+                      <th className="px-6 py-5 text-start">{t('role')}</th>
+                      <th className="px-6 py-5 text-start whitespace-nowrap">{t('joined')}</th>
+                      <th className="px-6 py-5 text-end">{t('actions')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-[#1a1512]">
+                    {users.filter(u =>
+                      (u.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                      (u.username?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+                    ).map((user) => (
+                      <tr key={user.id} className="group hover:bg-slate-50/50 dark:hover:bg-[#1a1512]/50 transition-all">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold shrink-0">
+                              {user.name?.charAt(0) || '?'}
+                            </div>
+                            <p className="font-bold text-slate-900 dark:text-white whitespace-nowrap">{user.name || t('unknownUser')}</p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                            {user.username ? `@${user.username}` : t('notAvailableShort')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className={clsx(
+                            'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap',
+                            getRoleBadge(user.role)
+                          )}>
+                            {getRoleIcon(user.role)}
+                            {tRole(user.role)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-medium">
+                            <Calendar className="w-4 h-4 text-slate-300 dark:text-slate-700 shrink-0" />
+                            {user.createdAt ? format(new Date(user.createdAt), 'dd MMM yyyy', { locale: dateLocale }) : t('notAvailableShort')}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setSelectedUserForLogs(user)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400 transition-all" title={t('viewActivities')}>
+                              <Activity className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => toggleUserStatus(user)} className={clsx('w-8 h-8 flex items-center justify-center rounded-lg transition-all', user.status === 'active' ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20' : 'text-slate-400 dark:text-slate-600 hover:bg-slate-100 dark:hover:bg-[#1a1512]')} title={user.status === 'active' ? t('disableUser') : t('activateUser')}>
+                              {user.status === 'active' ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                            </button>
+                            <button onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-[#1a1512] text-slate-400 dark:text-slate-600 transition-all" title={t('editUserAction')}>
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => { setUserToDelete(user); setIsDeleteModalOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 dark:text-red-500 transition-all" title={t('deleteUserAction')}>
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {users.filter(u =>
+                (u.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                (u.username?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+              ).map((user) => (
+                <div key={user.id} className="card border-slate-100 dark:border-[#2a1e17] hover:shadow-md transition-all">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={clsx('w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg shrink-0', user.status === 'active' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400' : 'bg-slate-100 dark:bg-zinc-800 text-slate-400')}>
+                        {user.name?.charAt(0) || '?'}
                       </div>
-                    </td>
-                    <td className="px-8 py-5">
-                      <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {user.username ? `@${user.username}` : t('notAvailableShort')}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className={clsx(
-                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                        getRoleBadge(user.role)
-                      )}>
-                        {getRoleIcon(user.role)}
-                        {tRole(user.role)}
+                      <div>
+                        <p className="font-bold text-slate-900 dark:text-white">{user.name || t('unknownUser')}</p>
+                        <p className="text-xs text-slate-400 font-medium">{user.username ? `@${user.username}` : t('notAvailableShort')}</p>
                       </div>
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm font-medium">
-                        <Calendar className="w-4 h-4 text-slate-300 dark:text-slate-700" />
-                        {user.createdAt ? format(new Date(user.createdAt), 'MMM dd, yyyy', { locale: dateLocale }) : t('notAvailableShort')}
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => setSelectedUserForLogs(user)}
-                          className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400 transition-all"
-                          title={t('viewActivities')}
-                          aria-label={t('viewActivities')}
-                        >
-                          <Activity className="w-5 h-5" />
-                        </button>
-                        <button 
-                          onClick={() => toggleUserStatus(user)}
-                          className={clsx(
-                            "w-9 h-9 flex items-center justify-center rounded-lg transition-all",
-                            user.status === 'active' 
-                              ? "text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" 
-                              : "text-slate-400 dark:text-slate-600 hover:bg-slate-100 dark:hover:bg-[#1a1512]"
-                          )}
-                          title={user.status === 'active' ? t('disableUser') : t('activateUser')}
-                          aria-label={user.status === 'active' ? t('disableUser') : t('activateUser')}
-                        >
-                          {user.status === 'active' ? <UserCheck className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setEditingUser(user);
-                            setIsEditModalOpen(true);
-                          }}
-                          className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-[#1a1512] text-slate-400 dark:text-slate-600 transition-all"
-                          title={t('editUserAction')}
-                          aria-label={t('editUserAction')}
-                        >
-                          <MoreVertical className="w-5 h-5" />
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setUserToDelete(user);
-                            setIsDeleteModalOpen(true);
-                          }}
-                          className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 dark:text-red-500 transition-all"
-                          title={t('deleteUserAction')}
-                          aria-label={t('deleteUserAction')}
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                    <div className={clsx('w-2 h-2 rounded-full mt-2 shrink-0', user.status === 'active' ? 'bg-emerald-500' : 'bg-slate-300')} title={user.status} />
+                  </div>
+
+                  <div className={clsx('inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-4', getRoleBadge(user.role))}>
+                    {getRoleIcon(user.role)}
+                    {tRole(user.role)}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-slate-400 font-medium mb-4">
+                    <Calendar className="w-3.5 h-3.5 shrink-0" />
+                    {user.createdAt ? format(new Date(user.createdAt), 'dd MMM yyyy', { locale: dateLocale }) : t('notAvailableShort')}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1 pt-3 border-t border-slate-50 dark:border-white/5">
+                    <button onClick={() => setSelectedUserForLogs(user)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400 transition-all" title={t('viewActivities')}>
+                      <Activity className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => toggleUserStatus(user)} className={clsx('w-8 h-8 flex items-center justify-center rounded-lg transition-all', user.status === 'active' ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20' : 'text-slate-400 hover:bg-slate-100')} title={user.status === 'active' ? t('disableUser') : t('activateUser')}>
+                      {user.status === 'active' ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => { setEditingUser(user); setIsEditModalOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-[#1a1512] text-slate-400 transition-all" title={t('editUserAction')}>
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => { setUserToDelete(user); setIsDeleteModalOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 transition-all" title={t('deleteUserAction')}>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           <Pagination 
             currentPage={currentPage}
             totalPages={totalPages}
@@ -390,40 +429,46 @@ const Users: React.FC = () => {
           />
         </div>
 
-        <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card border-slate-100 dark:border-[#2a1e17]">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary-600 dark:text-primary-400" />
               {t('auditLog')}
             </h2>
-            <div className="space-y-6">
-              {auditLogs.length > 0 ? (
-                auditLogs.map((log, i) => (
-                  <div key={log.id} className="flex gap-4 relative">
-                    {i !== auditLogs.length - 1 && <div className="absolute left-2 top-6 bottom-[-24px] w-[2px] bg-slate-100 dark:bg-[#1a1512]"></div>}
-                    <div className="w-4 h-4 rounded-full bg-primary-100 dark:bg-primary-900/20 border-2 border-white dark:border-black shadow-sm z-10 mt-1"></div>
-                    <div>
-                      <p className="text-sm text-slate-700 dark:text-slate-300 font-semibold">
-                        <span className="text-primary-600 dark:text-primary-400">{log.userName}</span> {log.details}
-                      </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-600 font-medium">
-                        {formatDistanceToNow(new Date(log.timestamp), { addSuffix: true })}
-                      </p>
-                    </div>
+            {(() => {
+              const auditTotalPages = Math.ceil(auditLogs.length / AUDIT_PAGE_SIZE) || 1;
+              const safePage = Math.min(auditPage, auditTotalPages);
+              const paginated = auditLogs.slice((safePage - 1) * AUDIT_PAGE_SIZE, safePage * AUDIT_PAGE_SIZE);
+              return (
+                <>
+                  <div className="space-y-6">
+                    {paginated.length > 0 ? (
+                      paginated.map((log, i) => (
+                        <div key={log.id} className="flex gap-4 relative">
+                          {i !== paginated.length - 1 && <div className="absolute left-2 top-6 bottom-[-24px] w-[2px] bg-slate-100 dark:bg-[#1a1512]" />}
+                          <div className="w-4 h-4 rounded-full bg-primary-100 dark:bg-primary-900/20 border-2 border-white dark:border-black shadow-sm z-10 mt-1 shrink-0" />
+                          <div>
+                            <p className="text-sm text-slate-700 dark:text-slate-300 font-semibold">
+                              <span className="text-primary-600 dark:text-primary-400">{log.userName}</span> {log.details}
+                            </p>
+                            <p className="text-xs text-slate-400 dark:text-slate-600 font-medium">
+                              {formatDistanceToNow(new Date(log.timestamp), { addSuffix: true })}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-slate-400 dark:text-slate-600 italic">{t('noAuditLogsEmpty')}</p>
+                    )}
                   </div>
-                ))
-              ) : (
-                <p className="text-sm text-slate-400 dark:text-slate-600 italic">{t('noAuditLogsEmpty')}</p>
-              )}
-            </div>
-            {hasMoreLogs && (
-              <button 
-                onClick={() => setLogsLimit(prev => prev + 25)}
-                className="w-full mt-8 py-3 bg-slate-50 dark:bg-[#1a1512] hover:bg-slate-100 dark:hover:bg-[#2a1e17] rounded-xl text-sm font-bold text-slate-600 dark:text-slate-400 transition-all"
-              >
-                {t('viewMore')}
-              </button>
-            )}
+                  {auditTotalPages > 1 && (
+                    <div className="mt-6">
+                      <Pagination currentPage={safePage} totalPages={auditTotalPages} onPageChange={setAuditPage} />
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <div className="card bg-white dark:bg-zinc-900 border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
@@ -672,37 +717,53 @@ const Users: React.FC = () => {
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-              {userLogs.length > 0 ? (
-                userLogs.map((log) => (
-                  <div key={log.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="px-2 py-0.5 rounded-md bg-primary-100 text-primary-700 text-[10px] font-bold uppercase tracking-wider">
-                        {log.action}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-bold">
-                        {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm', { locale: dateLocale })}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-700 font-medium">{log.details}</p>
+            {(() => {
+              const totalLogPages = Math.ceil(userLogs.length / LOGS_PAGE_SIZE) || 1;
+              const safePage = Math.min(logsPage, totalLogPages);
+              const paginated = userLogs.slice((safePage - 1) * LOGS_PAGE_SIZE, safePage * LOGS_PAGE_SIZE);
+              return (
+                <>
+                  <div className="flex-1 overflow-y-auto pr-2 space-y-3 min-h-0">
+                    {paginated.length > 0 ? (
+                      paginated.map((log) => (
+                        <div key={log.id} className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="px-2 py-0.5 rounded-md bg-primary-100 text-primary-700 text-[10px] font-bold uppercase tracking-wider">
+                              {log.action}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-bold">
+                              {format(new Date(log.timestamp), 'dd MMM yyyy HH:mm', { locale: dateLocale })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-700 font-medium">{log.details}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-12">
+                        <Activity className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                        <p className="text-slate-400 font-medium">{t('noActivitiesForUser')}</p>
+                      </div>
+                    )}
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-12">
-                  <Activity className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                  <p className="text-slate-400 font-medium">{t('noActivitiesForUser')}</p>
-                </div>
-              )}
-            </div>
 
-            <div className="mt-6 pt-6 border-t border-slate-100">
-              <button 
-                onClick={() => setSelectedUserForLogs(null)}
-                className="w-full btn-secondary justify-center"
-              >
-                {t('close')}
-              </button>
-            </div>
+                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                    {totalLogPages > 1 && (
+                      <Pagination
+                        currentPage={safePage}
+                        totalPages={totalLogPages}
+                        onPageChange={setLogsPage}
+                      />
+                    )}
+                    <button
+                      onClick={() => setSelectedUserForLogs(null)}
+                      className="w-full btn-secondary justify-center"
+                    >
+                      {t('close')}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

@@ -27,8 +27,7 @@ import { toast } from 'react-hot-toast';
 import { Order, Product } from '../types';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import { downloadInvoicePdf } from '../lib/export';
 import { PAGE_SIZE } from '../constants';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
@@ -207,58 +206,44 @@ const Orders: React.FC = () => {
   };
 
   const handleDownloadPDF = async () => {
-    const printContent = document.getElementById('invoice-content');
-    if (!printContent || !selectedOrderForInvoice) return;
-
+    if (!selectedOrderForInvoice) return;
     const toastId = toast.loading(t('generatingPDF'));
-
     try {
-      // Create a clone to avoid flickering in the UI
-      const clone = printContent.cloneNode(true) as HTMLElement;
-      clone.style.width = '800px'; // Fixed width for consistent PDF layout
-      clone.style.position = 'absolute';
-      clone.style.top = '-9999px';
-      clone.style.left = '-9999px';
-      clone.style.backgroundColor = 'white';
-      clone.style.color = 'black';
-      clone.classList.add('print-content-clone');
-      
-      // Ensure all text is black for PDF
-      const allText = clone.querySelectorAll('*');
-      allText.forEach((el) => {
-        if (el instanceof HTMLElement) {
-          if (!el.classList.contains('text-primary-600')) {
-            el.style.color = 'black';
-          }
-        }
+      await downloadInvoicePdf({
+        filename: `invoice-${selectedOrderForInvoice.id.slice(-8).toUpperCase()}.pdf`,
+        isRTL,
+        currencyUnit,
+        labels: {
+          invoiceDocumentTitle: t('invoiceDocumentTitle'),
+          billTo: t('billTo'),
+          customerIdLabel: t('customerIdLabel'),
+          date: t('date'),
+          status: t('status'),
+          invoiceItem: t('invoiceItem'),
+          qtyAbbrev: t('qtyAbbrev'),
+          price: t('price'),
+          total: t('total'),
+          subtotal: t('subtotal'),
+          taxZeroPercent: t('taxZeroPercent'),
+          totalAmount: t('totalAmount'),
+          invoiceThankYou: t('invoiceThankYou'),
+          walkInCustomer: t('walkInCustomer'),
+        },
+        orderId: selectedOrderForInvoice.id.slice(-8).toUpperCase(),
+        date: format(new Date(selectedOrderForInvoice.createdAt), 'PPP'),
+        status: t(selectedOrderForInvoice.status),
+        clientName: selectedOrderForInvoice.clientName || '',
+        customerId: selectedOrderForInvoice.customerId || undefined,
+        items: selectedOrderForInvoice.items.map((item) => {
+          const product = products.find((p) => p.id === item.productId);
+          return {
+            name: product ? tProduct(product) : t('unknownProduct'),
+            quantity: item.quantity,
+            price: item.price,
+          };
+        }),
+        totalAmount: selectedOrderForInvoice.totalAmount,
       });
-
-      document.body.appendChild(clone);
-
-      const canvas = await html2canvas(clone, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 800
-      });
-
-      document.body.removeChild(clone);
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`invoice-${selectedOrderForInvoice.id.slice(-8).toUpperCase()}.pdf`);
-      
       toast.success(t('pdfDownloaded'), { id: toastId });
     } catch (error) {
       console.error('PDF generation error:', error);

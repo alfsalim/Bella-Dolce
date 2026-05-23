@@ -238,7 +238,7 @@ const FinancialDashboard: React.FC = () => {
               ))}
               <div className="flex items-center gap-3 text-xs font-medium ml-2">
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-primary-500" />
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
                   <span className="text-slate-500 dark:text-slate-400">{tf('revenue')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -253,8 +253,8 @@ const FinancialDashboard: React.FC = () => {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -283,7 +283,7 @@ const FinancialDashboard: React.FC = () => {
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="#3b82f6"
+                  stroke="#10b981"
                   strokeWidth={3}
                   fillOpacity={1}
                   fill="url(#colorRev)"
