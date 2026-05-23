@@ -2025,10 +2025,11 @@ async function startServer() {
     }
 
     // Translate comment based on printLanguage
+    // Priority: env var (Docker) > request > config > default
     let translatedComment = '';
     let translatedCommentFR = '';
     let translatedCommentAR = '';
-    const printLang = printLanguage || config.PRINT_LANGUAGE || 'BOTH';
+    const printLang = process.env.PRINT_LANGUAGE || printLanguage || config.PRINT_LANGUAGE || 'BOTH';
 
     if (printLang === 'BOTH') {
       if (amountPaid === 0) {

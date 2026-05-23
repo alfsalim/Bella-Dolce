@@ -150,7 +150,7 @@ async function renderHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasElement> {
   // Wait two frames so the browser fully lays out the element at PDF_PAGE_PX width.
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   return html2canvas(el, {
-    scale: 2,
+    scale: 1,
     useCORS: true,
     logging: false,
     backgroundColor: '#faf7f2',
@@ -169,7 +169,7 @@ async function renderHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasElement> {
 }
 
 function addCanvasToPdf(pdf: jsPDF, canvas: HTMLCanvasElement, startNewPage: boolean): void {
-  const imgData = canvas.toDataURL('image/png', 0.92);
+  const imgData = canvas.toDataURL('image/jpeg', 0.75);
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
   const imgH = (canvas.height * pageW) / canvas.width;
@@ -594,7 +594,7 @@ export async function downloadPayslipPdf(opts: {
     </tr>`;
 
   const section = (title: string, accent: string, bg: string, bdr: string, rows: string) =>
-    `<div style="border:1px solid ${bdr};border-radius:8px;overflow:hidden;margin-bottom:14px;">
+    `<div style="border:1px solid ${bdr};border-radius:8px;overflow:hidden;margin-bottom:10px;">
       <div style="background:${bg};padding:10px 16px;border-bottom:1px solid ${bdr};">
         <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.text};">${esc(title)}</span>
       </div>
@@ -638,7 +638,7 @@ export async function downloadPayslipPdf(opts: {
   const html = `<div dir="${isRTL ? 'rtl' : 'ltr'}" style="font-family:${fontFamily};width:${PDF_PAGE_PX}px;background:${C.bg};box-sizing:border-box;">
 
   <!-- HEADER -->
-  <div style="background:${C.headBg};border-bottom:2px solid ${C.border};padding:24px 36px;">
+  <div style="background:${C.headBg};border-bottom:2px solid ${C.border};padding:16px 28px;">
     <div style="display:flex;align-items:center;justify-content:space-between;">
       ${logoHtml}
       <div style="text-align:end;">
@@ -649,7 +649,7 @@ export async function downloadPayslipPdf(opts: {
   </div>
 
   <!-- EMPLOYER / EMPLOYEE -->
-  <div style="background:${C.white};border-bottom:2px solid ${C.border};padding:16px 36px;display:flex;gap:0;">
+  <div style="background:${C.white};border-bottom:2px solid ${C.border};padding:12px 28px;display:flex;gap:0;">
     <div style="flex:1;padding-inline-end:24px;border-inline-end:2px solid ${C.border};">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.10em;color:${C.label};margin-bottom:8px;">${esc(L.payslipEmployerLabel || 'EMPLOYEUR')}</div>
       <div style="font-size:13px;font-weight:800;color:${C.text};margin-bottom:4px;">${esc(employerName)}</div>
@@ -671,7 +671,7 @@ export async function downloadPayslipPdf(opts: {
   </div>
 
   <!-- BODY -->
-  <div style="padding:16px 36px 0;">
+  <div style="padding:12px 28px 0;">
 
     ${section(
       L.earningsSectionLabel || 'RÉMUNÉRATIONS', C.earn, C.earnBg, C.earnBdr,

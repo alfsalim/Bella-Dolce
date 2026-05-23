@@ -291,6 +291,7 @@ if [ "$MODE" = "--dev" ]; then
             -e NODE_ENV=production \
             -e BELLA_HTTP_ONLY=1 \
             -e REDIS_URL="redis://redis:6379" \
+            -e PRINT_LANGUAGE=FR \
             -v "$DEV_DATA_DIR:/app/data" \
             -v "$HOME/bella-dolce-backups:/app/backups" \
             --restart unless-stopped \
@@ -383,6 +384,7 @@ SEED_EOF
             -e NODE_ENV=production \
             -e BELLA_HTTP_ONLY=1 \
             -e REDIS_URL="redis://redis:6379" \
+            -e PRINT_LANGUAGE=FR \
             -v "$PROD_DATA_DIR:/app/data" \
             -v "$PROD_BACKUP_DIR:/app/backups" \
             --restart unless-stopped \
