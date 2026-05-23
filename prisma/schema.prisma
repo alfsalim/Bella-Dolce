@@ -235,12 +235,14 @@ model PayrollRun {
   executionDate DateTime
   totalGross    Float    @default(0)
   totalNet      Float
-  totalCNAS     Float    @default(0)
-  totalIRG      Float    @default(0)
-  employeeCount Int      @default(0)
-  status        String   @default("BROUILLON")
-  approvedBy    String?
-  createdAt     DateTime @default(now())
+  totalCNAS         Float    @default(0)
+  totalCNASEmployer Float    @default(0)
+  totalIRG          Float    @default(0)
+  employeeCount     Int      @default(0)
+  status            String   @default("BROUILLON")
+  approvedBy        String?
+  configSnapshot    String?
+  createdAt         DateTime @default(now())
 }
 
 model Payslip {
@@ -257,6 +259,7 @@ model Payslip {
   cnasEmployee       Float  @default(0)
   taxableGross       Float  @default(0)
   irgRetained        Float  @default(0)
+  irgAbatement       Float  @default(0)
   netSalary          Float
   cnasEmployer       Float  @default(0)
   totalEmployerCost  Float

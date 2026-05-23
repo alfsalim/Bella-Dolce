@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus,
   Search,
@@ -13,17 +13,395 @@ import {
   Pencil,
   Download,
   Printer,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  Lock,
+  Save,
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
 import { financeService } from '../../services/financeService';
-import { FinancialEmployee, PayrollRun, Payslip, UserProfile } from '../../types';
+import { FinancialEmployee, PayrollRun, Payslip, UserProfile, PayrollConfig } from '../../types';
+import { calculatePayslip, DEFAULT_PAYROLL_CONFIG } from '../../lib/payrollEngine';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { PAGE_SIZE } from '../../constants';
 import Pagination from '../../components/Pagination';
 import { downloadPayslipPdf } from '../../lib/export';
+
+const SMIG_DZD = 20_000;
+
+// ─── PayslipEditor ────────────────────────────────────────────────────────────
+type EditorForm = {
+  baseSalary: string;
+  transportAllowance: string;
+  performanceBonus: string;
+  otherAllowances: string;
+  otherDeductions: string;
+};
+
+const PayslipEditor: React.FC<{
+  slip: Payslip;
+  run: PayrollRun;
+  employee: FinancialEmployee | undefined;
+  onClose: () => void;
+  onSaved: (updated: Payslip) => void;
+}> = ({ slip, run, employee, onClose, onSaved }) => {
+  const { tf, formatCurrency, language } = useLanguage();
+  const isRTL = language === 'ar';
+  const isApproved = run.status === 'APPROUVÉ';
+
+  const config: PayrollConfig = useMemo(() => {
+    try { return run.configSnapshot ? JSON.parse(run.configSnapshot) : DEFAULT_PAYROLL_CONFIG; }
+    catch { return DEFAULT_PAYROLL_CONFIG; }
+  }, [run.configSnapshot]);
+
+  const [form, setForm] = useState<EditorForm>({
+    baseSalary: String(slip.baseSalary),
+    transportAllowance: String(slip.transportAllowance),
+    performanceBonus: String(slip.performanceBonus),
+    otherAllowances: String(slip.otherAllowances),
+    otherDeductions: String(slip.otherDeductions ?? 0),
+  });
+  const [showIrgBreakdown, setShowIrgBreakdown] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const n = (v: string) => parseFloat(v) || 0;
+
+  const calc = useMemo(() => calculatePayslip(
+    config,
+    n(form.baseSalary),
+    n(form.transportAllowance),
+    n(form.performanceBonus),
+    n(form.otherAllowances),
+    employee?.contributesToCNAS !== false,
+  ), [form, config, employee]);
+
+  const otherDed = n(form.otherDeductions);
+  const netToPay = calc.netSalary - otherDed;
+
+  const warnNetBelowSmig = netToPay < SMIG_DZD && netToPay > 0;
+  const warnGrossZero = calc.grossSalary === 0;
+
+  const setField = useCallback((key: keyof EditorForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (/^\d*\.?\d*$/.test(val)) setForm(f => ({ ...f, [key]: val }));
+  }, []);
+
+  const handleSave = async () => {
+    if (isApproved) return;
+    setIsSaving(true);
+    try {
+      const fields: Partial<Payslip> = {
+        baseSalary: n(form.baseSalary),
+        transportAllowance: n(form.transportAllowance),
+        performanceBonus: n(form.performanceBonus),
+        otherAllowances: n(form.otherAllowances),
+        otherDeductions: otherDed,
+        grossSalary: calc.grossSalary,
+        cnasEmployee: calc.cnasEmployee,
+        taxableGross: calc.taxableGross,
+        irgAbatement: calc.irgAbatement,
+        irgRetained: calc.irgRetained,
+        netSalary: netToPay,
+        cnasEmployer: calc.cnasEmployer,
+        totalEmployerCost: calc.totalEmployerCost,
+      };
+      await financeService.updatePayslip(slip.id, fields);
+      toast.success(tf('payslipSaved'));
+      onSaved({ ...slip, ...fields });
+    } catch {
+      toast.error(tf('payslipSaveFailed'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDownload = () => {
+    downloadPayslipPdf({
+      filename: `bulletin-${slip.employeeName.replace(/\s+/g, '-')}-${slip.period}.pdf`,
+      isRTL,
+      currencyUnit: 'DA',
+      configSnapshot: run.configSnapshot,
+      labels: {
+        payslip: tf('payslip'),
+        employee: tf('employee'),
+        matriculeLabel: tf('matriculeLabel'),
+        ninLabel: tf('ninLabel'),
+        cnasNumberLabel: tf('cnasNumberLabel'),
+        earningsSectionLabel: tf('earningsSectionLabel'),
+        baseSalary: tf('baseSalary'),
+        transportAllowanceLabel: tf('transportAllowanceLabel'),
+        payrollBonusLabel: tf('payrollBonusLabel'),
+        otherAllowancesLabel: tf('otherAllowancesLabel'),
+        grossSalary: tf('grossSalary'),
+        deductionsSectionLabel: tf('deductionsSectionLabel'),
+        cnasBaseLabel: tf('cnasBaseLabel'),
+        cnasEmployee: tf('cnasEmployee'),
+        taxableGross: tf('taxableGross'),
+        irgBeforeRebateLabel: tf('irgBeforeRebateLabel'),
+        irgRebateLabel: tf('irgRebateLabel'),
+        irgAfterRebateLabel: tf('irgAfterRebateLabel'),
+        irgRetained: tf('irgRetained'),
+        irgExemptLabel: tf('irgExemptLabel'),
+        otherDeductionsLabel: tf('otherDeductionsLabel'),
+        employerCostSectionLabel: tf('employerCostSectionLabel'),
+        cnasEmployerLabel: tf('cnasEmployerLabel'),
+        employerCost: tf('employerCost'),
+        payslipNetToPayLabel: tf('payslipNetToPayLabel'),
+        payslipEmployerLabel: tf('payslipEmployerLabel'),
+        payslipGeneratedOn: tf('payslipGeneratedOn'),
+        payslipLegalNote: tf('payslipLegalNote'),
+        payslipSignatureLabel: tf('payslipSignatureLabel'),
+      },
+      slip: {
+        // Always use live-computed values — these match exactly what the editor shows on screen.
+        // Using stored `slip` fields would show stale data if the user edited without saving.
+        employeeName: slip.employeeName,
+        period: slip.period,
+        matricule: employee?.matricule,
+        nin: employee?.nin,
+        cnasNumber: employee?.cnasNumber,
+        bankRIB: employee?.bankRIB,
+        baseSalary: n(form.baseSalary),
+        transportAllowance: n(form.transportAllowance),
+        performanceBonus: n(form.performanceBonus),
+        otherAllowances: n(form.otherAllowances),
+        grossSalary: calc.grossSalary,
+        cnasEmployee: calc.cnasEmployee,
+        taxableGross: calc.taxableGross,
+        irgAbatement: calc.irgAbatement,
+        irgRetained: calc.irgRetained,
+        otherDeductions: otherDed,
+        netSalary: netToPay,
+        cnasEmployer: calc.cnasEmployer,
+        totalEmployerCost: calc.totalEmployerCost,
+      },
+    });
+  };
+
+  const inputClass = clsx(
+    'w-full px-3 py-2 rounded-xl text-right font-bold transition-all outline-none',
+    isApproved
+      ? 'bg-slate-100 dark:bg-zinc-800 text-slate-400 cursor-not-allowed'
+      : 'bg-slate-50 dark:bg-zinc-800 border-none focus:ring-2 focus:ring-primary-500'
+  );
+
+  const Row: React.FC<{ label: string; value: React.ReactNode; color?: string }> = ({ label, value, color }) => (
+    <div className={clsx('flex items-center justify-between py-2 text-sm', isRTL && 'flex-row-reverse')}>
+      <span className={clsx('text-slate-500 dark:text-slate-400', isRTL && 'text-right')}>{label}</span>
+      <span className={clsx('font-bold', color ?? 'text-slate-900 dark:text-white')}>{value}</span>
+    </div>
+  );
+
+  const EditableRow: React.FC<{ label: string; fieldKey: keyof EditorForm }> = ({ label, fieldKey }) => (
+    <div className={clsx('flex items-center gap-4 py-1', isRTL && 'flex-row-reverse')}>
+      <span className={clsx('flex-1 text-sm text-slate-500 dark:text-slate-400', isRTL && 'text-right')}>{label}</span>
+      <div className="w-36">
+        <input
+          type="text"
+          inputMode="decimal"
+          value={form[fieldKey]}
+          onChange={setField(fieldKey)}
+          disabled={isApproved}
+          className={inputClass}
+        />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm">
+      <div
+        dir={isRTL ? 'rtl' : 'ltr'}
+        className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]"
+      >
+        {/* Header */}
+        <div className="p-5 border-b border-slate-100 dark:border-white/10 flex items-start justify-between gap-3 shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+              {tf('payslipEditorTitle')} — {slip.employeeName}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {slip.period} · {isApproved ? tf('payslipEditorSubtitleApproved') : tf('payslipEditorSubtitleDraft')}
+            </p>
+          </div>
+          <div className={clsx('flex items-center gap-2', isRTL && 'flex-row-reverse')}>
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />{tf('printPayslip')}
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-colors">
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
+        </div>
+
+        {/* Warnings */}
+        {(warnNetBelowSmig || warnGrossZero) && (
+          <div className="px-5 pt-3 space-y-2 shrink-0">
+            {warnGrossZero && (
+              <div className={clsx('flex items-center gap-2 px-4 py-2.5 bg-rose-50 dark:bg-rose-900/20 rounded-xl text-rose-700 dark:text-rose-300 text-xs font-bold', isRTL && 'flex-row-reverse')}>
+                <AlertTriangle className="w-4 h-4 shrink-0" />{tf('warningGrossZero')}
+              </div>
+            )}
+            {warnNetBelowSmig && (
+              <div className={clsx('flex items-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-amber-700 dark:text-amber-300 text-xs font-bold', isRTL && 'flex-row-reverse')}>
+                <AlertTriangle className="w-4 h-4 shrink-0" />{tf('warningNetBelowSmig')}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Read-only notice */}
+        {isApproved && (
+          <div className={clsx('mx-5 mt-3 flex items-center gap-2 px-4 py-2.5 bg-slate-50 dark:bg-zinc-800 rounded-xl text-slate-500 dark:text-slate-400 text-xs font-bold shrink-0', isRTL && 'flex-row-reverse')}>
+            <Lock className="w-3.5 h-3.5 shrink-0" />{tf('payslipReadOnly')}
+          </div>
+        )}
+
+        {/* Body — scrollable */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+
+          {/* Metadata */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="bg-slate-50 dark:bg-zinc-800 rounded-xl p-3">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{tf('employee')}</p>
+              <p className="font-bold text-slate-900 dark:text-white truncate">{slip.employeeName}</p>
+            </div>
+            <div className="bg-slate-50 dark:bg-zinc-800 rounded-xl p-3">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{tf('runPeriod')}</p>
+              <p className="font-bold text-slate-900 dark:text-white">{slip.period}</p>
+            </div>
+            {employee?.matricule && (
+              <div className="bg-slate-50 dark:bg-zinc-800 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{tf('matriculeLabel')}</p>
+                <p className="font-bold text-slate-900 dark:text-white">{employee.matricule}</p>
+              </div>
+            )}
+            {employee?.bankRIB && (
+              <div className="bg-slate-50 dark:bg-zinc-800 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">RIB</p>
+                <p className="font-bold text-slate-900 dark:text-white text-xs truncate">{employee.bankRIB}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Earnings */}
+          <div>
+            <p className="text-[10px] font-bold text-primary-600 uppercase tracking-widest mb-2">{tf('earningsSectionLabel')}</p>
+            <div className="space-y-0.5">
+              <EditableRow label={tf('baseSalaryCurrency')} fieldKey="baseSalary" />
+              <EditableRow label={tf('transportAllowanceLabel')} fieldKey="transportAllowance" />
+              <EditableRow label={tf('payrollBonusLabel')} fieldKey="performanceBonus" />
+              <EditableRow label={tf('otherAllowancesLabel')} fieldKey="otherAllowances" />
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-white/10">
+              <Row label={tf('grossSalary')} value={formatCurrency(calc.grossSalary)} />
+            </div>
+          </div>
+
+          {/* Mandatory deductions */}
+          <div>
+            <p className="text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-2">{tf('deductionsSectionLabel')}</p>
+            <div className="divide-y divide-slate-50 dark:divide-white/5">
+              <Row label={tf('cnasBaseLabel')} value={formatCurrency(calc.cnasBase)} />
+              <Row label={tf('cnasEmployee')} value={formatCurrency(calc.cnasEmployee)} color="text-rose-600" />
+              <Row label={tf('taxableGross')} value={formatCurrency(calc.taxableGross)} />
+            </div>
+
+            {/* IRG breakdown toggle */}
+            <button
+              onClick={() => setShowIrgBreakdown(v => !v)}
+              className={clsx(
+                'mt-2 flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-primary-600 transition-colors',
+                isRTL && 'flex-row-reverse'
+              )}
+            >
+              {showIrgBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {showIrgBreakdown ? tf('hideIrgBreakdown') : tf('showIrgBreakdown')}
+            </button>
+
+            {showIrgBreakdown && (
+              <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 dark:border-white/10 divide-y divide-slate-50 dark:divide-white/5">
+                <Row label={tf('irgBeforeRebateLabel')} value={formatCurrency(calc.irgBeforeRebate)} />
+                <Row label={tf('irgRebateLabel')} value={`– ${formatCurrency(calc.irgAbatement)}`} color="text-emerald-600" />
+                <Row label={tf('irgAfterRebateLabel')} value={formatCurrency(calc.irgRetained)} color="text-rose-600" />
+              </div>
+            )}
+
+            {!showIrgBreakdown && (
+              <div className="mt-1 pt-1 border-t border-slate-50 dark:border-white/5">
+                <Row label={tf('irgRetained')} value={formatCurrency(calc.irgRetained)} color="text-rose-600" />
+              </div>
+            )}
+          </div>
+
+          {/* Other deductions */}
+          <div>
+            <div className={clsx('flex items-center gap-4 py-1', isRTL && 'flex-row-reverse')}>
+              <span className={clsx('flex-1 text-sm text-slate-500 dark:text-slate-400', isRTL && 'text-right')}>{tf('otherDeductionsLabel')}</span>
+              <div className="w-36">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.otherDeductions}
+                  onChange={setField('otherDeductions')}
+                  disabled={isApproved}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Net to pay */}
+          <div className={clsx(
+            'flex items-center justify-between rounded-2xl px-5 py-4',
+            warnNetBelowSmig ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20',
+            isRTL && 'flex-row-reverse'
+          )}>
+            <span className={clsx('font-bold text-sm', warnNetBelowSmig ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300')}>
+              {tf('netToPay')}
+            </span>
+            <span className={clsx('font-bold text-2xl', warnNetBelowSmig ? 'text-amber-600' : 'text-emerald-600')}>
+              {formatCurrency(netToPay)}
+            </span>
+          </div>
+
+          {/* Employer cost */}
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{tf('employerCostSectionLabel')}</p>
+            <div className="divide-y divide-slate-50 dark:divide-white/5">
+              <Row label={tf('cnasEmployerLabel')} value={formatCurrency(calc.cnasEmployer)} color="text-slate-600 dark:text-slate-300" />
+              <Row label={tf('totalEmployerCost')} value={formatCurrency(calc.totalEmployerCost)} />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        {!isApproved && (
+          <div className="p-5 border-t border-slate-100 dark:border-white/10 flex items-center justify-end gap-3 shrink-0 bg-slate-50 dark:bg-zinc-800/50">
+            <button onClick={onClose} className="px-5 py-2 text-slate-600 dark:text-slate-400 font-bold hover:text-slate-900 dark:hover:text-white transition-colors">
+              {tf('cancel') || 'Annuler'}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-6 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {isSaving ? '…' : tf('saveDraftLabel')}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const PAYROLL_ELIGIBLE_ROLES = new Set([
   'admin', 'manager', 'cashier', 'baker', 'delivery_guy', 'inventory',
@@ -108,6 +486,426 @@ const SalaryForm = ({
   </div>
 );
 
+// ─── PayrollConfigAdmin ───────────────────────────────────────────────────────
+// Admin screen for managing payroll configuration (IRG rates, CNAS rates, SNMG,
+// company info). Each save creates a new versioned entry in Setting('payroll_config').
+// The engine always reads the latest version; approved payslips use their configSnapshot.
+// To add a new rate field: add it to PayrollConfig in types.ts, add i18n keys,
+// add an input in the relevant section below, and include it in the save payload.
+const PayrollConfigAdmin: React.FC = () => {
+  const { tf, language } = useLanguage();
+  const isRTL = language === 'ar';
+
+  const [config, setConfig] = useState<PayrollConfig>(DEFAULT_PAYROLL_CONFIG);
+  const [history, setHistory] = useState<import('../../types').PayrollConfigVersion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [detailVersion, setDetailVersion] = useState<import('../../types').PayrollConfigVersion | null>(null);
+  const [trancheErrors, setTrancheErrors] = useState<Record<number, string>>({});
+
+  // CNAS sub-rates (4 components that sum to cnasEmployeeRate)
+  const DEFAULT_SUB = { assurances: 1.5, retraite: 6.75, chomage: 0.5, anticipee: 0.25 };
+  const [subRates, setSubRates] = useState(DEFAULT_SUB);
+
+  useEffect(() => { load(); }, []);
+
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const [cfg, hist] = await Promise.all([
+        financeService.getPayrollConfig(),
+        financeService.getPayrollConfigHistory(),
+      ]);
+      setConfig(cfg);
+      setHistory(hist);
+      setSubRates({
+        assurances: (cfg.cnasAssurancesSociales ?? 0.015) * 100,
+        retraite:   (cfg.cnasRetraite ?? 0.0675) * 100,
+        chomage:    (cfg.cnasAssuranceChomage ?? 0.005) * 100,
+        anticipee:  (cfg.cnasRetraiteAnticipee ?? 0.0025) * 100,
+      });
+    } catch {
+      toast.error(tf('payrollLoadFailed'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const set = <K extends keyof PayrollConfig>(key: K, val: PayrollConfig[K]) =>
+    setConfig(c => ({ ...c, [key]: val }));
+
+  const totalCnasPct =
+    subRates.assurances + subRates.retraite + subRates.chomage + subRates.anticipee;
+
+  // Tranche helpers
+  const updateTranche = (idx: number, field: 'upTo' | 'rate', raw: string) => {
+    const brackets = [...config.irgBrackets];
+    if (field === 'upTo') {
+      brackets[idx] = { ...brackets[idx], upTo: raw === '' ? null : (parseFloat(raw) || 0) };
+    } else {
+      brackets[idx] = { ...brackets[idx], rate: parseFloat(raw) / 100 || 0 };
+    }
+    set('irgBrackets', brackets);
+  };
+
+  const addTranche = () => {
+    const brackets = [...config.irgBrackets];
+    // Insert before last (unbounded) row
+    const lastIdx = brackets.findIndex(b => b.upTo === null);
+    const insertAt = lastIdx >= 0 ? lastIdx : brackets.length;
+    brackets.splice(insertAt, 0, { upTo: 0, rate: 0 });
+    set('irgBrackets', brackets);
+  };
+
+  const removeTranche = (idx: number) => {
+    const brackets = config.irgBrackets.filter((_, i) => i !== idx);
+    set('irgBrackets', brackets);
+  };
+
+  const validateTranches = (): boolean => {
+    const errs: Record<number, string> = {};
+    const bs = config.irgBrackets;
+    if (bs.length === 0) { setTrancheErrors({}); return true; }
+
+    if (bs[0].upTo !== null && bs[0].upTo !== 0) {
+      // first bracket should start from 0 implicitly — we validate the upTo, not from
+    }
+
+    for (let i = 0; i < bs.length; i++) {
+      const rate = bs[i].rate * 100;
+      if (rate < 0 || rate > 100) errs[i] = tf('payrollConfigTrancheErrorRate');
+    }
+    // Check contiguity: each bracket starts where previous ended
+    for (let i = 1; i < bs.length; i++) {
+      const prev = bs[i - 1].upTo;
+      if (prev === null) errs[i - 1] = tf('payrollConfigTrancheErrorNoUnbounded');
+    }
+    if (bs[bs.length - 1].upTo !== null) {
+      errs[bs.length - 1] = tf('payrollConfigTrancheErrorNoUnbounded');
+    }
+
+    setTrancheErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSave = async () => {
+    if (!validateTranches()) return;
+    setIsSaving(true);
+    try {
+      const user = JSON.parse(localStorage.getItem('bakery_user') || 'null');
+      const finalConfig: PayrollConfig = {
+        ...config,
+        cnasAssurancesSociales: subRates.assurances / 100,
+        cnasRetraite: subRates.retraite / 100,
+        cnasAssuranceChomage: subRates.chomage / 100,
+        cnasRetraiteAnticipee: subRates.anticipee / 100,
+        cnasEmployeeRate: totalCnasPct / 100,
+      };
+      await financeService.savePayrollConfig(finalConfig, user?.name ?? 'Admin');
+      toast.success(tf('payrollConfigSaved'));
+      setConfig(finalConfig);
+      const hist = await financeService.getPayrollConfigHistory();
+      setHistory(hist);
+    } catch {
+      toast.error(tf('payrollConfigSaveFailed'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const numInput = (
+    val: number | undefined,
+    onChange: (v: number) => void,
+    opts: { step?: number; min?: number } = {}
+  ) => (
+    <input
+      type="number"
+      step={opts.step ?? 1}
+      min={opts.min ?? 0}
+      value={val ?? ''}
+      onChange={e => onChange(parseFloat(e.target.value) || 0)}
+      className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+    />
+  );
+
+  const textInput = (val: string | undefined, onChange: (v: string) => void) => (
+    <input
+      type="text"
+      value={val ?? ''}
+      onChange={e => onChange(e.target.value)}
+      className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+    />
+  );
+
+  const sectionTitle = (tKey: string) => (
+    <h3 className="text-xs font-bold text-primary-600 uppercase tracking-widest mb-4">
+      {tf(tKey)}
+    </h3>
+  );
+
+  const fieldRow = (label: string, input: React.ReactNode, required = false) => (
+    <div>
+      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">
+        {label}{required && <span className="text-red-500 ml-1">*</span>}
+      </label>
+      {input}
+    </div>
+  );
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-40 text-slate-400">{tf('loading')}</div>;
+  }
+
+  return (
+    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Warning banner */}
+      <div className="flex gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl">
+        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <p className="text-sm text-amber-800 dark:text-amber-300">{tf('payrollConfigWarningBanner')}</p>
+      </div>
+
+      {/* SECTION 1 — SNMG */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 space-y-4">
+        {sectionTitle('payrollConfigSectionSnmg')}
+        {fieldRow(tf('payrollConfigSnmgLabel'), numInput(config.snmg ?? 20000, v => set('snmg', v)), true)}
+      </div>
+
+      {/* SECTION 2 — IRG parameters */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 space-y-4">
+        {sectionTitle('payrollConfigSectionIrg')}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fieldRow(tf('payrollConfigIrgExemptionLabel'),
+            numInput(config.irgExemptionThreshold ?? 10000, v => set('irgExemptionThreshold', v))
+          )}
+          {fieldRow(tf('payrollConfigAbatementRate'),
+            numInput((config.irgRebateRate ?? 0.4) * 100, v => set('irgRebateRate', v / 100), { step: 0.1 })
+          )}
+          {fieldRow(tf('payrollConfigAbatementFloor'),
+            numInput(config.irgRebateFloor ?? 0, v => set('irgRebateFloor', v))
+          )}
+          {fieldRow(tf('payrollConfigAbatementCap'),
+            numInput(config.irgRebateCap ?? 1500, v => set('irgRebateCap', v))
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
+            {tf('payrollConfigIrgSmoothingLabel')} / {tf('payrollConfigIrgSmoothingTo')}
+          </label>
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              {numInput(config.irgSmoothingFrom ?? 10000, v => set('irgSmoothingFrom', v))}
+            </div>
+            <span className="text-sm text-slate-500">{tf('payrollConfigIrgSmoothingTo')}</span>
+            <div className="flex-1">
+              {numInput(config.irgSmoothingTo ?? 12000, v => set('irgSmoothingTo', v))}
+            </div>
+            <span className="text-xs text-slate-400">{tf('payrollConfigIrgSmoothingUnit')}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 3 — Cotisations salariales */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 space-y-4">
+        {sectionTitle('payrollConfigSectionCotisations')}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fieldRow(tf('payrollConfigCnasAssurances'),
+            <input type="number" step={0.01} min={0} value={subRates.assurances}
+              onChange={e => setSubRates(s => ({ ...s, assurances: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all" />
+          )}
+          {fieldRow(tf('payrollConfigCnasRetraite'),
+            <input type="number" step={0.01} min={0} value={subRates.retraite}
+              onChange={e => setSubRates(s => ({ ...s, retraite: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all" />
+          )}
+          {fieldRow(tf('payrollConfigCnasChomage'),
+            <input type="number" step={0.01} min={0} value={subRates.chomage}
+              onChange={e => setSubRates(s => ({ ...s, chomage: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all" />
+          )}
+          {fieldRow(tf('payrollConfigCnasRetraiteAnticipee'),
+            <input type="number" step={0.01} min={0} value={subRates.anticipee}
+              onChange={e => setSubRates(s => ({ ...s, anticipee: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all" />
+          )}
+        </div>
+        <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl">
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{tf('payrollConfigCnasTotal')}</span>
+          <span className="text-sm font-bold text-primary-600">{totalCnasPct.toFixed(2)} %</span>
+        </div>
+      </div>
+
+      {/* SECTION 4 — IRG tranches */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 space-y-4">
+        {sectionTitle('payrollConfigSectionTranches')}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <th className="text-start py-2 pr-4">{tf('payrollConfigTrancheFrom')}</th>
+                <th className="text-start py-2 pr-4">{tf('payrollConfigTrancheTo')}</th>
+                <th className="text-start py-2 pr-4">{tf('payrollConfigTrancheRate')}</th>
+                <th className="text-start py-2" />
+              </tr>
+            </thead>
+            <tbody className="space-y-2">
+              {config.irgBrackets.map((b, idx) => {
+                const prevUpTo = idx === 0 ? 0 : (config.irgBrackets[idx - 1].upTo ?? '∞');
+                return (
+                  <tr key={idx} className="border-b border-slate-100 dark:border-white/5">
+                    <td className="py-2 pr-4 text-slate-500 dark:text-slate-400 text-sm">
+                      {typeof prevUpTo === 'number' ? prevUpTo.toLocaleString() : prevUpTo}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {b.upTo === null ? (
+                        <span className="text-slate-400 italic">{tf('payrollConfigTrancheUnbounded')}</span>
+                      ) : (
+                        <input
+                          type="number"
+                          min={0}
+                          value={b.upTo}
+                          onChange={e => updateTranche(idx, 'upTo', e.target.value)}
+                          className="w-32 px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border-none rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                        />
+                      )}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={b.rate * 100}
+                        onChange={e => updateTranche(idx, 'rate', e.target.value)}
+                        className="w-24 px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border-none rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                      />
+                    </td>
+                    <td className="py-2">
+                      <button
+                        onClick={() => removeTranche(idx)}
+                        className="text-red-400 hover:text-red-600 text-xs font-bold"
+                      >
+                        {tf('payrollConfigRemoveTranche')}
+                      </button>
+                    </td>
+                    {trancheErrors[idx] && (
+                      <td colSpan={4} className="pb-2 text-xs text-red-500">{trancheErrors[idx]}</td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <button
+          onClick={addTranche}
+          className="flex items-center gap-2 text-sm font-bold text-primary-600 hover:text-primary-700"
+        >
+          <Plus className="w-4 h-4" />
+          {tf('payrollConfigAddTranche')}
+        </button>
+      </div>
+
+      {/* SECTION — Company info */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 space-y-4">
+        {sectionTitle('payrollConfigSectionCompany')}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fieldRow(tf('payrollConfigCompanyName'), textInput(config.companyName, v => set('companyName', v)))}
+          {fieldRow(tf('payrollConfigCompanyAddress'), textInput(config.companyAddress, v => set('companyAddress', v)))}
+          {fieldRow(tf('payrollConfigNif'), textInput(config.nif, v => set('nif', v)))}
+          {fieldRow(tf('payrollConfigNis'), textInput(config.nis, v => set('nis', v)))}
+          {fieldRow(tf('payrollConfigRc'), textInput(config.rc, v => set('rc', v)))}
+          {fieldRow(tf('payrollConfigCnasReg'), textInput(config.cnasRegistration, v => set('cnasRegistration', v)))}
+        </div>
+      </div>
+
+      {/* Save button */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 disabled:opacity-60"
+        >
+          <Save className="w-4 h-4" />
+          {isSaving ? '…' : tf('payrollConfigSaveButton')}
+        </button>
+      </div>
+
+      {/* SECTION 5 — History */}
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 space-y-4">
+        {sectionTitle('payrollConfigSectionHistory')}
+        {history.length === 0 ? (
+          <p className="text-sm text-slate-400">{tf('payrollConfigHistoryEmpty')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-white/10">
+                  <th className="text-start py-2 pr-4">{tf('payrollConfigHistoryVersion')}</th>
+                  <th className="text-start py-2 pr-4">{tf('payrollConfigHistoryDate')}</th>
+                  <th className="text-start py-2 pr-4">{tf('payrollConfigHistorySavedBy')}</th>
+                  <th className="text-start py-2">{tf('payrollConfigHistoryActions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map(v => (
+                  <tr key={v.version} className="border-b border-slate-50 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+                    <td className="py-2 pr-4 font-mono text-xs text-slate-500">v{v.version}</td>
+                    <td className="py-2 pr-4 text-slate-700 dark:text-slate-300 text-xs">
+                      {new Date(v.savedAt).toLocaleString()}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-700 dark:text-slate-300 text-xs">{v.savedBy}</td>
+                    <td className="py-2">
+                      <button
+                        onClick={() => setDetailVersion(v)}
+                        className="text-primary-600 hover:text-primary-700 text-xs font-bold"
+                      >
+                        {tf('payrollConfigHistoryView')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Detail modal */}
+      {detailVersion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-white/10">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                {tf('payrollConfigDetailTitle')} — v{detailVersion.version}
+              </h2>
+              <button onClick={() => setDetailVersion(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-sm">
+              <div className="text-xs text-slate-400 mb-2">
+                {new Date(detailVersion.savedAt).toLocaleString()} — {detailVersion.savedBy}
+              </div>
+              <pre className="bg-slate-50 dark:bg-zinc-800 p-4 rounded-xl text-xs overflow-x-auto whitespace-pre-wrap break-all">
+                {JSON.stringify(detailVersion.config, null, 2)}
+              </pre>
+            </div>
+            <div className="p-6 pt-0 flex justify-end">
+              <button
+                onClick={() => setDetailVersion(null)}
+                className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-sm hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
+              >
+                {tf('payrollConfigClose')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Employee form fields ────────────────────────────────────────────────────
 const emptyForm = () => ({
   matricule: '',
@@ -167,8 +965,8 @@ const Payroll: React.FC = () => {
   const [runPayslips, setRunPayslips] = useState<Payslip[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
 
-  // ── Payslip print modal ────────────────────────────────────────────────────
-  const [printPayslip, setPrintPayslip] = useState<Payslip | null>(null);
+  // ── Payslip editor ─────────────────────────────────────────────────────────
+  const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null);
 
   // ── Load data ──────────────────────────────────────────────────────────────
   useEffect(() => { fetchData(); }, []);
@@ -661,7 +1459,7 @@ const Payroll: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
               { label: 'totalGross', value: selectedRun.totalGross, color: 'text-slate-900 dark:text-white' },
-              { label: 'totalCnas',  value: (selectedRun as any).totalCNAS ?? selectedRun.totalCNASEmployee,  color: 'text-rose-600' },
+              { label: 'totalCnas',  value: selectedRun.totalCNAS,  color: 'text-rose-600' },
               { label: 'totalIrg',   value: selectedRun.totalIRG,   color: 'text-rose-600' },
               { label: 'totalNet',   value: selectedRun.totalNet,   color: 'text-emerald-600' },
             ].map(({ label, value, color }) => (
@@ -711,7 +1509,7 @@ const Payroll: React.FC = () => {
                       <td className="px-4 py-3 text-right font-bold text-emerald-600">{formatCurrency(slip.netSalary)}</td>
                       <td className="px-4 py-3 text-center">
                         <button
-                          onClick={() => setPrintPayslip(slip)}
+                          onClick={() => setEditingPayslip(slip)}
                           className="p-2 text-slate-400 hover:text-primary-600 transition-colors"
                           title={tf('printPayslip')}
                         >
@@ -1008,104 +1806,19 @@ const Payroll: React.FC = () => {
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
-          PAYSLIP PRINT MODAL
+          PAYSLIP EDITOR
       ═════════════════════════════════════════════════════════════════════ */}
-      {printPayslip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-white/10 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">{tf('payslip')}</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const emp = employees.find(e => e.id === printPayslip.employeeId);
-                    downloadPayslipPdf({
-                      filename: `bulletin-${printPayslip.employeeName.replace(/\s+/g, '-')}-${printPayslip.period}.pdf`,
-                      currencyUnit: 'DA',
-                      labels: {
-                        payslip: tf('payslip'),
-                        employee: tf('employee'),
-                        matriculeLabel: tf('matriculeLabel'),
-                        ninLabel: tf('ninLabel'),
-                        sectionFinancial: tf('sectionFinancial'),
-                        baseSalary: tf('baseSalary'),
-                        transportAllowanceLabel: tf('transportAllowanceLabel'),
-                        payrollBonusLabel: tf('payrollBonusLabel'),
-                        otherAllowancesLabel: tf('otherAllowancesLabel'),
-                        grossSalary: tf('grossSalary'),
-                        deductions: tf('deductions'),
-                        cnasEmployee: tf('cnasEmployee'),
-                        taxableGross: tf('taxableGross'),
-                        irgRetained: tf('irgRetained'),
-                        netSalary: tf('netSalary'),
-                        employerCost: tf('employerCost'),
-                      },
-                      slip: {
-                        ...printPayslip,
-                        matricule: emp?.matricule,
-                        nin: emp?.nin,
-                      },
-                    });
-                  }}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-bold bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
-                >
-                  <Download className="w-4 h-4" />{tf('printPayslip')}
-                </button>
-                <button onClick={() => setPrintPayslip(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-colors">
-                  <X className="w-6 h-6 text-slate-400" />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 space-y-4 print:p-0">
-              <div className="flex justify-between text-sm">
-                <span className="font-bold text-slate-500">{tf('employee')}</span>
-                <span className="font-bold text-slate-900 dark:text-white">{printPayslip.employeeName}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="font-bold text-slate-500">{tf('runPeriod')}</span>
-                <span className="font-bold text-slate-900 dark:text-white">{printPayslip.period}</span>
-              </div>
-              <div className="border-t border-slate-100 dark:border-white/10 pt-4 space-y-2">
-                <p className="text-xs font-bold text-primary-600 uppercase tracking-widest mb-2">{tf('sectionFinancial')}</p>
-                {[
-                  { label: 'baseSalary',           value: printPayslip.baseSalary },
-                  { label: 'transportAllowanceLabel', value: printPayslip.transportAllowance },
-                  { label: 'payrollBonusLabel',     value: printPayslip.performanceBonus },
-                  { label: 'otherAllowancesLabel',  value: printPayslip.otherAllowances },
-                  { label: 'grossSalary',           value: printPayslip.grossSalary },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between text-sm">
-                    <span className="text-slate-500">{tf(label)}</span>
-                    <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(value)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-slate-100 dark:border-white/10 pt-4 space-y-2">
-                <p className="text-xs font-bold text-rose-600 uppercase tracking-widest mb-2">{tf('deductions') || 'Déductions'}</p>
-                {[
-                  { label: 'cnasEmployee', value: printPayslip.cnasEmployee },
-                  { label: 'taxableGross', value: printPayslip.taxableGross },
-                  { label: 'irgRetained',  value: printPayslip.irgRetained },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between text-sm">
-                    <span className="text-slate-500">{tf(label)}</span>
-                    <span className="font-bold text-rose-600">{formatCurrency(value)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t-2 border-slate-200 dark:border-white/20 pt-4">
-                <div className="flex justify-between">
-                  <span className="font-bold text-slate-700 dark:text-slate-200">{tf('netSalary')}</span>
-                  <span className="font-bold text-xl text-emerald-600">{formatCurrency(printPayslip.netSalary)}</span>
-                </div>
-                <div className="flex justify-between text-sm mt-2">
-                  <span className="text-slate-500">{tf('employerCost')}</span>
-                  <span className="font-bold text-slate-700 dark:text-slate-300">{formatCurrency(printPayslip.totalEmployerCost)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {editingPayslip && selectedRun && (
+        <PayslipEditor
+          slip={editingPayslip}
+          run={selectedRun}
+          employee={employees.find(e => e.id === editingPayslip.employeeId)}
+          onClose={() => setEditingPayslip(null)}
+          onSaved={(updated) => {
+            setRunPayslips(prev => prev.map(s => s.id === updated.id ? updated : s));
+            setEditingPayslip(updated);
+          }}
+        />
       )}
     </div>
   );

@@ -6,10 +6,13 @@ import {
   FinancialEmployee,
   UserProfile,
   PayrollRun,
-  Payslip
+  Payslip,
+  PayrollConfig,
+  PayrollConfigVersion,
 } from '../types';
 import { authFetch, getAuthHeaders, readApiErrorMessage } from '../lib/api-client';
 import { format } from 'date-fns';
+import { DEFAULT_PAYROLL_CONFIG, calculatePayslip } from '../lib/payrollEngine';
 
 export const financeService = {
   // Account Management
@@ -107,37 +110,64 @@ export const financeService = {
     }, lines);
   },
 
-  // Payroll Calculation Logic
-  calculatePayroll(baseSalary: number, transport: number, bonus: number, otherAllowances = 0) {
-    const gross = baseSalary + transport + bonus + otherAllowances;
-    const cnasEmployee = gross * 0.09;
-    const taxableGross = gross - cnasEmployee;
-    
-    // IRG Calculation (Algerian Progressive Brackets)
-    // Simplified for the demo
-    let irg = 0;
-    if (taxableGross > 30000) {
-      irg = (taxableGross - 30000) * 0.27 + (30000 - 10000) * 0.23;
-    } else if (taxableGross > 10000) {
-      irg = (taxableGross - 10000) * 0.23;
+  // Payroll Config (Setting id: 'payroll_config')
+  // data shape: { current: PayrollConfig, history: PayrollConfigVersion[] }
+  // Falls back to flat PayrollConfig for backwards compatibility.
+  async getPayrollConfig(): Promise<PayrollConfig> {
+    try {
+      const res = await authFetch('/api/db/settings/payroll_config', { headers: getAuthHeaders() });
+      if (!res.ok) return DEFAULT_PAYROLL_CONFIG;
+      const setting = await res.json();
+      const parsed = JSON.parse(setting.data);
+      // new format
+      if (parsed && parsed.current) return { ...DEFAULT_PAYROLL_CONFIG, ...parsed.current };
+      // legacy flat format
+      return { ...DEFAULT_PAYROLL_CONFIG, ...parsed };
+    } catch {
+      return DEFAULT_PAYROLL_CONFIG;
     }
-    
-    // Abattement 40% (max 1500)
-    const abatement = Math.min(irg * 0.4, 1500);
-    const irgFinal = Math.max(irg - abatement, 0);
-    
-    const net = taxableGross - irgFinal;
-    const cnasEmployer = gross * 0.26;
-    
-    return {
-      gross,
-      cnasEmployee,
-      taxableGross,
-      irg: irgFinal,
-      net,
-      cnasEmployer,
-      totalEmployerCost: gross + cnasEmployer
+  },
+
+  async getPayrollConfigHistory(): Promise<PayrollConfigVersion[]> {
+    try {
+      const res = await authFetch('/api/db/settings/payroll_config', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const setting = await res.json();
+      const parsed = JSON.parse(setting.data);
+      return parsed?.history ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  async savePayrollConfig(config: PayrollConfig, savedBy: string): Promise<void> {
+    // Load existing history first
+    let history: PayrollConfigVersion[] = [];
+    try {
+      const res = await authFetch('/api/db/settings/payroll_config', { headers: getAuthHeaders() });
+      if (res.ok) {
+        const setting = await res.json();
+        const parsed = JSON.parse(setting.data);
+        history = parsed?.history ?? [];
+      }
+    } catch { /* first save */ }
+
+    const nextVersion = history.length > 0 ? history[0].version + 1 : 1;
+    const newEntry: PayrollConfigVersion = {
+      version: nextVersion,
+      savedAt: new Date().toISOString(),
+      savedBy,
+      config,
     };
+    const newHistory = [newEntry, ...history];
+    const data = JSON.stringify({ current: config, history: newHistory });
+
+    const res = await authFetch('/api/db/settings/payroll_config', {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'payroll_config', data }),
+    });
+    if (!res.ok) throw new Error(await res.text());
   },
 
   // Financial Employee Management
@@ -201,24 +231,28 @@ export const financeService = {
     employees: FinancialEmployee[],
     adjustments: Record<string, { bonus: number; other: number }>
   ): Promise<PayrollRun> {
-    // Compute payslips
+    // Load current config and snapshot it into the run for historical accuracy
+    const config = await this.getPayrollConfig();
+
     const payslips = employees.map(emp => {
       const adj = adjustments[emp.id] ?? { bonus: 0, other: 0 };
-      const calc = this.calculatePayroll(
+      const calc = calculatePayslip(
+        config,
         emp.baseSalary,
         emp.transportAllowance ?? 0,
         (emp.performanceBonus ?? 0) + adj.bonus,
-        (emp.otherAllowances ?? 0) + adj.other
+        (emp.otherAllowances ?? 0) + adj.other,
+        emp.contributesToCNAS !== false,
       );
       return { emp, adj, calc };
     });
 
-    const totalGross = payslips.reduce((s, p) => s + p.calc.gross, 0);
-    const totalNet   = payslips.reduce((s, p) => s + p.calc.net, 0);
-    const totalCNAS  = payslips.reduce((s, p) => s + p.calc.cnasEmployee, 0);
-    const totalIRG   = payslips.reduce((s, p) => s + p.calc.irg, 0);
+    const totalGross        = payslips.reduce((s, p) => s + p.calc.grossSalary, 0);
+    const totalNet          = payslips.reduce((s, p) => s + p.calc.netSalary, 0);
+    const totalCNASEmployee = payslips.reduce((s, p) => s + p.calc.cnasEmployee, 0);
+    const totalCNASEmployer = payslips.reduce((s, p) => s + p.calc.cnasEmployer, 0);
+    const totalIRG          = payslips.reduce((s, p) => s + p.calc.irgRetained, 0);
 
-    // Create the run
     const runRes = await authFetch('/api/db/payrollRuns', {
       method: 'POST',
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
@@ -227,10 +261,12 @@ export const financeService = {
         executionDate: new Date().toISOString(),
         totalGross,
         totalNet,
-        totalCNAS,
+        totalCNAS: totalCNASEmployee,
+        totalCNASEmployer,
         totalIRG,
         employeeCount: employees.length,
         status: 'BROUILLON',
+        configSnapshot: JSON.stringify(config),
       }),
     });
     if (!runRes.ok) {
@@ -239,7 +275,6 @@ export const financeService = {
     }
     const run: PayrollRun = await runRes.json();
 
-    // Create payslips
     await Promise.all(payslips.map(async ({ emp, adj, calc }) => {
       const slipRes = await authFetch('/api/db/payslips', {
         method: 'POST',
@@ -253,11 +288,12 @@ export const financeService = {
           transportAllowance: emp.transportAllowance ?? 0,
           performanceBonus: (emp.performanceBonus ?? 0) + adj.bonus,
           otherAllowances: (emp.otherAllowances ?? 0) + adj.other,
-          grossSalary: calc.gross,
+          grossSalary: calc.grossSalary,
           cnasEmployee: calc.cnasEmployee,
           taxableGross: calc.taxableGross,
-          irgRetained: calc.irg,
-          netSalary: calc.net,
+          irgAbatement: calc.irgAbatement,
+          irgRetained: calc.irgRetained,
+          netSalary: calc.netSalary,
           cnasEmployer: calc.cnasEmployer,
           totalEmployerCost: calc.totalEmployerCost,
         }),
@@ -278,5 +314,35 @@ export const financeService = {
       body: JSON.stringify({ status: 'APPROUVÉ', approvedBy }),
     });
     if (!res.ok) throw new Error('Failed to approve payroll run');
+  },
+
+  async updatePayslip(id: string, fields: Partial<Omit<Payslip, 'id' | 'runId' | 'employeeId' | 'employeeName' | 'period'>>): Promise<void> {
+    const res = await authFetch(`/api/db/payslips/${id}`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    if (!res.ok) throw new Error(await res.text());
+  },
+
+  // Compatibility shim used by employee card previews — uses DEFAULT_PAYROLL_CONFIG.
+  calculatePayroll(
+    baseSalary: number,
+    transportAllowance: number,
+    performanceBonusPlusOther: number,
+    _otherAllowances?: number,
+  ) {
+    const bonus = performanceBonusPlusOther;
+    const other = _otherAllowances ?? 0;
+    const r = calculatePayslip(
+      DEFAULT_PAYROLL_CONFIG,
+      baseSalary,
+      transportAllowance,
+      bonus,
+      other,
+      true,
+    );
+    // Short aliases used by employee card previews and run preview table.
+    return { ...r, gross: r.grossSalary, net: r.netSalary, irg: r.irgRetained };
   },
 };

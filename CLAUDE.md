@@ -65,7 +65,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Bella Dolce — Project Context
 
 ### Stack
-- Backend:  Fastify + TypeScript → port 3000  (npm run dev:backend)
+- Backend:  Express + TypeScript → port 3000  (npm run dev:backend)
 - Frontend: React + Vite + Tailwind → port 5173 (cd frontend && npm run dev)
 - Database: SQLite via Prisma at prisma/dev.db
 - Docker:   staging/prod ONLY — never during active dev
@@ -89,10 +89,10 @@ prisma/
 - Never add a string in one language only
 
 ### Testing
-- Backend: Vitest → run: `npm run test`
-  Location: [CONFIRM PATH]
+- Backend unit: Vitest → run: `npm run test`
+  Location: `src/__tests__/`
 - Frontend E2E: Playwright → run: `npx playwright test`
-  Location: [CONFIRM PATH]
+  Location: `e2e/` (testDir in playwright.config.ts)
 
 ### Definition of Done
 A task is ONLY complete when ALL pass:

@@ -124,7 +124,6 @@ function sanitizeClone(clonedDoc: Document, root: HTMLElement): void {
   const win = clonedDoc.defaultView;
   if (!win) return;
   for (const el of [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))]) {
-    if (el.closest('[data-pdf-gradient="1"]')) continue;
     const cs = win.getComputedStyle(el);
     const bgImg = cs.backgroundImage;
     const fullBg = cs.getPropertyValue('background');
@@ -542,13 +541,17 @@ export async function downloadInvoicePdf(opts: {
 
 export async function downloadPayslipPdf(opts: {
   filename: string;
+  isRTL: boolean;
   currencyUnit: string;
   labels: Record<string, string>;
+  configSnapshot?: string;
   slip: {
     employeeName: string;
     period: string;
     matricule?: string;
     nin?: string;
+    cnasNumber?: string;
+    bankRIB?: string;
     baseSalary: number;
     transportAllowance: number;
     performanceBonus: number;
@@ -556,115 +559,171 @@ export async function downloadPayslipPdf(opts: {
     grossSalary: number;
     cnasEmployee: number;
     taxableGross: number;
+    irgAbatement?: number;
     irgRetained: number;
+    otherDeductions?: number;
     netSalary: number;
+    cnasEmployer: number;
     totalEmployerCost: number;
   };
 }): Promise<void> {
-  const { currencyUnit: cu, labels: L, slip } = opts;
-  const fmt = (n: number) => `${n.toLocaleString('fr-DZ')} ${cu}`;
-  const logoUrl = `${window.location.origin}/images/bella-dolce-wordmark.png`;
+  const { isRTL, currencyUnit: cu, labels: L, slip } = opts;
+  const logo = await getLogoDataUrl();
 
-  const earningRow = (label: string, value: number, muted = false) =>
-    `<tr style="border-bottom:1px solid #f1f5f9;">
-      <td style="padding:10px 16px;font-size:12px;${muted ? 'color:#64748b;' : 'font-weight:600;color:#1e293b;'}">${esc(label)}</td>
-      <td style="padding:10px 16px;text-align:end;font-size:12px;font-weight:700;color:#1e293b;">${fmt(value)}</td>
+  // Parse employer data from configSnapshot (falls back to empty strings)
+  let cfg: { companyName?: string; companyAddress?: string; nif?: string; nis?: string; rc?: string; cnasRegistration?: string } = {};
+  try { if (opts.configSnapshot) cfg = JSON.parse(opts.configSnapshot); } catch { /* ignore */ }
+
+  const locale = isRTL ? 'ar-DZ' : 'fr-DZ';
+  const fmt = (n: number) => `${n.toLocaleString(locale)} ${cu}`;
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const C = {
+    bg: '#faf7f2', white: '#ffffff', border: '#e8dcc8',
+    headBg: '#fffdf8', text: '#1c1208', muted: '#7c6a52', label: '#a08c6e',
+    earn: '#14532d', earnBg: '#f0fdf4', earnBdr: '#bbf7d0',
+    ded: '#7f1d1d', dedBg: '#fff7f7', dedBdr: '#fecaca',
+    net: '#1c3a5e', netBg: '#f0f6ff', netBdr: '#bfdbfe',
+    rule: '#d4c5ae',
+  };
+
+  const row = (label: string, value: string, o: { bold?: boolean; color?: string; bg?: string; size?: string } = {}) =>
+    `<tr style="${o.bg ? `background:${o.bg};` : ''}">
+      <td style="padding:9px 16px;font-size:${o.size || '12px'};color:${o.color || C.text};font-weight:${o.bold ? '700' : '400'};">${esc(label)}</td>
+      <td style="padding:9px 16px;text-align:end;font-size:${o.size || '12px'};color:${o.color || C.text};font-weight:700;">${value}</td>
     </tr>`;
 
-  const deductRow = (label: string, value: number) =>
-    `<tr style="border-bottom:1px solid #fff1f2;">
-      <td style="padding:10px 16px;font-size:12px;color:#64748b;">${esc(label)}</td>
-      <td style="padding:10px 16px;text-align:end;font-size:12px;font-weight:700;color:#e11d48;">${fmt(value)}</td>
-    </tr>`;
+  const section = (title: string, accent: string, bg: string, bdr: string, rows: string) =>
+    `<div style="border:1px solid ${bdr};border-radius:10px;overflow:hidden;margin-bottom:14px;">
+      <div style="background:${bg};padding:9px 16px;border-bottom:1px solid ${bdr};">
+        <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${accent};">${esc(title)}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;background:${C.white};">
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 
-  const infoRow = (label: string, value: string) =>
-    value ? `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;"><span style="color:#64748b;font-weight:600;">${esc(label)}</span><span style="color:#1e293b;font-weight:700;">${esc(value)}</span></div>` : '';
+  const logoHtml = logo
+    ? `<img src="${logo}" style="height:60px;width:auto;object-fit:contain;" />`
+    : `<span style="font-size:18px;font-weight:800;color:${C.text};">Bella Dolce</span>`;
 
-  const html = `
-<div style="font-family:Arial,Helvetica,sans-serif;background:#f8fafc;min-height:297mm;padding:0;">
+  // Employer identity block — read from configSnapshot
+  const employerName = cfg.companyName || 'Bella Dolce';
+  const employerAddress = cfg.companyAddress || '';
+  const employerIds = [
+    cfg.nif ? `NIF : ${cfg.nif}` : '',
+    cfg.nis ? `NIS : ${cfg.nis}` : '',
+    cfg.rc ? `RC : ${cfg.rc}` : '',
+    cfg.cnasRegistration ? `CNAS : ${cfg.cnasRegistration}` : '',
+  ].filter(Boolean).join(' | ');
 
-  <!-- Header -->
-  <div data-pdf-gradient="1" style="background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:32px 40px;display:flex;align-items:center;justify-content:space-between;">
-    <div>
-      <img src="${logoUrl}" style="height:44px;object-fit:contain;filter:brightness(0) invert(1);" crossorigin="anonymous" />
-      <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:0.06em;text-transform:uppercase;">Artisanal Atelier de Pâtisserie</div>
-    </div>
-    <div style="text-align:end;">
-      <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.02em;">${esc(L.payslip)}</div>
-      <div style="font-size:13px;color:rgba(255,255,255,0.65);margin-top:4px;font-weight:600;">${esc(slip.period)}</div>
+  // Deduction rows
+  const irgExempt = slip.irgRetained === 0 && slip.taxableGross <= 10000;
+  const irgRows =
+    irgExempt
+      ? row(L.irgExemptLabel || 'IRG : Non imposable (revenu ≤ 10 000 DA)', '0 ' + cu, { color: C.ded })
+      : (slip.irgAbatement !== undefined && slip.irgAbatement > 0
+          ? row(L.irgBeforeRebateLabel || 'IRG brut (avant abattement)', fmt(slip.irgRetained + slip.irgAbatement), { color: C.ded }) +
+            row(L.irgRebateLabel || 'Abattement', `– ${fmt(slip.irgAbatement)}`, { color: '#16a34a' }) +
+            row(L.irgAfterRebateLabel || 'IRG net retenu', fmt(slip.irgRetained), { bold: true, color: C.ded, size: '13px' })
+          : row(L.irgRetained || 'IRG Retenu', fmt(slip.irgRetained), { bold: true, color: C.ded, size: '13px' })
+        );
+
+  const otherDedRow = (slip.otherDeductions ?? 0) > 0
+    ? row(L.otherDeductionsLabel || 'Autres retenues', `– ${fmt(slip.otherDeductions!)}`, { color: C.ded })
+    : '';
+
+  const fontFamily = isRTL ? '"Cairo",Arial,sans-serif' : 'Arial,Helvetica,sans-serif';
+
+  const html = `<div dir="${isRTL ? 'rtl' : 'ltr'}" style="font-family:${fontFamily};width:${PDF_PAGE_PX}px;background:${C.bg};box-sizing:border-box;">
+
+  <!-- HEADER -->
+  <div style="background:${C.headBg};border-bottom:2px solid ${C.border};padding:20px 36px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      ${logoHtml}
+      <div style="text-align:end;">
+        <div style="font-size:9px;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:${C.label};margin-bottom:4px;">${esc(L.payslip || 'BULLETIN DE PAIE')}</div>
+        <div style="font-size:18px;font-weight:800;color:${C.text};">${esc(slip.period)}</div>
+      </div>
     </div>
   </div>
 
-  <!-- Employee info band -->
-  <div style="background:#fff;border-bottom:2px solid #f1f5f9;padding:20px 40px;display:flex;gap:48px;">
-    <div style="flex:1;">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;margin-bottom:6px;">${esc(L.employee)}</div>
-      <div style="font-size:18px;font-weight:800;color:#0f172a;">${esc(slip.employeeName)}</div>
+  <!-- EMPLOYER / EMPLOYEE -->
+  <div style="background:${C.white};border-bottom:1px solid ${C.border};padding:14px 36px;display:flex;gap:0;">
+    <div style="flex:1;padding-inline-end:20px;border-inline-end:1px solid ${C.border};">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.label};margin-bottom:6px;">${esc(L.payslipEmployerLabel || 'EMPLOYEUR')}</div>
+      <div style="font-size:13px;font-weight:800;color:${C.text};margin-bottom:3px;">${esc(employerName)}</div>
+      <div style="font-size:10px;color:${C.muted};line-height:1.65;">
+        ${employerAddress ? esc(employerAddress) + '<br/>' : ''}
+        ${employerIds ? esc(employerIds) : ''}
+      </div>
     </div>
-    <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
-      ${infoRow(L.matriculeLabel, slip.matricule || '')}
-      ${infoRow(L.ninLabel, slip.nin || '')}
+    <div style="flex:1;padding-inline-start:20px;">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.label};margin-bottom:6px;">${esc(L.employee || 'EMPLOYÉ')}</div>
+      <div style="font-size:15px;font-weight:800;color:${C.text};margin-bottom:6px;">${esc(slip.employeeName)}</div>
+      <div style="font-size:10px;color:${C.muted};line-height:1.75;">
+        ${slip.matricule ? `<span style="font-weight:700;color:${C.text};">${esc(L.matriculeLabel || 'Matricule')} :</span> ${esc(slip.matricule)}<br/>` : ''}
+        ${slip.nin ? `<span style="font-weight:700;color:${C.text};">${esc(L.ninLabel || 'NIN')} :</span> ${esc(slip.nin)}<br/>` : ''}
+        ${slip.cnasNumber ? `<span style="font-weight:700;color:${C.text};">${esc(L.cnasNumberLabel || 'N° CNAS')} :</span> ${esc(slip.cnasNumber)}<br/>` : ''}
+        ${slip.bankRIB ? `<span style="font-weight:700;color:${C.text};">RIB :</span> ${esc(slip.bankRIB)}` : ''}
+      </div>
     </div>
   </div>
 
-  <!-- Body -->
-  <div style="padding:24px 40px;display:flex;flex-direction:column;gap:20px;">
+  <!-- BODY -->
+  <div style="padding:16px 36px 0;">
 
-    <!-- Earnings -->
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
-      <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
-        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#3b82f6;">${esc(L.sectionFinancial)}</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse;">
-        <tbody>
-          ${earningRow(L.baseSalary, slip.baseSalary)}
-          ${earningRow(L.transportAllowanceLabel, slip.transportAllowance, true)}
-          ${earningRow(L.payrollBonusLabel, slip.performanceBonus, true)}
-          ${earningRow(L.otherAllowancesLabel, slip.otherAllowances, true)}
-          <tr style="background:#eff6ff;">
-            <td style="padding:12px 16px;font-size:13px;font-weight:800;color:#1e40af;">${esc(L.grossSalary)}</td>
-            <td style="padding:12px 16px;text-align:end;font-size:13px;font-weight:800;color:#1e40af;">${fmt(slip.grossSalary)}</td>
-          </tr>
-        </tbody>
-      </table>
+    ${section(
+      L.earningsSectionLabel || 'RÉMUNÉRATIONS', C.earn, C.earnBg, C.earnBdr,
+      row(L.baseSalary || 'Salaire de Base', fmt(slip.baseSalary), { bold: true }) +
+      row(L.transportAllowanceLabel || 'Indemnité Transport', fmt(slip.transportAllowance)) +
+      row(L.payrollBonusLabel || 'Prime de Performance', fmt(slip.performanceBonus)) +
+      row(L.otherAllowancesLabel || 'Autres Indemnités', fmt(slip.otherAllowances)) +
+      row(L.grossSalary || 'Salaire Brut', fmt(slip.grossSalary), { bold: true, color: C.earn, bg: C.earnBg, size: '13px' })
+    )}
+
+    ${section(
+      L.deductionsSectionLabel || 'RETENUES OBLIGATOIRES', C.ded, C.dedBg, C.dedBdr,
+      row(L.cnasBaseLabel || 'Assiette CNAS', fmt(slip.grossSalary - slip.transportAllowance)) +
+      row(L.cnasEmployee || 'CNAS Salarié (9%)', `– ${fmt(slip.cnasEmployee)}`, { color: C.ded }) +
+      row(L.taxableGross || 'Brut Imposable', fmt(slip.taxableGross)) +
+      irgRows +
+      otherDedRow
+    )}
+
+    ${section(
+      L.employerCostSectionLabel || 'COÛT EMPLOYEUR', C.muted, C.headBg, C.border,
+      row(L.cnasEmployerLabel || 'CNAS Patronale (26%)', fmt(slip.cnasEmployer)) +
+      row(L.employerCost || 'Coût Total Employeur', fmt(slip.totalEmployerCost), { bold: true, size: '13px' })
+    )}
+
+    <!-- NET TO PAY -->
+    <div style="background:${C.netBg};border:2px solid ${C.netBdr};border-radius:12px;padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.net};">${esc(L.payslipNetToPayLabel || 'NET À PAYER')}</div>
+      <div style="font-size:24px;font-weight:800;color:${C.net};">${fmt(slip.netSalary)}</div>
     </div>
 
-    <!-- Deductions -->
-    <div style="background:#fff;border:1px solid #fecdd3;border-radius:16px;overflow:hidden;">
-      <div style="padding:12px 16px;background:#fff1f2;border-bottom:1px solid #fecdd3;">
-        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#e11d48;">${esc(L.deductions)}</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse;">
-        <tbody>
-          ${deductRow(L.cnasEmployee, slip.cnasEmployee)}
-          ${deductRow(L.taxableGross + ' →', slip.taxableGross)}
-          ${deductRow(L.irgRetained, slip.irgRetained)}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Net salary -->
-    <div style="background:linear-gradient(135deg,#059669,#047857);border-radius:16px;padding:24px 28px;display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.7);">${esc(L.netSalary)}</div>
-        <div style="font-size:30px;font-weight:800;color:#fff;margin-top:4px;letter-spacing:-0.02em;">${fmt(slip.netSalary)}</div>
+    <!-- FOOTER -->
+    <div style="border-top:1px solid ${C.rule};padding:12px 0 18px;display:flex;justify-content:space-between;align-items:flex-end;">
+      <div style="font-size:9px;color:${C.label};line-height:1.7;">
+        ${esc(L.payslipGeneratedOn || 'Document généré le')} ${today}<br/>
+        ${esc(L.payslipLegalNote || 'Ce bulletin est établi conformément à la législation algérienne en vigueur.')}
       </div>
       <div style="text-align:end;">
-        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.7);">${esc(L.employerCost)}</div>
-        <div style="font-size:16px;font-weight:800;color:rgba(255,255,255,0.9);margin-top:4px;">${fmt(slip.totalEmployerCost)}</div>
+        <div style="font-size:9px;color:${C.label};margin-bottom:18px;">${esc(L.payslipSignatureLabel || 'Signature & cachet de l\'employeur')}</div>
+        <div style="border-top:1px solid ${C.rule};width:130px;margin-inline-start:auto;"></div>
       </div>
     </div>
 
-    <!-- Footer -->
-    <div style="text-align:center;padding:8px 0;font-size:10px;color:#94a3b8;">
-      Bella Dolce · ${esc(slip.period)} · ${new Date().toLocaleDateString('fr-DZ')}
-    </div>
   </div>
 </div>`;
 
   const pdf = newA4Pdf();
   const el = document.createElement('div');
-  el.style.width = '794px';
+  el.style.position = 'fixed';
+  el.style.top = '0';
+  el.style.left = '-9999px';
+  el.style.width = `${PDF_PAGE_PX}px`;
   el.innerHTML = html;
   document.body.appendChild(el);
   try {

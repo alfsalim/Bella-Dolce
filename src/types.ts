@@ -232,6 +232,50 @@ export interface Promotion {
   createdAt: string;
 }
 
+// Payroll configuration — stored in Setting.data (key: "payroll_config")
+export interface IrgBracket {
+  upTo: number | null; // null = unbounded top bracket
+  rate: number;        // fraction, e.g. 0.20
+}
+
+export interface PayrollConfig {
+  // CNAS rates (fractions) — cnasEmployeeRate = sum of the 4 sub-rates below
+  cnasEmployeeRate: number;   // e.g. 0.09
+  cnasEmployerRate: number;   // e.g. 0.26
+  // 4 sub-rates that compose cnasEmployeeRate (display only; engine uses cnasEmployeeRate)
+  cnasAssurancesSociales?: number;  // default 0.015
+  cnasRetraite?: number;            // default 0.0675
+  cnasAssuranceChomage?: number;    // default 0.005
+  cnasRetraiteAnticipee?: number;   // default 0.0025
+  // IRG brackets (ordered low→high, last upTo must be null)
+  irgBrackets: IrgBracket[];
+  // IRG rebate (abatement)
+  irgRebateRate: number;      // e.g. 0.40
+  irgRebateCap: number;       // e.g. 1500 DA/month
+  irgRebateFloor?: number;    // e.g. 0 (plancher)
+  // IRG thresholds
+  irgExemptionThreshold?: number;  // e.g. 10000 DA/month
+  irgSmoothingFrom?: number;       // smoothing zone lower bound
+  irgSmoothingTo?: number;         // smoothing zone upper bound
+  // SNMG
+  snmg?: number;              // e.g. 20000 DA/month
+  // Employer identity (for payslip header)
+  companyName?: string;
+  companyAddress?: string;
+  nif?: string;
+  nis?: string;
+  rc?: string;
+  cnasRegistration?: string;
+}
+
+// Versioned config entry stored in Setting.data history array
+export interface PayrollConfigVersion {
+  version: number;
+  savedAt: string;   // ISO date string
+  savedBy: string;
+  config: PayrollConfig;
+}
+
 // Financial Module Types
 export type AccountType = 'ACTIF' | 'PASSIF' | 'CAPITAUX' | 'PRODUIT' | 'CHARGE' | 'CMV';
 export type JournalStatus = 'BROUILLON' | 'EN_ATTENTE_VALIDATION' | 'APPROUVÉ' | 'COMPTABILISÉ' | 'ANNULÉ';
@@ -308,15 +352,14 @@ export interface PayrollRun {
   period: string; // YYYY-MM
   executionDate: string;
   totalGross: number;
-  totalCNAS: number;
-  totalCNASEmployee: number; // 9%
+  totalCNAS: number;         // employee CNAS (9%) — matches schema column name
+  totalCNASEmployer: number; // employer CNAS (26%)
   totalIRG: number;
   totalNet: number;
-  totalCNASEmployer: number; // 26%
-  totalEmployerCost: number;
   employeeCount: number;
   status: PayrollStatus;
   approvedBy?: string;
+  configSnapshot?: string;   // JSON-encoded PayrollConfig at time of run
   journalId?: string;
   createdAt: string;
 }
