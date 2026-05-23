@@ -2028,7 +2028,7 @@ async function startServer() {
     let translatedComment = '';
     let translatedCommentFR = '';
     let translatedCommentAR = '';
-    const printLang = printLanguage || 'BOTH';
+    const printLang = printLanguage || config.PRINT_LANGUAGE || 'BOTH';
 
     if (printLang === 'BOTH') {
       if (amountPaid === 0) {
@@ -2046,6 +2046,7 @@ async function startServer() {
         const discount = total - amountPaid;
         translatedCommentFR = `Remise DA ${discount.toFixed(0)}`;
       }
+      translatedCommentAR = '';
     } else if (printLang === 'AR') {
       if (amountPaid === 0) {
         translatedCommentAR = 'مجاني';
@@ -2053,6 +2054,7 @@ async function startServer() {
         const discount = total - amountPaid;
         translatedCommentAR = `خصم دج ${discount.toFixed(0)}`;
       }
+      translatedCommentFR = '';
     }
 
     // Send print job
