@@ -150,7 +150,7 @@ async function renderHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasElement> {
   // Wait two frames so the browser fully lays out the element at PDF_PAGE_PX width.
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   return html2canvas(el, {
-    scale: 1,
+    scale: 1.5,
     useCORS: true,
     logging: false,
     backgroundColor: '#faf7f2',
@@ -169,7 +169,7 @@ async function renderHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasElement> {
 }
 
 function addCanvasToPdf(pdf: jsPDF, canvas: HTMLCanvasElement, startNewPage: boolean): void {
-  const imgData = canvas.toDataURL('image/jpeg', 0.75);
+  const imgData = canvas.toDataURL('image/jpeg', 0.85);
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
   const imgH = (canvas.height * pageW) / canvas.width;
