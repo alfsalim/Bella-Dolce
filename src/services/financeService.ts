@@ -1,59 +1,34 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  writeBatch, 
-  Timestamp,
-  onSnapshot,
-  db
-} from '../lib/db';
 import {
   Account,
   JournalEntry,
   JournalLine,
   JournalStatus,
-  OperationType,
   FinancialEmployee,
   UserProfile,
   PayrollRun,
   Payslip
 } from '../types';
 import { authFetch, getAuthHeaders, readApiErrorMessage } from '../lib/api-client';
-import { handleFirestoreError } from '../lib/db';
 import { format } from 'date-fns';
 
 export const financeService = {
   // Account Management
   async getAccounts(): Promise<Account[]> {
-    try {
-      const snapshot = await getDocs(collection(db, 'accounts'));
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'accounts');
-      return [];
-    }
+    const res = await authFetch('/api/db/accounts', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch accounts');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   async createAccount(account: Omit<Account, 'id' | 'createdAt'>): Promise<string> {
-    try {
-      const newDoc = doc(collection(db, 'accounts'));
-      const data = {
-        ...account,
-        id: newDoc.id,
-        createdAt: new Date().toISOString()
-      };
-      await setDoc(newDoc, data);
-      return newDoc.id;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'accounts');
-      throw error;
-    }
+    const res = await authFetch('/api/db/accounts', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(account),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    return data.id;
   },
 
   // Journal Entries
@@ -61,40 +36,38 @@ export const financeService = {
     entry: Omit<JournalEntry, 'id' | 'createdAt' | 'number'>,
     lines: Omit<JournalLine, 'id' | 'journalId' | 'createdAt'>[]
   ): Promise<string> {
-    try {
-      const batch = writeBatch(db);
-      const entryDoc = doc(collection(db, 'journalEntries'));
-      
-      // Generate journal number (e.g., JV-2026-00001)
-      // For simplicity in this demo, we'll use a timestamp-based number
-      const entryNumber = `JV-${format(new Date(), 'yyyyMMdd-HHmmss')}`;
-      
-      const entryData: JournalEntry = {
-        ...entry,
-        id: entryDoc.id,
-        number: entryNumber,
-        createdAt: new Date().toISOString()
-      };
-      
-      batch.set(entryDoc, entryData);
-      
-      lines.forEach(line => {
-        const lineDoc = doc(collection(db, 'journalLines'));
-        const lineData: JournalLine = {
-          ...line,
-          id: lineDoc.id,
-          journalId: entryDoc.id,
-          createdAt: new Date().toISOString()
-        };
-        batch.set(lineDoc, lineData);
-      });
-      
-      await batch.commit();
-      return entryDoc.id;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'journalEntries');
-      throw error;
-    }
+    const res = await authFetch('/api/finance/journal', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entry, lines }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    return data.id;
+  },
+
+  async getJournalEntries(period?: string): Promise<JournalEntry[]> {
+    const params = period ? `?where=${encodeURIComponent(JSON.stringify({ period }))}` : '';
+    const res = await authFetch(`/api/db/journalEntries${params}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch journal entries');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getJournalLines(journalId: string): Promise<JournalLine[]> {
+    const params = `?where=${encodeURIComponent(JSON.stringify({ journalId }))}`;
+    const res = await authFetch(`/api/db/journalLines${params}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch journal lines');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getAccountBalances(period?: string): Promise<{ accountNumber: string; totalDebit: number; totalCredit: number }[]> {
+    const params = period ? `?period=${encodeURIComponent(period)}` : '';
+    const res = await authFetch(`/api/finance/balances${params}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch balances');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   // Automatic Journal Entry for Sales (CASH ONLY)
@@ -169,54 +142,35 @@ export const financeService = {
 
   // Financial Employee Management
   async getFinancialEmployees(): Promise<FinancialEmployee[]> {
-    try {
-      const snapshot = await getDocs(collection(db, 'financialEmployees'));
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FinancialEmployee));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'financialEmployees');
-      throw error;
-    }
+    const res = await authFetch('/api/db/financialEmployees', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch employees');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   async addFinancialEmployee(employee: Omit<FinancialEmployee, 'createdAt'>): Promise<string> {
-    try {
-      const data: Record<string, unknown> = {
-        id: employee.id,
-        name: employee.name,
-        role: employee.role,
-        email: employee.email ?? null,
-        phone: employee.phone ?? null,
-        nin: employee.nin ?? null,
-        cnasNumber: employee.cnasNumber ?? null,
-        department: employee.department ?? null,
-        hireDate: employee.hireDate,
-        baseSalary: employee.baseSalary,
-        transportAllowance: employee.transportAllowance ?? 0,
-        performanceBonus: employee.performanceBonus ?? 0,
-        otherAllowances: employee.otherAllowances ?? 0,
-        contributesToCNAS: employee.contributesToCNAS !== false,
-        bankRIB: employee.bankRIB ?? null,
-        status: employee.status ?? 'ACTIF',
-        createdAt: new Date().toISOString(),
-      };
-      const matriculeTrim = employee.matricule?.trim();
-      data.matricule = matriculeTrim || `EMP-${String(employee.id).replace(/-/g, '')}`;
-      await setDoc(doc(db, 'financialEmployees', employee.id), data);
-      return employee.id;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'financialEmployees');
-      throw error;
-    }
+    const matriculeTrim = employee.matricule?.trim();
+    const payload = {
+      ...employee,
+      matricule: matriculeTrim || `EMP-${String(employee.id).replace(/-/g, '')}`,
+      contributesToCNAS: employee.contributesToCNAS !== false,
+      status: employee.status ?? 'ACTIF',
+    };
+    const res = await authFetch('/api/db/financialEmployees', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    return data.id;
   },
 
   async getAllUsers(): Promise<UserProfile[]> {
-    try {
-      const snapshot = await getDocs(collection(db, 'users'));
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'users');
-      throw error;
-    }
+    const res = await authFetch('/api/db/users', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch users');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   async updateFinancialEmployee(id: string, data: Partial<FinancialEmployee>): Promise<void> {
