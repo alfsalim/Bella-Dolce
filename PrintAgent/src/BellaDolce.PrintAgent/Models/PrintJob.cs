@@ -40,6 +40,7 @@ public class ReceiptLabels
     public string ThankYou { get; set; } = string.Empty;
     public string ComeBack { get; set; } = string.Empty;
     public string Currency { get; set; } = string.Empty;
+    public string Currency_AR { get; set; } = string.Empty;
     public string ProductCountLabel { get; set; } = string.Empty;
     public string UnitCountLabel { get; set; } = string.Empty;
 

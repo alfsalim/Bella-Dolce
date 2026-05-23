@@ -106,14 +106,17 @@ namespace BellaDolce.PrintAgent.Services
                     return;
                 }
 
-                var midPoint = pageWidth / 2;
+                // For bilingual: FR label on left, amount+currency in middle, AR label on right - ALL ON ONE LINE
+                var thirdWidth = pageWidth / 3;
                 g.DrawString(leftFR, font, Brushes.Black, 5, y);
-                var rightSize = g.MeasureString(rightFR, font);
-                g.DrawString(rightFR, font, Brushes.Black, midPoint - rightSize.Width - 5, y);
 
-                var arLeftSize = g.MeasureString(leftAR, font);
-                g.DrawString(leftAR, font, Brushes.Black, pageWidth - arLeftSize.Width - 5, y);
-                g.DrawString(rightAR, font, Brushes.Black, midPoint + 5, y);
+                var amountWithCurrency = $"{rightFR} {labels.Currency} / {labels.Currency_AR}";
+                var amountSize = g.MeasureString(amountWithCurrency, font);
+                g.DrawString(amountWithCurrency, font, Brushes.Black, (pageWidth / 2) - (amountSize.Width / 2), y);
+
+                var arSize = g.MeasureString(leftAR, font);
+                g.DrawString(leftAR, font, Brushes.Black, pageWidth - arSize.Width - 5, y);
+
                 y += font.GetHeight() + 2;
             }
 

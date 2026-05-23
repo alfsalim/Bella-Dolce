@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { authFetch } from '../lib/api-client';
 import { TRANSLATIONS } from '../constants';
+import config from '../../app.config';
 
 interface ReceiptItem {
   name: string;
@@ -50,8 +51,9 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   const { t, formatCurrency, isRTL } = useLanguage();
   const [printStatus, setPrintStatus] = useState<PrintStatus>(saleId ? 'printing' : null);
   const [printError, setPrintError] = useState<PrintError | null>(null);
+  const printedSalesRef = useRef<Set<string>>(new Set());
 
-  const printLanguage = 'BOTH';
+  const printLanguage = config.PRINT_LANGUAGE;
 
   const getTrans = (key: string, lang: 'fr' | 'ar'): string => {
     return (TRANSLATIONS[lang] as Record<string, string>)?.[key] || key;
@@ -107,7 +109,8 @@ const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
   };
 
   useEffect(() => {
-    if (!saleId) return;
+    if (!saleId || printedSalesRef.current.has(saleId)) return;
+    printedSalesRef.current.add(saleId);
     callPrintAPI();
   }, [saleId]);
 
