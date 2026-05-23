@@ -579,12 +579,12 @@ export async function downloadPayslipPdf(opts: {
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
   const C = {
-    bg: '#faf7f2', white: '#ffffff', border: '#e8dcc8',
-    headBg: '#fffdf8', text: '#1c1208', muted: '#7c6a52', label: '#a08c6e',
-    earn: '#14532d', earnBg: '#f0fdf4', earnBdr: '#bbf7d0',
-    ded: '#7f1d1d', dedBg: '#fff7f7', dedBdr: '#fecaca',
-    net: '#1c3a5e', netBg: '#f0f6ff', netBdr: '#bfdbfe',
-    rule: '#d4c5ae',
+    bg: '#ffffff', white: '#ffffff', border: '#d1d5db',
+    headBg: '#f9fafb', text: '#000000', muted: '#6b7280', label: '#4b5563',
+    earn: '#000000', earnBg: '#f3f4f6', earnBdr: '#d1d5db',
+    ded: '#000000', dedBg: '#f3f4f6', dedBdr: '#d1d5db',
+    net: '#000000', netBg: '#f3f4f6', netBdr: '#000000',
+    rule: '#9ca3af',
   };
 
   const row = (label: string, value: string, o: { bold?: boolean; color?: string; bg?: string; size?: string } = {}) =>
@@ -594,9 +594,9 @@ export async function downloadPayslipPdf(opts: {
     </tr>`;
 
   const section = (title: string, accent: string, bg: string, bdr: string, rows: string) =>
-    `<div style="border:1px solid ${bdr};border-radius:10px;overflow:hidden;margin-bottom:14px;">
-      <div style="background:${bg};padding:9px 16px;border-bottom:1px solid ${bdr};">
-        <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${accent};">${esc(title)}</span>
+    `<div style="border:1px solid ${bdr};border-radius:8px;overflow:hidden;margin-bottom:14px;">
+      <div style="background:${bg};padding:10px 16px;border-bottom:1px solid ${bdr};">
+        <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.text};">${esc(title)}</span>
       </div>
       <table style="width:100%;border-collapse:collapse;background:${C.white};">
         <tbody>${rows}</tbody>
@@ -621,16 +621,16 @@ export async function downloadPayslipPdf(opts: {
   const irgExempt = slip.irgRetained === 0 && slip.taxableGross <= 10000;
   const irgRows =
     irgExempt
-      ? row(L.irgExemptLabel || 'IRG : Non imposable (revenu ≤ 10 000 DA)', '0 ' + cu, { color: C.ded })
+      ? row(L.irgExemptLabel || 'IRG : Non imposable (revenu ≤ 10 000 DA)', '0 ' + cu, { color: C.text })
       : (slip.irgAbatement !== undefined && slip.irgAbatement > 0
-          ? row(L.irgBeforeRebateLabel || 'IRG brut (avant abattement)', fmt(slip.irgRetained + slip.irgAbatement), { color: C.ded }) +
-            row(L.irgRebateLabel || 'Abattement', `– ${fmt(slip.irgAbatement)}`, { color: '#16a34a' }) +
-            row(L.irgAfterRebateLabel || 'IRG net retenu', fmt(slip.irgRetained), { bold: true, color: C.ded, size: '13px' })
-          : row(L.irgRetained || 'IRG Retenu', fmt(slip.irgRetained), { bold: true, color: C.ded, size: '13px' })
+          ? row(L.irgBeforeRebateLabel || 'IRG brut (avant abattement)', fmt(slip.irgRetained + slip.irgAbatement), { color: C.text }) +
+            row(L.irgRebateLabel || 'Abattement', `– ${fmt(slip.irgAbatement)}`, { color: C.text }) +
+            row(L.irgAfterRebateLabel || 'IRG net retenu', fmt(slip.irgRetained), { bold: true, color: C.text, size: '13px' })
+          : row(L.irgRetained || 'IRG Retenu', fmt(slip.irgRetained), { bold: true, color: C.text, size: '13px' })
         );
 
   const otherDedRow = (slip.otherDeductions ?? 0) > 0
-    ? row(L.otherDeductionsLabel || 'Autres retenues', `– ${fmt(slip.otherDeductions!)}`, { color: C.ded })
+    ? row(L.otherDeductionsLabel || 'Autres retenues', `– ${fmt(slip.otherDeductions!)}`, { color: C.text })
     : '';
 
   const fontFamily = isRTL ? '"Cairo",Arial,sans-serif' : 'Arial,Helvetica,sans-serif';
@@ -638,34 +638,34 @@ export async function downloadPayslipPdf(opts: {
   const html = `<div dir="${isRTL ? 'rtl' : 'ltr'}" style="font-family:${fontFamily};width:${PDF_PAGE_PX}px;background:${C.bg};box-sizing:border-box;">
 
   <!-- HEADER -->
-  <div style="background:${C.headBg};border-bottom:2px solid ${C.border};padding:20px 36px;">
+  <div style="background:${C.headBg};border-bottom:2px solid ${C.border};padding:24px 36px;">
     <div style="display:flex;align-items:center;justify-content:space-between;">
       ${logoHtml}
       <div style="text-align:end;">
-        <div style="font-size:9px;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:${C.label};margin-bottom:4px;">${esc(L.payslip || 'BULLETIN DE PAIE')}</div>
-        <div style="font-size:18px;font-weight:800;color:${C.text};">${esc(slip.period)}</div>
+        <div style="font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:${C.label};margin-bottom:6px;">${esc(L.payslip || 'BULLETIN DE PAIE')}</div>
+        <div style="font-size:20px;font-weight:800;color:${C.text};font-family:monospace;">${esc(slip.period)}</div>
       </div>
     </div>
   </div>
 
   <!-- EMPLOYER / EMPLOYEE -->
-  <div style="background:${C.white};border-bottom:1px solid ${C.border};padding:14px 36px;display:flex;gap:0;">
-    <div style="flex:1;padding-inline-end:20px;border-inline-end:1px solid ${C.border};">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.label};margin-bottom:6px;">${esc(L.payslipEmployerLabel || 'EMPLOYEUR')}</div>
-      <div style="font-size:13px;font-weight:800;color:${C.text};margin-bottom:3px;">${esc(employerName)}</div>
-      <div style="font-size:10px;color:${C.muted};line-height:1.65;">
+  <div style="background:${C.white};border-bottom:2px solid ${C.border};padding:16px 36px;display:flex;gap:0;">
+    <div style="flex:1;padding-inline-end:24px;border-inline-end:2px solid ${C.border};">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.10em;color:${C.label};margin-bottom:8px;">${esc(L.payslipEmployerLabel || 'EMPLOYEUR')}</div>
+      <div style="font-size:13px;font-weight:800;color:${C.text};margin-bottom:4px;">${esc(employerName)}</div>
+      <div style="font-size:10px;color:${C.muted};line-height:1.7;">
         ${employerAddress ? esc(employerAddress) + '<br/>' : ''}
         ${employerIds ? esc(employerIds) : ''}
       </div>
     </div>
-    <div style="flex:1;padding-inline-start:20px;">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.label};margin-bottom:6px;">${esc(L.employee || 'EMPLOYÉ')}</div>
-      <div style="font-size:15px;font-weight:800;color:${C.text};margin-bottom:6px;">${esc(slip.employeeName)}</div>
-      <div style="font-size:10px;color:${C.muted};line-height:1.75;">
-        ${slip.matricule ? `<span style="font-weight:700;color:${C.text};">${esc(L.matriculeLabel || 'Matricule')} :</span> ${esc(slip.matricule)}<br/>` : ''}
-        ${slip.nin ? `<span style="font-weight:700;color:${C.text};">${esc(L.ninLabel || 'NIN')} :</span> ${esc(slip.nin)}<br/>` : ''}
-        ${slip.cnasNumber ? `<span style="font-weight:700;color:${C.text};">${esc(L.cnasNumberLabel || 'N° CNAS')} :</span> ${esc(slip.cnasNumber)}<br/>` : ''}
-        ${slip.bankRIB ? `<span style="font-weight:700;color:${C.text};">RIB :</span> ${esc(slip.bankRIB)}` : ''}
+    <div style="flex:1;padding-inline-start:24px;">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.10em;color:${C.label};margin-bottom:8px;">${esc(L.employee || 'EMPLOYÉ')}</div>
+      <div style="font-size:15px;font-weight:800;color:${C.text};margin-bottom:8px;">${esc(slip.employeeName)}</div>
+      <div style="font-size:10px;color:${C.muted};line-height:1.8;">
+        ${slip.matricule ? `<div><span style="font-weight:700;color:${C.text};">${esc(L.matriculeLabel || 'Matricule')} :</span> ${esc(slip.matricule)}</div>` : ''}
+        ${slip.nin ? `<div><span style="font-weight:700;color:${C.text};">${esc(L.ninLabel || 'NIN')} :</span> ${esc(slip.nin)}</div>` : ''}
+        ${slip.cnasNumber ? `<div><span style="font-weight:700;color:${C.text};">${esc(L.cnasNumberLabel || 'N° CNAS')} :</span> ${esc(slip.cnasNumber)}</div>` : ''}
+        ${slip.bankRIB ? `<div><span style="font-weight:700;color:${C.text};">RIB :</span> ${esc(slip.bankRIB)}</div>` : ''}
       </div>
     </div>
   </div>
@@ -698,20 +698,35 @@ export async function downloadPayslipPdf(opts: {
     )}
 
     <!-- NET TO PAY -->
-    <div style="background:${C.netBg};border:2px solid ${C.netBdr};border-radius:12px;padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:${C.netBg};border:2px solid ${C.netBdr};border-radius:10px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.net};">${esc(L.payslipNetToPayLabel || 'NET À PAYER')}</div>
-      <div style="font-size:24px;font-weight:800;color:${C.net};">${fmt(slip.netSalary)}</div>
+      <div style="font-size:28px;font-weight:800;color:${C.net};font-family:monospace;">${fmt(slip.netSalary)}</div>
     </div>
 
     <!-- FOOTER -->
-    <div style="border-top:1px solid ${C.rule};padding:12px 0 18px;display:flex;justify-content:space-between;align-items:flex-end;">
-      <div style="font-size:9px;color:${C.label};line-height:1.7;">
+    <div style="border-top:2px solid ${C.rule};padding:16px 0;margin-top:20px;">
+      <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:12px;">
+        <div style="flex:1;">
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:${C.label};margin-bottom:4px;">${esc(L.payslipEmployerLabel || 'CONTACT')}</div>
+          <div style="font-size:10px;color:${C.text};line-height:1.8;">
+            ${esc(employerName)}<br/>
+            ${employerAddress ? esc(employerAddress) + '<br/>' : ''}
+            ${cfg.shopPhone ? '<strong style="color:' + C.text + ';">Tél :</strong> ' + esc(cfg.shopPhone) + '<br/>' : ''}
+            ${cfg.shopEmail ? '<strong style="color:' + C.text + ';">Email :</strong> ' + esc(cfg.shopEmail) : ''}
+          </div>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:9px;color:${C.label};line-height:1.8;">
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:800;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">${esc(L.payslipSignatureLabel || 'Signature & cachet')}</div>
+              <div style="border-top:1px solid ${C.rule};width:100%;margin-top:8px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:8px;color:${C.muted};line-height:1.6;margin-top:12px;border-top:1px solid ${C.rule};padding-top:8px;">
         ${esc(L.payslipGeneratedOn || 'Document généré le')} ${today}<br/>
         ${esc(L.payslipLegalNote || 'Ce bulletin est établi conformément à la législation algérienne en vigueur.')}
-      </div>
-      <div style="text-align:end;">
-        <div style="font-size:9px;color:${C.label};margin-bottom:18px;">${esc(L.payslipSignatureLabel || 'Signature & cachet de l\'employeur')}</div>
-        <div style="border-top:1px solid ${C.rule};width:130px;margin-inline-start:auto;"></div>
       </div>
     </div>
 

@@ -817,6 +817,13 @@ const PayrollConfigAdmin: React.FC = () => {
           {fieldRow(tf('payrollConfigRc'), textInput(config.rc, v => set('rc', v)))}
           {fieldRow(tf('payrollConfigCnasReg'), textInput(config.cnasRegistration, v => set('cnasRegistration', v)))}
         </div>
+        <div className="pt-4 border-t border-slate-100 dark:border-white/10">
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-wider">{tf('payslipFooterInfo') || 'Informations du pied de page'}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {fieldRow(tf('payrollConfigShopPhone') || 'Téléphone', textInput(config.shopPhone, v => set('shopPhone', v)))}
+            {fieldRow(tf('payrollConfigShopEmail') || 'Email', textInput(config.shopEmail, v => set('shopEmail', v)))}
+          </div>
+        </div>
       </div>
 
       {/* Save button */}

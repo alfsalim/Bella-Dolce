@@ -266,6 +266,9 @@ export interface PayrollConfig {
   nis?: string;
   rc?: string;
   cnasRegistration?: string;
+  // Shop contact info (for payslip footer)
+  shopPhone?: string;
+  shopEmail?: string;
 }
 
 // Versioned config entry stored in Setting.data history array
