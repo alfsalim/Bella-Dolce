@@ -74,8 +74,10 @@ namespace BellaDolce.PrintAgent.Services
             var pageWidth = e.PageBounds.Width - 10;
             var y = 5f;
             var lineHeight = 14f;
-            var effectiveLanguageMode = string.IsNullOrEmpty(job.PrintLanguage) ? _languageMode : job.PrintLanguage;
+            var effectiveLanguageMode = !string.IsNullOrEmpty(job.PrintLanguage) ? job.PrintLanguage : _languageMode;
             var isBilingual = effectiveLanguageMode.Equals("BOTH", StringComparison.OrdinalIgnoreCase);
+            var isFrenchOnly = effectiveLanguageMode.Equals("FR", StringComparison.OrdinalIgnoreCase);
+            var isArabicOnly = effectiveLanguageMode.Equals("AR", StringComparison.OrdinalIgnoreCase);
 
             var fontTitle = new Font("Arial", 12, FontStyle.Bold);
             var fontNormal = new Font("Arial", 9, FontStyle.Regular);
@@ -100,9 +102,15 @@ namespace BellaDolce.PrintAgent.Services
 
             void DrawBilingual(string leftFR, string rightFR, string leftAR, string rightAR, Font font)
             {
-                if (!isBilingual)
+                if (isFrenchOnly)
                 {
                     DrawLeftRight(leftFR, rightFR, font);
+                    return;
+                }
+
+                if (isArabicOnly)
+                {
+                    DrawLeftRight(leftAR, rightAR, font);
                     return;
                 }
 
@@ -206,10 +214,19 @@ namespace BellaDolce.PrintAgent.Services
             DrawDash();
 
             // === COMMENT (discount, free, reprint, etc.) ===
-            var hasBilingualComment = isBilingual && (!string.IsNullOrEmpty(job.CommentFR) || !string.IsNullOrEmpty(job.CommentAR));
-            if (hasBilingualComment)
+            if (isBilingual && (!string.IsNullOrEmpty(job.CommentFR) || !string.IsNullOrEmpty(job.CommentAR)))
             {
                 DrawBilingual(job.CommentFR, "", job.CommentAR, "", fontBold);
+                DrawDash();
+            }
+            else if (isFrenchOnly && !string.IsNullOrEmpty(job.CommentFR))
+            {
+                DrawCenter(job.CommentFR, fontBold);
+                DrawDash();
+            }
+            else if (isArabicOnly && !string.IsNullOrEmpty(job.CommentAR))
+            {
+                DrawCenter(job.CommentAR, fontBold);
                 DrawDash();
             }
             else if (!string.IsNullOrEmpty(job.Comment))
@@ -228,9 +245,13 @@ namespace BellaDolce.PrintAgent.Services
                 g.DrawString(labels.ThankYou_AR, fontNormal, Brushes.Black, (pageWidth * 3 / 4) - (thankYouARSize.Width / 2), y);
                 y += fontNormal.GetHeight() + 2;
             }
-            else
+            else if (isFrenchOnly)
             {
                 DrawCenter(labels.ThankYou, fontNormal);
+            }
+            else if (isArabicOnly)
+            {
+                DrawCenter(labels.ThankYou_AR, fontNormal);
             }
 
             if (isBilingual)
@@ -240,9 +261,13 @@ namespace BellaDolce.PrintAgent.Services
                 var comeBackARSize = g.MeasureString(labels.ComeBack_AR, fontNormal);
                 g.DrawString(labels.ComeBack_AR, fontNormal, Brushes.Black, (pageWidth * 3 / 4) - (comeBackARSize.Width / 2), y);
             }
-            else
+            else if (isFrenchOnly)
             {
                 DrawCenter(labels.ComeBack, fontNormal);
+            }
+            else if (isArabicOnly)
+            {
+                DrawCenter(labels.ComeBack_AR, fontNormal);
             }
 
             y += 10;

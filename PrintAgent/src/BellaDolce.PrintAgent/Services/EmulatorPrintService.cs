@@ -64,8 +64,10 @@ namespace BellaDolce.PrintAgent.Services
 
         private string BuildReceiptText(PrintJob job)
         {
-            var effectiveLanguageMode = string.IsNullOrEmpty(job.PrintLanguage) ? "BOTH" : job.PrintLanguage;
+            var effectiveLanguageMode = !string.IsNullOrEmpty(job.PrintLanguage) ? job.PrintLanguage : "BOTH";
             var isBilingual = effectiveLanguageMode.Equals("BOTH", StringComparison.OrdinalIgnoreCase);
+            var isFrenchOnly = effectiveLanguageMode.Equals("FR", StringComparison.OrdinalIgnoreCase);
+            var isArabicOnly = effectiveLanguageMode.Equals("AR", StringComparison.OrdinalIgnoreCase);
             var width = isBilingual ? 80 : 40;
             var halfWidth = width / 2;
             var dash = new string('-', isBilingual ? 20 : 40);
@@ -77,9 +79,14 @@ namespace BellaDolce.PrintAgent.Services
 
             void AddBilingual(string leftFR, string rightFR, string leftAR, string rightAR)
             {
-                if (!isBilingual)
+                if (isFrenchOnly)
                 {
                     lines.Add(LeftRight(leftFR, rightFR, halfWidth));
+                    return;
+                }
+                if (isArabicOnly)
+                {
+                    lines.Add(LeftRight(leftAR, rightAR, halfWidth));
                     return;
                 }
                 var frCol = LeftRight(leftFR, rightFR, halfWidth);
@@ -133,10 +140,19 @@ namespace BellaDolce.PrintAgent.Services
             AddDash();
 
             // === COMMENT (discount, free, etc.) ===
-            var hasBilingualComment = isBilingual && (!string.IsNullOrEmpty(job.CommentFR) || !string.IsNullOrEmpty(job.CommentAR));
-            if (hasBilingualComment)
+            if (isBilingual && (!string.IsNullOrEmpty(job.CommentFR) || !string.IsNullOrEmpty(job.CommentAR)))
             {
                 AddBilingual(job.CommentFR, "", job.CommentAR, "");
+                AddDash();
+            }
+            else if (isFrenchOnly && !string.IsNullOrEmpty(job.CommentFR))
+            {
+                lines.Add(CenterText(job.CommentFR, width));
+                AddDash();
+            }
+            else if (isArabicOnly && !string.IsNullOrEmpty(job.CommentAR))
+            {
+                lines.Add(CenterText(job.CommentAR, width));
                 AddDash();
             }
             else if (!string.IsNullOrEmpty(job.Comment))
@@ -156,10 +172,15 @@ namespace BellaDolce.PrintAgent.Services
                 var arCol2 = CenterText(labels.ComeBack_AR, halfWidth);
                 lines.Add(frCol2 + arCol2);
             }
-            else
+            else if (isFrenchOnly)
             {
                 lines.Add(CenterText(labels.ThankYou, width));
                 lines.Add(CenterText(labels.ComeBack, width));
+            }
+            else if (isArabicOnly)
+            {
+                lines.Add(CenterText(labels.ThankYou_AR, width));
+                lines.Add(CenterText(labels.ComeBack_AR, width));
             }
 
             return string.Join(Environment.NewLine, lines);

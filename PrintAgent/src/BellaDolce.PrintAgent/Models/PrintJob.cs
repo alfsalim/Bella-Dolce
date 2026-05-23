@@ -19,7 +19,7 @@ public class PrintJob
     public string Comment { get; set; } = string.Empty;
     public string CommentFR { get; set; } = string.Empty;
     public string CommentAR { get; set; } = string.Empty;
-    public string PrintLanguage { get; set; } = "BOTH";
+    public string PrintLanguage { get; set; } = string.Empty;
     public ReceiptLabels Labels { get; set; } = new();
 }
 
