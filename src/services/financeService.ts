@@ -24,7 +24,7 @@ import {
   PayrollRun,
   Payslip
 } from '../types';
-import { authFetch, getAuthHeaders } from '../lib/api-client';
+import { authFetch, getAuthHeaders, readApiErrorMessage } from '../lib/api-client';
 import { handleFirestoreError } from '../lib/db';
 import { format } from 'date-fns';
 
@@ -279,12 +279,15 @@ export const financeService = {
         status: 'BROUILLON',
       }),
     });
-    if (!runRes.ok) throw new Error('Failed to create payroll run');
+    if (!runRes.ok) {
+      const errMsg = await readApiErrorMessage(runRes);
+      throw new Error(errMsg || 'Failed to create payroll run');
+    }
     const run: PayrollRun = await runRes.json();
 
     // Create payslips
-    await Promise.all(payslips.map(({ emp, adj, calc }) =>
-      authFetch('/api/db/payslips', {
+    await Promise.all(payslips.map(async ({ emp, adj, calc }) => {
+      const slipRes = await authFetch('/api/db/payslips', {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -304,8 +307,12 @@ export const financeService = {
           cnasEmployer: calc.cnasEmployer,
           totalEmployerCost: calc.totalEmployerCost,
         }),
-      })
-    ));
+      });
+      if (!slipRes.ok) {
+        const errMsg = await readApiErrorMessage(slipRes);
+        throw new Error(errMsg || `Failed to create payslip for ${emp.name}`);
+      }
+    }));
 
     return run;
   },

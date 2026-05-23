@@ -1437,6 +1437,59 @@ async function startServer() {
     }
   });
 
+  // Finance: atomic journal entry creation
+  app.post("/api/finance/journal", requireAuth, async (req: any, res: express.Response) => {
+    const { entry, lines } = req.body;
+    if (!entry || !Array.isArray(lines) || lines.length === 0) {
+      return res.status(400).json({ error: 'entry and lines required' });
+    }
+    try {
+      const prisma = getPrisma();
+      const number = `JV-${new Date().toISOString().replace(/[-T:]/g, '').slice(0, 15)}`;
+      const result = await prisma.$transaction(async (tx) => {
+        const created = await tx.journalEntry.create({
+          data: { ...entry, number, createdAt: new Date() },
+        });
+        await tx.journalLine.createMany({
+          data: lines.map((l: any) => ({ ...l, journalId: created.id })),
+        });
+        return created;
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Finance: account balances aggregated from journal lines
+  app.get("/api/finance/balances", requireAuth, async (req: any, res: express.Response) => {
+    const { period } = req.query as { period?: string };
+    try {
+      const prisma = getPrisma();
+      const rows: { accountNumber: string; totalDebit: number; totalCredit: number }[] =
+        await prisma.$queryRaw(
+          period
+            ? Prisma.sql`
+                SELECT jl.accountNumber,
+                       CAST(SUM(jl.debit) AS REAL) as totalDebit,
+                       CAST(SUM(jl.credit) AS REAL) as totalCredit
+                FROM JournalLine jl
+                JOIN JournalEntry je ON je.id = jl.journalId
+                WHERE je.period = ${period}
+                GROUP BY jl.accountNumber`
+            : Prisma.sql`
+                SELECT jl.accountNumber,
+                       CAST(SUM(jl.debit) AS REAL) as totalDebit,
+                       CAST(SUM(jl.credit) AS REAL) as totalCredit
+                FROM JournalLine jl
+                GROUP BY jl.accountNumber`
+        );
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Generalized API routes for CRUD (Prisma bridge)
   app.get("/api/db/:collection", (req, res, next) => {
     if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();

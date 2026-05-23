@@ -11,7 +11,8 @@
       "Bash(npx tsc *)",
       "Bash(ssh 100.114.12.38 \"docker ps -a && echo '---' && docker logs --tail 50 \\\\$\\(docker ps -q | head -1\\) 2>&1\")",
       "Bash(./deploy-bella.sh --prod)",
-      "Bash(curl -sk --max-time 10 https://100.114.12.38:3500/)"
+      "Bash(curl -sk --max-time 10 https://100.114.12.38:3500/)",
+      "Bash(node -e ' *)"
     ]
   }
 }
