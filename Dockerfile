@@ -38,6 +38,10 @@ COPY --from=build /app/app.config.ts ./
 COPY --from=build /app/prisma ./prisma
 COPY entrypoint.sh ./entrypoint.sh
 
+# Force PRINT_LANGUAGE=FR in production Docker image
+RUN sed -i "s/PRINT_LANGUAGE: \"[A-Z]*\"/PRINT_LANGUAGE: \"FR\"/g" app.config.ts && \
+    grep "PRINT_LANGUAGE" app.config.ts
+
 EXPOSE 3000
 
 ENV NODE_ENV=production

@@ -589,14 +589,14 @@ export async function downloadPayslipPdf(opts: {
 
   const row = (label: string, value: string, o: { bold?: boolean; color?: string; bg?: string; size?: string } = {}) =>
     `<tr style="${o.bg ? `background:${o.bg};` : ''}">
-      <td style="padding:9px 16px;font-size:${o.size || '12px'};color:${o.color || C.text};font-weight:${o.bold ? '700' : '400'};">${esc(label)}</td>
-      <td style="padding:9px 16px;text-align:end;font-size:${o.size || '12px'};color:${o.color || C.text};font-weight:700;">${value}</td>
+      <td style="padding:7px 12px;font-size:${o.size || '11px'};color:${o.color || C.text};font-weight:${o.bold ? '700' : '400'};">${esc(label)}</td>
+      <td style="padding:7px 12px;text-align:end;font-size:${o.size || '11px'};color:${o.color || C.text};font-weight:700;">${value}</td>
     </tr>`;
 
   const section = (title: string, accent: string, bg: string, bdr: string, rows: string) =>
-    `<div style="border:1px solid ${bdr};border-radius:8px;overflow:hidden;margin-bottom:10px;">
-      <div style="background:${bg};padding:10px 16px;border-bottom:1px solid ${bdr};">
-        <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.text};">${esc(title)}</span>
+    `<div style="border:1px solid ${bdr};border-radius:6px;overflow:hidden;margin-bottom:8px;">
+      <div style="background:${bg};padding:8px 12px;border-bottom:1px solid ${bdr};">
+        <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:${C.text};">${esc(title)}</span>
       </div>
       <table style="width:100%;border-collapse:collapse;background:${C.white};">
         <tbody>${rows}</tbody>
@@ -604,8 +604,8 @@ export async function downloadPayslipPdf(opts: {
     </div>`;
 
   const logoHtml = logo
-    ? `<img src="${logo}" style="height:60px;width:auto;object-fit:contain;" />`
-    : `<span style="font-size:18px;font-weight:800;color:${C.text};">Bella Dolce</span>`;
+    ? `<img src="${logo}" style="height:48px;width:auto;object-fit:contain;" />`
+    : `<span style="font-size:16px;font-weight:800;color:${C.text};">Bella Dolce</span>`;
 
   // Employer identity block — read from configSnapshot
   const employerName = cfg.companyName || 'Bella Dolce';
@@ -642,26 +642,26 @@ export async function downloadPayslipPdf(opts: {
     <div style="display:flex;align-items:center;justify-content:space-between;">
       ${logoHtml}
       <div style="text-align:end;">
-        <div style="font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:${C.label};margin-bottom:6px;">${esc(L.payslip || 'BULLETIN DE PAIE')}</div>
-        <div style="font-size:20px;font-weight:800;color:${C.text};font-family:monospace;">${esc(slip.period)}</div>
+        <div style="font-size:9px;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:${C.label};margin-bottom:4px;">${esc(L.payslip || 'BULLETIN DE PAIE')}</div>
+        <div style="font-size:18px;font-weight:800;color:${C.text};font-family:monospace;">${esc(slip.period)}</div>
       </div>
     </div>
   </div>
 
   <!-- EMPLOYER / EMPLOYEE -->
   <div style="background:${C.white};border-bottom:2px solid ${C.border};padding:12px 28px;display:flex;gap:0;">
-    <div style="flex:1;padding-inline-end:24px;border-inline-end:2px solid ${C.border};">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.10em;color:${C.label};margin-bottom:8px;">${esc(L.payslipEmployerLabel || 'EMPLOYEUR')}</div>
-      <div style="font-size:13px;font-weight:800;color:${C.text};margin-bottom:4px;">${esc(employerName)}</div>
-      <div style="font-size:10px;color:${C.muted};line-height:1.7;">
+    <div style="flex:1;padding-inline-end:20px;border-inline-end:2px solid ${C.border};">
+      <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.label};margin-bottom:4px;">${esc(L.payslipEmployerLabel || 'EMPLOYEUR')}</div>
+      <div style="font-size:12px;font-weight:800;color:${C.text};margin-bottom:3px;">${esc(employerName)}</div>
+      <div style="font-size:9px;color:${C.muted};line-height:1.5;">
         ${employerAddress ? esc(employerAddress) + '<br/>' : ''}
         ${employerIds ? esc(employerIds) : ''}
       </div>
     </div>
-    <div style="flex:1;padding-inline-start:24px;">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.10em;color:${C.label};margin-bottom:8px;">${esc(L.employee || 'EMPLOYÉ')}</div>
-      <div style="font-size:15px;font-weight:800;color:${C.text};margin-bottom:8px;">${esc(slip.employeeName)}</div>
-      <div style="font-size:10px;color:${C.muted};line-height:1.8;">
+    <div style="flex:1;padding-inline-start:20px;">
+      <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.label};margin-bottom:4px;">${esc(L.employee || 'EMPLOYÉ')}</div>
+      <div style="font-size:13px;font-weight:800;color:${C.text};margin-bottom:4px;">${esc(slip.employeeName)}</div>
+      <div style="font-size:9px;color:${C.muted};line-height:1.5;">
         ${slip.matricule ? `<div><span style="font-weight:700;color:${C.text};">${esc(L.matriculeLabel || 'Matricule')} :</span> ${esc(slip.matricule)}</div>` : ''}
         ${slip.nin ? `<div><span style="font-weight:700;color:${C.text};">${esc(L.ninLabel || 'NIN')} :</span> ${esc(slip.nin)}</div>` : ''}
         ${slip.cnasNumber ? `<div><span style="font-weight:700;color:${C.text};">${esc(L.cnasNumberLabel || 'N° CNAS')} :</span> ${esc(slip.cnasNumber)}</div>` : ''}
@@ -698,17 +698,17 @@ export async function downloadPayslipPdf(opts: {
     )}
 
     <!-- NET TO PAY -->
-    <div style="background:${C.netBg};border:2px solid ${C.netBdr};border-radius:10px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:${C.net};">${esc(L.payslipNetToPayLabel || 'NET À PAYER')}</div>
-      <div style="font-size:28px;font-weight:800;color:${C.net};font-family:monospace;">${fmt(slip.netSalary)}</div>
+    <div style="background:${C.netBg};border:2px solid ${C.netBdr};border-radius:6px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:${C.net};">${esc(L.payslipNetToPayLabel || 'NET À PAYER')}</div>
+      <div style="font-size:24px;font-weight:800;color:${C.net};font-family:monospace;">${fmt(slip.netSalary)}</div>
     </div>
 
     <!-- FOOTER -->
-    <div style="border-top:2px solid ${C.rule};padding:16px 0;margin-top:20px;">
-      <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:12px;">
+    <div style="border-top:2px solid ${C.rule};padding:12px 0;margin-top:10px;">
+      <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;">
         <div style="flex:1;">
-          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:${C.label};margin-bottom:4px;">${esc(L.payslipEmployerLabel || 'CONTACT')}</div>
-          <div style="font-size:10px;color:${C.text};line-height:1.8;">
+          <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:${C.label};margin-bottom:3px;">${esc(L.payslipEmployerLabel || 'CONTACT')}</div>
+          <div style="font-size:9px;color:${C.text};line-height:1.6;">
             ${esc(employerName)}<br/>
             ${employerAddress ? esc(employerAddress) + '<br/>' : ''}
             ${cfg.shopPhone ? '<strong style="color:' + C.text + ';">Tél :</strong> ' + esc(cfg.shopPhone) + '<br/>' : ''}
@@ -716,15 +716,15 @@ export async function downloadPayslipPdf(opts: {
           </div>
         </div>
         <div style="flex:1;">
-          <div style="font-size:9px;color:${C.label};line-height:1.8;">
-            <div style="margin-bottom:12px;">
-              <div style="font-weight:800;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">${esc(L.payslipSignatureLabel || 'Signature & cachet')}</div>
-              <div style="border-top:1px solid ${C.rule};width:100%;margin-top:8px;"></div>
+          <div style="font-size:8px;color:${C.label};line-height:1.6;">
+            <div style="margin-bottom:8px;">
+              <div style="font-weight:800;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:2px;">${esc(L.payslipSignatureLabel || 'Signature & cachet')}</div>
+              <div style="border-top:1px solid ${C.rule};width:100%;margin-top:6px;"></div>
             </div>
           </div>
         </div>
       </div>
-      <div style="font-size:8px;color:${C.muted};line-height:1.6;margin-top:12px;border-top:1px solid ${C.rule};padding-top:8px;">
+      <div style="font-size:7px;color:${C.muted};line-height:1.5;margin-top:8px;border-top:1px solid ${C.rule};padding-top:6px;">
         ${esc(L.payslipGeneratedOn || 'Document généré le')} ${today}<br/>
         ${esc(L.payslipLegalNote || 'Ce bulletin est établi conformément à la législation algérienne en vigueur.')}
       </div>
