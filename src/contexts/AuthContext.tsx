@@ -219,8 +219,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('bakery_user');
     localStorage.removeItem('bakery_token');
     localStorage.removeItem(PERMS_KEY);
-    if (!window.location.pathname.startsWith('/login')) {
-      window.location.replace('/login');
+    const loginPath = `${import.meta.env.BASE_URL}login`;
+    if (!window.location.pathname.startsWith(loginPath)) {
+      window.location.replace(loginPath);
     }
   };
 
