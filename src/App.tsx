@@ -47,7 +47,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/belladolce">
       <Toaster position="top-right" />
       <AuthProvider>
         <LanguageProvider>

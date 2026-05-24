@@ -2557,10 +2557,14 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.use('/belladolce', express.static(distPath));
+    app.get('/belladolce', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+    app.get('/belladolce/*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+    app.get('/', (_req, res) => res.redirect('/belladolce'));
   }
 
   const certPath = process.env.SSL_CERT_PATH || '/app/certs/cert.pem';

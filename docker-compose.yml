@@ -3,13 +3,12 @@ services:
     container_name: bella-dolce2
     build: .
     ports:
-      - "3500:3000"  # External 3500 maps to Internal 3000
+      - "443:3000"  # HTTPS standard port → internal 3000
     environment:
       PORT: "3000"
       HOST: "0.0.0.0" # <--- Added this to allow Tailscale to connect
       NODE_ENV: production
       DATABASE_URL: file:/app/data/dev.db
-      BELLA_HTTP_ONLY: "1"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-bella-dolce-secret-change-in-production}
       REDIS_URL: redis://redis:6379
