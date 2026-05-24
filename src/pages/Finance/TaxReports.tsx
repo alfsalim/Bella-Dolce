@@ -164,7 +164,7 @@ const TaxReports: React.FC = () => {
   const handleExportG12Pdf = useCallback(async () => {
     try {
       if (!currentDeclaration) {
-        toast.error('No declaration to export');
+        toast.error(tf('ifuNoDeclarationToExport'));
         return;
       }
       const filename = `G12-${selectedYear}-${new Date().toISOString().split('T')[0]}.pdf`;
@@ -190,7 +190,7 @@ const TaxReports: React.FC = () => {
         submissionDate,
       });
     } catch (err) {
-      toast.error('Failed to export PDF');
+      toast.error(tf('ifuExportPdfFailed'));
       console.error(err);
     }
   }, [currentDeclaration, monthlyTurnover, selectedYear, isRTL, tf]);
@@ -204,7 +204,7 @@ const TaxReports: React.FC = () => {
   const handleExportG50Pdf = useCallback(async () => {
     try {
       if (!hasPayroll) {
-        toast.error('No payroll data available');
+        toast.error(tf('ifuNoPayrollData'));
         return;
       }
       const filename = `G50ter-${selectedYear}-Q${selectedQuarter}-${new Date().toISOString().split('T')[0]}.pdf`;
@@ -226,7 +226,7 @@ const TaxReports: React.FC = () => {
         submissionDate,
       });
     } catch (err) {
-      toast.error('Failed to export PDF');
+      toast.error(tf('ifuExportPdfFailed'));
       console.error(err);
     }
   }, [selectedYear, selectedQuarter, isRTL, tf, hasPayroll, quarterlyPayroll]);
@@ -364,7 +364,7 @@ const TaxReports: React.FC = () => {
           disabled={isSaving || loading}
           className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-bold rounded-xl transition-all"
         >
-          {isSaving ? 'Saving...' : <BilingualLabel tKey="ifuActionSaveDraft" tf />}
+          {isSaving ? tf('savingInProgress') : <BilingualLabel tKey="ifuActionSaveDraft" tf />}
         </button>
         <button
           onClick={handlePrintG12}
@@ -456,7 +456,9 @@ const TaxReports: React.FC = () => {
             </p>
           </div>
           <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Statut</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              <BilingualLabel tKey="ifuStatus" tf />
+            </p>
             <p className="text-sm font-bold text-blue-600 dark:text-blue-400 mt-2">
               <BilingualLabel tKey="ifuStatusDraft" tf />
             </p>
@@ -532,7 +534,7 @@ const TaxReports: React.FC = () => {
             <BilingualLabel tKey="ifuDeadlineReminder" tf />
           </p>
           <p className="text-xs font-bold text-slate-600 dark:text-slate-400 mt-2">
-            Deadline: March 31, {new Date().getFullYear() + 1}
+            {tf('ifuDeadlineMarch31')} {new Date().getFullYear() + 1}
           </p>
         </div>
       </div>
@@ -595,7 +597,7 @@ const TaxReports: React.FC = () => {
 
     const handleSave = async () => {
       if (ratePercent < 0 || ratePercent > 100) {
-        toast.error('Rate must be between 0 and 100');
+        toast.error(tf('ifuConfigRateValidationError'));
         return;
       }
       setIsSaving(true);
@@ -663,7 +665,7 @@ const TaxReports: React.FC = () => {
             )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {tf('ifuConfigActivityTypeValue')} — Boulangerie commerciale/artisanale
+            {tf('ifuConfigActivityTypeValue')} — {tf('ifuConfigActivityName')}
           </p>
         </div>
 
@@ -685,7 +687,7 @@ const TaxReports: React.FC = () => {
           {/* Live preview */}
           <div className="pt-4 border-t border-slate-100 dark:border-white/10">
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-3 uppercase tracking-wider">
-              Aperçu / معاينة
+              {tf('ifuConfigPreviewLabel')}
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-50 dark:bg-zinc-800 p-3 rounded-xl">
@@ -714,7 +716,7 @@ const TaxReports: React.FC = () => {
             )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Les délais sont conformes aux réglementations fiscales algériennes.
+            {tf('ifuConfigDeadlineNote')}
           </p>
         </div>
 
@@ -751,9 +753,9 @@ const TaxReports: React.FC = () => {
                     <tr key={idx} className="border-b border-slate-50 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
                       <td className="py-2 pr-4 font-mono text-xs text-slate-500">v{idx + 1}</td>
                       <td className="py-2 pr-4 text-slate-700 dark:text-slate-300 text-xs">
-                        {v.createdAt ? new Date(v.createdAt).toLocaleString() : 'N/A'}
+                        {v.createdAt ? new Date(v.createdAt).toLocaleString() : tf('notAvailable')}
                       </td>
-                      <td className="py-2 pr-4 text-slate-700 dark:text-slate-300 text-xs">{v.createdBy || 'Admin'}</td>
+                      <td className="py-2 pr-4 text-slate-700 dark:text-slate-300 text-xs">{v.createdBy || tf('adminLabel')}</td>
                       <td className="py-2">
                         <button
                           onClick={() => setDetailVersion(v)}
@@ -784,7 +786,7 @@ const TaxReports: React.FC = () => {
               </div>
               <div className="p-6 space-y-4 text-sm">
                 <div className="text-xs text-slate-400 mb-2">
-                  {detailVersion.createdAt ? new Date(detailVersion.createdAt).toLocaleString() : 'N/A'} — {detailVersion.createdBy || 'Admin'}
+                  {detailVersion.createdAt ? new Date(detailVersion.createdAt).toLocaleString() : tf('notAvailable')} — {detailVersion.createdBy || tf('adminLabel')}
                 </div>
                 <pre className="bg-slate-50 dark:bg-zinc-800 p-4 rounded-xl text-xs overflow-x-auto whitespace-pre-wrap break-all">
                   {JSON.stringify(detailVersion, null, 2)}
