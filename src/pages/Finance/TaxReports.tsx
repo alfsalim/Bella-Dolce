@@ -92,6 +92,32 @@ const TaxReports: React.FC = () => {
     return months;
   }, [sales, selectedYear]);
 
+  // Calculate quarterly payroll metrics from real payslips
+  const quarterlyPayroll = useMemo(() => {
+    const quarters = [
+      { start: 1, end: 3 },
+      { start: 4, end: 6 },
+      { start: 7, end: 9 },
+      { start: 10, end: 12 },
+    ];
+    const q = quarters[selectedQuarter - 1];
+
+    const quarterPayslips = payslips.filter((p) => {
+      const date = new Date(p.executionDate);
+      return date.getFullYear() === selectedYear && date.getMonth() + 1 >= q.start && date.getMonth() + 1 <= q.end;
+    });
+
+    const uniqueEmployees = new Set(quarterPayslips.map((p) => p.employeeId));
+    const totalGross = quarterPayslips.reduce((sum, p) => sum + (p.grossSalary || 0), 0);
+    const totalIrg = quarterPayslips.reduce((sum, p) => sum + (p.irgRetained || 0), 0);
+
+    return {
+      employeeCount: uniqueEmployees.size,
+      totalGrossPayroll: totalGross,
+      totalIrgWithheld: totalIrg,
+    };
+  }, [payslips, selectedYear, selectedQuarter]);
+
   // Get or create declaration for year
   const currentDeclaration = useMemo(() => {
     return declarations.find((d) => d.year === selectedYear) || null;
@@ -192,9 +218,9 @@ const TaxReports: React.FC = () => {
         declaration: {
           year: selectedYear,
           quarter: selectedQuarter,
-          employeeCount: 3, // TODO: aggregate from payslips
-          totalGrossPayroll: 450000, // TODO: aggregate from payslips
-          totalIrgWithheld: 67500, // TODO: aggregate from payslips
+          employeeCount: quarterlyPayroll.employeeCount,
+          totalGrossPayroll: quarterlyPayroll.totalGrossPayroll,
+          totalIrgWithheld: quarterlyPayroll.totalIrgWithheld,
           status: 'BROUILLON',
         },
         submissionDate,
@@ -203,7 +229,7 @@ const TaxReports: React.FC = () => {
       toast.error('Failed to export PDF');
       console.error(err);
     }
-  }, [selectedYear, selectedQuarter, isRTL, tf, hasPayroll]);
+  }, [selectedYear, selectedQuarter, isRTL, tf, hasPayroll, quarterlyPayroll]);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // G12 ANNUAL DECLARATION
@@ -409,14 +435,16 @@ const TaxReports: React.FC = () => {
             <p className="text-sm text-slate-500 dark:text-slate-400">
               <BilingualLabel tKey="ifuEmployeeCount" tf />
             </p>
-            <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-2">3</p>
+            <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-2">
+              {quarterlyPayroll.employeeCount}
+            </p>
           </div>
           <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
             <p className="text-sm text-slate-500 dark:text-slate-400">
               <BilingualLabel tKey="ifuTotalGrossPayroll" tf />
             </p>
             <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-2">
-              {formatCurrency(450000)}
+              {formatCurrency(quarterlyPayroll.totalGrossPayroll)}
             </p>
           </div>
           <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
@@ -424,7 +452,7 @@ const TaxReports: React.FC = () => {
               <BilingualLabel tKey="ifuTotalIrgWithheld" tf />
             </p>
             <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-2">
-              {formatCurrency(67500)}
+              {formatCurrency(quarterlyPayroll.totalIrgWithheld)}
             </p>
           </div>
           <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
