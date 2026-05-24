@@ -528,6 +528,24 @@ export interface Budget {
   createdAt: string;
 }
 
+export interface Utility {
+  id: string;
+  type: string; // ELECTRICITY, WATER, GAS, INTERNET, PHONE, OTHER
+  provider: string;
+  periodStart: string; // ISO date
+  periodEnd: string; // ISO date
+  amount: number;
+  currency: string;
+  dueDate?: string | null; // ISO date
+  paidAt?: string | null; // ISO date
+  status: 'PENDING' | 'PAID' | 'OVERDUE'; // auto-derived
+  invoiceNumber?: string | null;
+  attachmentUrl?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type Language = 'fr' | 'ar';
 
 export enum OperationType {

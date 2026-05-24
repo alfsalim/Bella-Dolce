@@ -133,7 +133,7 @@ formatCurrency(1234.56) // "1 234,56 DA"
 ## Utility Data Model (Prisma)
 
 ### Schema (added 2026-05-24)
-**Model**: `Utility` (lines 318–337 in schema.prisma)
+**Model**: `Utility` (lines 319–340 in schema.prisma)
 - id: cuid
 - type: String (enum values: ELECTRICITY, WATER, GAS, INTERNET, PHONE, OTHER)
 - provider: String (e.g., "Sonelgaz", "ADE", "Djezzy")
@@ -143,7 +143,7 @@ formatCurrency(1234.56) // "1 234,56 DA"
 - currency: String (default: "DZD")
 - dueDate: DateTime (nullable) — payment due date
 - paidAt: DateTime (nullable) — actual payment date
-- status: String (enum values: PENDING, PAID, OVERDUE)
+- status: String (auto-derived: PENDING, PAID, OVERDUE)
 - invoiceNumber: String (nullable) — reference number from provider
 - attachmentUrl: String (nullable) — URL to scanned bill/receipt
 - notes: String (nullable) — internal notes
@@ -152,14 +152,25 @@ formatCurrency(1234.56) // "1 234,56 DA"
 ### Indexes
 - type, provider, status, createdAt (for filtering and sorting)
 
-### Next Steps (API Routes, UI)
-Not yet implemented. Will be required:
-- GET /api/db/utilities — list with filtering (status, type, date range, provider)
-- GET /api/db/utilities/{id} — fetch single
-- POST /api/db/utilities — create new
-- PUT /api/db/utilities/{id} — update (pay, change status)
-- DELETE /api/db/utilities/{id} — delete
-- GET /api/db/utilities/summary — aggregated stats (total pending, overdue, paid by month)
+### API Routes (implemented 2026-05-24)
+
+**Status Auto-Derivation**:
+- If `paidAt` is set → status = PAID
+- Else if `dueDate` < now → status = OVERDUE
+- Else → status = PENDING
+
+**CRUD Endpoints**:
+- `GET /api/db/utilities` — list with filters (type, provider, status, date range via where/orderBy query params)
+- `GET /api/db/utilities/{id}` — fetch single utility
+- `POST /api/db/utilities` — create new utility (status auto-derived)
+- `PUT /api/db/utilities/{id}` — update utility (status auto-derived on save)
+- `DELETE /api/db/utilities/{id}` — delete utility
+
+**Aggregation**:
+- `GET /api/utilities/summary?month=MM&year=YYYY` — returns:
+  - `total`: sum of amounts for the period
+  - `byType`: grouped by type with totals and status breakdown
+  - `utilities`: full utility list for the period
 
 ---
 

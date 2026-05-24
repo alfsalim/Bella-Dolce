@@ -78,7 +78,8 @@ const getModel = (collectionName: string) => {
     'financialEmployees': prisma.financialEmployee,
     'stockMovements': prisma.stockMovement,
     'promotions': prisma.promotion,
-    'settings': prisma.setting
+    'settings': prisma.setting,
+    'utilities': prisma.utility
   };
   const model = mapping[collectionName];
   if (!model && collectionName !== 'health') {
@@ -333,6 +334,42 @@ function prepareFixedAssetMaintenanceForPrisma(raw: Record<string, any>) {
   } else if (raw.nextDueDate != null) {
     out.nextDueDate = new Date(raw.nextDueDate);
   }
+  return out;
+}
+
+function deriveUtilityStatus(raw: Record<string, any>): string {
+  if (raw.paidAt) return "PAID";
+  if (raw.dueDate) {
+    const dueDate = new Date(raw.dueDate);
+    if (dueDate < new Date()) return "OVERDUE";
+  }
+  return "PENDING";
+}
+
+function prepareUtilityForPrisma(raw: Record<string, any>) {
+  const num = (v: unknown, d: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : d;
+  };
+  const out: Record<string, any> = {
+    type: String(raw.type ?? "OTHER").trim().toUpperCase(),
+    provider: String(raw.provider ?? "").trim(),
+    amount: num(raw.amount, 0),
+    currency: String(raw.currency ?? "DZD"),
+  };
+  if (raw.periodStart) out.periodStart = new Date(raw.periodStart);
+  if (raw.periodEnd) out.periodEnd = new Date(raw.periodEnd);
+  if (raw.dueDate) out.dueDate = new Date(raw.dueDate);
+  else out.dueDate = null;
+  if (raw.paidAt) out.paidAt = new Date(raw.paidAt);
+  else out.paidAt = null;
+  out.status = deriveUtilityStatus(raw);
+  if (raw.invoiceNumber) out.invoiceNumber = String(raw.invoiceNumber).trim();
+  else out.invoiceNumber = null;
+  if (raw.attachmentUrl) out.attachmentUrl = String(raw.attachmentUrl).trim();
+  else out.attachmentUrl = null;
+  if (raw.notes) out.notes = String(raw.notes).trim();
+  else out.notes = null;
   return out;
 }
 
@@ -1490,6 +1527,43 @@ async function startServer() {
     }
   });
 
+  app.get("/api/utilities/summary", requireAuth, async (req: any, res: express.Response) => {
+    const { month, year } = req.query;
+    try {
+      const prisma = getPrisma();
+      let where: Record<string, any> = {};
+      if (month && year) {
+        const startDate = new Date(Number(year), Number(month) - 1, 1);
+        const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+        where = {
+          periodStart: { gte: startDate },
+          periodEnd: { lte: endDate }
+        };
+      }
+      const utilities = await prisma.utility.findMany({
+        where,
+        orderBy: { periodStart: 'desc' }
+      });
+      const grouped: Record<string, { total: number; count: number; status: Record<string, number> }> = {};
+      utilities.forEach(util => {
+        if (!grouped[util.type]) {
+          grouped[util.type] = { total: 0, count: 0, status: { PENDING: 0, PAID: 0, OVERDUE: 0 } };
+        }
+        grouped[util.type].total += util.amount;
+        grouped[util.type].count += 1;
+        grouped[util.type].status[util.status] = (grouped[util.type].status[util.status] || 0) + 1;
+      });
+      res.json({
+        period: month && year ? { month: Number(month), year: Number(year) } : null,
+        total: utilities.reduce((sum, u) => sum + u.amount, 0),
+        byType: grouped,
+        utilities: utilities
+      });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   // Generalized API routes for CRUD (Prisma bridge)
   app.get("/api/db/:collection", (req, res, next) => {
     if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();
@@ -1666,6 +1740,14 @@ async function startServer() {
         if (idKeep) dataToSave.id = idKeep;
       }
 
+      if (collection === 'utilities') {
+        const idKeep = dataToSave.id;
+        const prepared = prepareUtilityForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, prepared);
+        if (idKeep) dataToSave.id = idKeep;
+      }
+
       if (collection === 'purchases') {
         dataToSave.invoiceNumber = `INV-${Date.now()}`;
         dataToSave.date = new Date(dataToSave.purchaseDate);
@@ -1784,6 +1866,13 @@ async function startServer() {
 
       if (collection === 'fixedAssetMaintenances') {
         const prepared = prepareFixedAssetMaintenanceForPrisma(dataToSave);
+        Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
+        Object.assign(dataToSave, prepared);
+        delete dataToSave.id;
+      }
+
+      if (collection === 'utilities') {
+        const prepared = prepareUtilityForPrisma(dataToSave);
         Object.keys(dataToSave).forEach((k) => delete dataToSave[k]);
         Object.assign(dataToSave, prepared);
         delete dataToSave.id;
