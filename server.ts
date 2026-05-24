@@ -79,7 +79,8 @@ const getModel = (collectionName: string) => {
     'stockMovements': prisma.stockMovement,
     'promotions': prisma.promotion,
     'settings': prisma.setting,
-    'utilities': prisma.utility
+    'utilities': prisma.utility,
+    'utilityDefinitions': prisma.utilityDefinition
   };
   const model = mapping[collectionName];
   if (!model && collectionName !== 'health') {

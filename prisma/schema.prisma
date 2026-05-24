@@ -316,26 +316,48 @@ model FixedAssetMaintenance {
   @@index([date])
 }
 
+model UtilityDefinition {
+  id                String    @id @default(cuid())
+  type              String
+  provider          String
+  frequency         String    @default("MONTHLY")
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  alertsEnabled     Boolean   @default(true)
+  overdueDays       Int       @default(30)
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  utilities         Utility[]
+
+  @@index([type])
+  @@index([provider])
+}
+
 model Utility {
-  id            String   @id @default(cuid())
-  type          String
-  provider      String
-  periodStart   DateTime
-  periodEnd     DateTime
-  amount        Float
-  currency      String   @default("DZD")
-  dueDate       DateTime?
-  paidAt        DateTime?
-  status        String   @default("PENDING")
-  invoiceNumber String?
-  attachmentUrl String?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               String              @id @default(cuid())
+  definitionId     String?
+  definition       UtilityDefinition?  @relation(fields: [definitionId], references: [id], onDelete: SetNull)
+  type             String
+  provider         String
+  periodStart      DateTime
+  periodEnd        DateTime
+  amount           Float
+  lastBillAmount   Float?
+  currency         String              @default("DZD")
+  dueDate          DateTime?
+  paidAt           DateTime?
+  status           String              @default("PENDING")
+  invoiceNumber    String?
+  attachmentUrl    String?
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   @@index([type])
   @@index([provider])
   @@index([status])
+  @@index([definitionId])
   @@index([createdAt])
 }
 

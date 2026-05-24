@@ -31,13 +31,14 @@ import {
   sanitizeItemCategoryConfig,
 } from '../lib/itemCategories';
 import AssetManagement from './AssetManagement';
+import UtilityDefinitions from './UtilityDefinitions';
 
 const Settings: React.FC = () => {
-  const { t, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole, tCategory, setCategoryNames } = useLanguage();
+  const { t, tf, isRTL, language, setLanguage, isBilingual, toggleBilingual, tRole, tCategory, setCategoryNames } = useLanguage();
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'assets' | 'consumables' | 'aiManager' | 'data'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'logs' | 'promotions' | 'categories' | 'assets' | 'consumables' | 'aiManager' | 'utilityDefinitions' | 'data'>('general');
   const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
@@ -96,7 +97,7 @@ const Settings: React.FC = () => {
   const isSettingsSection = location.pathname.startsWith('/settings');
   const availableTabs = isSettingsSection
     ? (['general', 'users', 'roles', 'categories', 'data'] as const)
-    : (['promotions', 'consumables', 'assets', 'aiManager', 'logs'] as const);
+    : (['promotions', 'consumables', 'assets', 'aiManager', 'utilityDefinitions', 'logs'] as const);
   const sectionTitleKey = isSettingsSection ? 'settings' : 'administration';
 
   useEffect(() => {
@@ -1100,6 +1101,20 @@ const Settings: React.FC = () => {
         )}
         {!isSettingsSection && isAdmin && (
           <button
+            onClick={() => setActiveTab('utilityDefinitions')}
+            className={clsx(
+              "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
+              activeTab === 'utilityDefinitions'
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20"
+                : "text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-200"
+            )}
+          >
+            <Bell className="w-4 h-4" />
+            {tf('utilityDefinitions')}
+          </button>
+        )}
+        {!isSettingsSection && isAdmin && (
+          <button
             onClick={() => setActiveTab('aiManager')}
             className={clsx(
               "px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap",
@@ -1887,6 +1902,9 @@ const Settings: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+      {activeTab === 'utilityDefinitions' && isAdmin && (
+        <UtilityDefinitions />
       )}
       {activeTab === 'aiManager' && isAdmin && <AIManager embedded />}
       {activeTab === 'data' && isAdmin && (

@@ -414,16 +414,6 @@ const Expenses: React.FC = () => {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
           )}
         </button>
-        <Link
-          to="/finance?tab=utilities"
-          className={clsx(
-            'pb-3 text-sm font-bold transition-all relative text-primary-600 hover:text-primary-700'
-          )}
-          title={tf('utilities')}
-        >
-          <BilingualLabel tKey="utilities" tf />
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full opacity-50" />
-        </Link>
       </div>
 
       {activeSubTab === 'invoices' && (
