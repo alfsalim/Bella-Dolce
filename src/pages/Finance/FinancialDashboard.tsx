@@ -246,7 +246,10 @@ const FinancialDashboard: React.FC = () => {
 
       {/* Secondary Stats - OpEx Breakdown and Risk */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
+        <div
+          className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm group relative"
+          title={tf('utilitiesTrackedSeparately') || 'Utilities are tracked separately under Finance > Utilities'}
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-600">
               <Zap className="w-5 h-5" />
@@ -264,6 +267,10 @@ const FinancialDashboard: React.FC = () => {
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
             {tf('utilitiesCosts')}: {formatCurrency(profitability?.utilities ?? 0)}
           </p>
+          {/* Tooltip */}
+          <div className="absolute left-0 right-0 bottom-full mb-2 hidden group-hover:block bg-slate-900 dark:bg-slate-700 text-white text-xs px-3 py-2 rounded-lg whitespace-nowrap z-10 pointer-events-none">
+            {tf('utilitiesTrackedSeparately') || 'Utilities are tracked separately under Finance > Utilities'}
+          </div>
         </div>
 
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">

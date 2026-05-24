@@ -256,7 +256,33 @@ interface ProfitabilityMetrics {
 - `opex`: "المصاريف التشغيلية"
 - `utilitiesCosts`: "المرافق والخدمات"
 
-### Reports Pending
-- **P&L Statement** (not yet implemented)
-- **Monthly Summary** (not yet implemented)
-These would benefit from displaying utilities line for operating expense breakdown.
+### Cross-links (2026-05-24)
+
+### Spending view
+**Location**: `src/pages/Finance/Expenses.tsx` (lines 417-424)
+- Added "Utilities" link that navigates to `/finance?tab=utilities`
+- Link is styled as a tab alongside "Invoices" and "Assets" tabs
+- Users can click to jump directly to utilities tracking without mixing records in Expenses table
+
+### Finance Dashboard
+**Location**: `src/pages/Finance/FinancialDashboard.tsx` (lines 248-268)
+- OpEx card displays monthly operating expenses total
+- Secondary line shows utilities costs breakdown: `{tf('utilitiesCosts')}: {formatCurrency(profitability?.utilities ?? 0)}`
+- Hover tooltip: "Utilities are tracked separately under Finance > Utilities"
+
+### Monthly P&L Report
+**Location**: `src/pages/Finance/TaxReports.tsx` (lines 118–177)
+- Added new P&L sub-tab alongside TVA and G50 reports
+- Features:
+  - Month/year selector for period filtering
+  - KPI cards: Revenue, COGS, Gross Profit
+  - P&L summary table: Revenue → COGS → Gross Profit → OpEx → Operating Profit
+  - **Utilities breakdown section** (lines 167–177):
+    - Displays total per type (Electricity, Water, Gas, Internet, Phone, Other)
+    - Sorted by highest cost first
+    - Total utilities row with all services summed
+- i18n keys: `profitLoss`, `utilitiesBreakdown`, `total`, `utilitiesTrackedSeparately`
+
+## Reports Status
+- **P&L Statement** (implemented 2026-05-24)
+- **Monthly Summary** (pending future enhancement)
