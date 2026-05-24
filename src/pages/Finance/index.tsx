@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  BookOpen, 
-  Users, 
-  Receipt, 
-  TrendingUp, 
-  ShieldAlert, 
-  PieChart, 
+import {
+  LayoutDashboard,
+  BookOpen,
+  Users,
+  Receipt,
+  TrendingUp,
+  ShieldAlert,
+  PieChart,
   Wallet,
   FileText,
-  Calculator
+  Calculator,
+  TrendingDown
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { clsx } from 'clsx';
@@ -21,6 +22,7 @@ import Revenue from './Revenue';
 import TaxReports from './TaxReports';
 import RiskEngine from './RiskEngine';
 import Budgeting from './Budgeting';
+import Utilities from './Utilities';
 import BilingualLabel from '../../components/BilingualLabel';
 
 const Finance: React.FC = () => {
@@ -32,6 +34,7 @@ const Finance: React.FC = () => {
     { id: 'gl', icon: BookOpen, label: 'generalLedger' },
     { id: 'payroll', icon: Users, label: 'payroll' },
     { id: 'expenses', icon: Receipt, label: 'expenses' },
+    { id: 'utilities', icon: TrendingDown, label: 'utilities' },
     { icon: TrendingUp, id: 'revenue', label: 'revenue' },
     { icon: FileText, id: 'tax', label: 'taxReports' },
     { icon: ShieldAlert, id: 'risk', label: 'riskEngine' },
@@ -81,6 +84,7 @@ const Finance: React.FC = () => {
         {activeTab === 'gl' && <GeneralLedger />}
         {activeTab === 'payroll' && <Payroll />}
         {activeTab === 'expenses' && <Expenses />}
+        {activeTab === 'utilities' && <Utilities />}
         {activeTab === 'revenue' && <Revenue />}
         {activeTab === 'tax' && <TaxReports />}
         {activeTab === 'risk' && <RiskEngine />}

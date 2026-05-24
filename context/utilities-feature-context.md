@@ -174,6 +174,30 @@ formatCurrency(1234.56) // "1 234,56 DA"
 
 ---
 
+## UI Implementation Pages (2026-05-24)
+
+### List page
+`src/pages/Finance/Utilities.tsx` — Tab in Finance module:
+- Table: Provider | Type | Period | Amount | Status badge | Due date | Actions (Edit/Delete)
+- Filters: Type (all + 6 enum values), Month picker, Year, Status
+- "Add Utility" button top-right
+- Monthly total card at top
+
+### Form (Modal)
+`src/pages/Finance/UtilitiesForm.tsx` — Modal form component:
+- Create: `useFormOpen()` + `setEditingId(null)` opens modal
+- Edit: `setEditingId(id)` opens modal with populated data
+- Type dropdown (6 values), Provider (with autocomplete from past entries)
+- Period start / Period end (date pickers)
+- Amount input
+- Due date picker (optional)
+- Mark as paid checkbox (sets paidAt = now)
+- Invoice number input
+- Notes textarea
+- Submit calls POST /api/db/utilities or PUT /api/db/utilities/{id}
+
+---
+
 ## For Utilities Feature Development
 
 **No profitability utilities exist yet.** When building the utilities feature, you will likely need to:
