@@ -861,6 +861,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     ifuDeclaration: "Déclaration IFU",
     ifuG12Annual: "Déclaration IFU G12 (Annuelle)",
     ifuG50Quarterly: "Déclaration G50 ter (Trimestrielle)",
+    ifuG50TerNote: "Déclaration G50 ter établie conformément à la réglementation fiscale algérienne",
     ifuTaxDashboard: "Tableau de bord fiscal",
     ifuYear: "Année",
     ifuQuarter: "Trimestre",
