@@ -13,18 +13,18 @@ model RolePermission {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  name         String
-  email        String        @unique
-  phone        String?
-  role         String
-  status       String        @default("active")
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  username     String?       @unique
-  password     String?
+  id                        String        @id @default(uuid())
+  name                      String
+  email                     String        @unique
+  phone                     String?
+  role                      String
+  status                    String        @default("active")
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+  username                  String?       @unique
+  password                  String?
   companyRegistrationNumber String?
-  activityLogs ActivityLog[]
+  activityLogs              ActivityLog[]
 }
 
 model Product {
@@ -65,13 +65,13 @@ model RawMaterial {
   wasteQuantity Float    @default(0)
   minStock      Float    @default(0)
   status        String   @default("none")
-  description   String?
   imageUrl      String?
   brand         String?
   expiryDate    String?
   disabled      Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  description   String?
 }
 
 model Recipe {
@@ -147,14 +147,14 @@ model Sale {
   cashierName   String?
   customerId    String?
   totalAmount   Float
-  amountPaid    Float?
-  change        Float?
   paymentMethod String
   items         String
-  discount      Float?
+  createdAt     DateTime @default(now())
+  amountPaid    Float?
+  change        Float?
   comment       String?
   returnComment String?
-  createdAt     DateTime @default(now())
+  discount      Float?
 }
 
 model Supplier {
@@ -230,11 +230,11 @@ model JournalLine {
 }
 
 model PayrollRun {
-  id            String   @id @default(uuid())
-  period        String
-  executionDate DateTime
-  totalGross    Float    @default(0)
-  totalNet      Float
+  id                String   @id @default(uuid())
+  period            String
+  executionDate     DateTime
+  totalGross        Float    @default(0)
+  totalNet          Float
   totalCNAS         Float    @default(0)
   totalCNASEmployer Float    @default(0)
   totalIRG          Float    @default(0)
@@ -281,36 +281,36 @@ model SupplierInvoice {
 }
 
 model FixedAsset {
-  id                 String                   @id @default(uuid())
-  code               String                   @unique
+  id                 String                  @id @default(uuid())
+  code               String                  @unique
   name               String
-  category           String                   @default("other")
+  category           String                  @default("other")
   location           String?
   acquisitionCost    Float
-  usefulLifeYears    Int                      @default(5)
-  salvageValue       Float                    @default(0)
-  depreciationMethod String                 @default("LINEAR")
+  usefulLifeYears    Int                     @default(5)
+  salvageValue       Float                   @default(0)
+  depreciationMethod String                  @default("LINEAR")
   notes              String?
   lastMaintenanceAt  DateTime?
   nextMaintenanceAt  DateTime?
   maintenanceNotes   String?
-  status             String                   @default("IN_SERVICE")
-  acquisitionDate    DateTime                 @default(now())
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  status             String                  @default("IN_SERVICE")
+  acquisitionDate    DateTime                @default(now())
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
   maintenances       FixedAssetMaintenance[]
 }
 
 model FixedAssetMaintenance {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   fixedAssetId String
-  asset        FixedAsset @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
   date         DateTime
-  description  String    @default("")
-  cost         Float     @default(0)
+  description  String     @default("")
+  cost         Float      @default(0)
   nextDueDate  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  asset        FixedAsset @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
 
   @@index([fixedAssetId])
   @@index([date])
@@ -323,6 +323,9 @@ model UtilityDefinition {
   frequency         String    @default("MONTHLY")
   contractStartDate DateTime?
   contractEndDate   DateTime?
+  fixedPrice        Float?
+  dueDay            Int       @default(31)
+  generateRecurring Boolean   @default(false)
   alertsEnabled     Boolean   @default(true)
   overdueDays       Int       @default(30)
   notes             String?
@@ -335,24 +338,24 @@ model UtilityDefinition {
 }
 
 model Utility {
-  id               String              @id @default(cuid())
-  definitionId     String?
-  definition       UtilityDefinition?  @relation(fields: [definitionId], references: [id], onDelete: SetNull)
-  type             String
-  provider         String
-  periodStart      DateTime
-  periodEnd        DateTime
-  amount           Float
-  lastBillAmount   Float?
-  currency         String              @default("DZD")
-  dueDate          DateTime?
-  paidAt           DateTime?
-  status           String              @default("PENDING")
-  invoiceNumber    String?
-  attachmentUrl    String?
-  notes            String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id             String             @id @default(cuid())
+  definitionId   String?
+  type           String
+  provider       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  amount         Float
+  lastBillAmount Float?
+  currency       String             @default("DZD")
+  dueDate        DateTime?
+  paidAt         DateTime?
+  status         String             @default("PENDING")
+  invoiceNumber  String?
+  attachmentUrl  String?
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  definition     UtilityDefinition? @relation(fields: [definitionId], references: [id])
 
   @@index([type])
   @@index([provider])
@@ -379,25 +382,25 @@ model RiskSnapshot {
 }
 
 model FinancialEmployee {
-  id                   String    @id @default(uuid())
-  name                 String
-  role                 String
-  email                String?
-  phone                String?
-  matricule            String    @unique
-  nin                  String?
-  cnasNumber           String?
-  department           String?
-  hireDate             DateTime?
-  baseSalary           Float
-  transportAllowance   Float     @default(0)
-  performanceBonus     Float     @default(0)
-  otherAllowances      Float     @default(0)
-  contributesToCNAS    Boolean   @default(true)
-  bankRIB              String?
-  status               String    @default("ACTIF")
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  name               String
+  role               String
+  email              String?
+  phone              String?
+  matricule          String    @unique
+  nin                String?
+  cnasNumber         String?
+  department         String?
+  hireDate           DateTime?
+  baseSalary         Float
+  transportAllowance Float     @default(0)
+  performanceBonus   Float     @default(0)
+  otherAllowances    Float     @default(0)
+  contributesToCNAS  Boolean   @default(true)
+  bankRIB            String?
+  status             String    @default("ACTIF")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 model StockMovement {

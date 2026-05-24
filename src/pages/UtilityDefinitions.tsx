@@ -14,6 +14,9 @@ type UtilityDefinition = {
   frequency: string;
   contractStartDate?: string;
   contractEndDate?: string;
+  fixedPrice?: number;
+  dueDay?: number;
+  generateRecurring?: boolean;
   alertsEnabled: boolean;
   overdueDays: number;
   notes?: string;
@@ -31,6 +34,9 @@ const UtilityDefinitions: React.FC = () => {
     frequency: 'MONTHLY',
     contractStartDate: '',
     contractEndDate: '',
+    fixedPrice: undefined,
+    dueDay: 31,
+    generateRecurring: false,
     alertsEnabled: true,
     overdueDays: 30,
     notes: ''
@@ -106,6 +112,21 @@ const UtilityDefinitions: React.FC = () => {
 
       if (res.ok) {
         toast.success(editingDef ? tf('updated') : tf('created'));
+        const savedDef = await res.json();
+
+        // Auto-generate recurring utilities if fixedPrice is set and generateRecurring is true
+        if (formData.fixedPrice && formData.generateRecurring) {
+          try {
+            await authFetch(`/api/db/utilities/generate-recurring`, {
+              method: 'POST',
+              headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ definitionId: savedDef.id })
+            });
+          } catch (err) {
+            console.error('Error generating recurring utilities:', err);
+          }
+        }
+
         setIsModalOpen(false);
         setEditingDef(null);
         setFormData({
@@ -114,6 +135,9 @@ const UtilityDefinitions: React.FC = () => {
           frequency: 'MONTHLY',
           contractStartDate: '',
           contractEndDate: '',
+          fixedPrice: undefined,
+          dueDay: 31,
+          generateRecurring: false,
           alertsEnabled: true,
           overdueDays: 30,
           notes: ''
@@ -157,6 +181,9 @@ const UtilityDefinitions: React.FC = () => {
       frequency: def.frequency,
       contractStartDate: def.contractStartDate ? format(new Date(def.contractStartDate), 'yyyy-MM-dd') : '',
       contractEndDate: def.contractEndDate ? format(new Date(def.contractEndDate), 'yyyy-MM-dd') : '',
+      fixedPrice: def.fixedPrice,
+      dueDay: def.dueDay,
+      generateRecurring: def.generateRecurring,
       alertsEnabled: def.alertsEnabled,
       overdueDays: def.overdueDays,
       notes: def.notes
@@ -172,6 +199,9 @@ const UtilityDefinitions: React.FC = () => {
       frequency: 'MONTHLY',
       contractStartDate: '',
       contractEndDate: '',
+      fixedPrice: undefined,
+      dueDay: 31,
+      generateRecurring: false,
       alertsEnabled: true,
       overdueDays: 30,
       notes: ''
@@ -346,6 +376,49 @@ const UtilityDefinitions: React.FC = () => {
                 />
               </div>
             </div>
+
+            {/* Fixed Price */}
+            <div>
+              <label className="block text-sm font-medium mb-2">{tf('utilitiesFixedPrice') || 'Fixed Price'}</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.fixedPrice ?? ''}
+                onChange={e => setFormData({...formData, fixedPrice: e.target.value ? parseFloat(e.target.value) : undefined})}
+                placeholder="e.g., 5000"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700"
+              />
+              <p className="text-xs text-gray-500 mt-1">{tf('utilitiesFixedPriceHint') || 'Leave empty for variable billing'}</p>
+            </div>
+
+            {/* Due Day */}
+            {formData.fixedPrice && (
+              <div>
+                <label className="block text-sm font-medium mb-2">{tf('utilitiesDueDay') || 'Due Day of Month'}</label>
+                <input
+                  type="number"
+                  value={formData.dueDay || 31}
+                  onChange={e => setFormData({...formData, dueDay: parseInt(e.target.value) || 31})}
+                  min="1"
+                  max="31"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700"
+                />
+                <p className="text-xs text-gray-500 mt-1">{tf('utilitiesDueDayHint') || 'Day of month when bill is due (1-31, default 31 = end of month)'}</p>
+              </div>
+            )}
+
+            {/* Auto-generate Recurring */}
+            {formData.fixedPrice && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.generateRecurring || false}
+                  onChange={e => setFormData({...formData, generateRecurring: e.target.checked})}
+                  className="rounded"
+                />
+                <span className="text-sm font-medium">{tf('utilitiesGenerateRecurring') || 'Auto-generate Recurring Bills'}</span>
+              </label>
+            )}
 
             {/* Alerts */}
             <div className="space-y-2">

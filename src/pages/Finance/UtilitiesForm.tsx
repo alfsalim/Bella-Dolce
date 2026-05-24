@@ -20,6 +20,18 @@ type UtilityFormData = {
   invoiceNumber?: string;
   attachmentUrl?: string;
   notes?: string;
+  definitionId?: string;
+};
+
+type UtilityDefinition = {
+  id: string;
+  type: string;
+  provider: string;
+  frequency: string;
+  fixedPrice?: number;
+  dueDay?: number;
+  contractStartDate?: string;
+  contractEndDate?: string;
 };
 
 const UTILITY_TYPES = ['ELECTRICITY', 'WATER', 'GAS', 'INTERNET', 'PHONE', 'OTHER'] as const;
@@ -35,6 +47,7 @@ const UtilitiesForm: React.FC<UtilitiesFormProps> = ({ utilityId, onClose, onSuc
   const [loading, setLoading] = useState(!!utilityId);
   const [submitting, setSubmitting] = useState(false);
   const [providers, setProviders] = useState<string[]>([]);
+  const [definitions, setDefinitions] = useState<UtilityDefinition[]>([]);
   const [form, setForm] = useState<UtilityFormData>({
     type: 'ELECTRICITY',
     provider: '',
@@ -46,6 +59,7 @@ const UtilitiesForm: React.FC<UtilitiesFormProps> = ({ utilityId, onClose, onSuc
     paidAt: null,
     invoiceNumber: '',
     notes: '',
+    definitionId: undefined,
   });
 
   useEffect(() => {
@@ -94,8 +108,43 @@ const UtilitiesForm: React.FC<UtilitiesFormProps> = ({ utilityId, onClose, onSuc
         console.error(e);
       }
     };
+
+    // Fetch utility definitions
+    const fetchDefinitions = async () => {
+      try {
+        const res = await authFetch('/api/db/utilityDefinitions', {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = await parseJsonResponse<UtilityDefinition[]>(res);
+          setDefinitions(data);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
     void fetchProviders();
+    void fetchDefinitions();
   }, [utilityId, t]);
+
+  const handleDefinitionSelect = (defId: string) => {
+    const def = definitions.find(d => d.id === defId);
+    if (!def) return;
+
+    // Auto-populate from definition
+    setForm(prev => {
+      const newDueDate = def.fixedPrice && def.dueDay ? format(new Date(new Date().getFullYear(), new Date().getMonth() + 1, Math.min(def.dueDay, 28)), 'yyyy-MM-dd') : prev.dueDate;
+      return {
+        ...prev,
+        definitionId: defId,
+        type: def.type,
+        provider: def.provider,
+        amount: def.fixedPrice || prev.amount,
+        dueDate: newDueDate,
+      };
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,6 +216,32 @@ const UtilitiesForm: React.FC<UtilitiesFormProps> = ({ utilityId, onClose, onSuc
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Link to Definition */}
+          <div>
+            <label className="block text-sm font-bold text-slate-900 dark:text-white mb-2">
+              {tf('utilitiesDefinition') || 'Service Definition'}
+            </label>
+            <select
+              value={form.definitionId || ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleDefinitionSelect(e.target.value);
+                } else {
+                  setForm({ ...form, definitionId: undefined });
+                }
+              }}
+              className="w-full px-4 py-2 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none dark:text-white"
+            >
+              <option value="">— Select a definition (optional) —</option>
+              {definitions.map((def) => (
+                <option key={def.id} value={def.id}>
+                  {def.provider} ({def.type})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">{tf('utilitiesDefinitionHint') || 'Selecting a definition will auto-populate type, provider, and amount'}</p>
+          </div>
+
           <div>
             <label className="block text-sm font-bold text-slate-900 dark:text-white mb-2">
               <BilingualLabel tKey="utilitiesType" tf /> <span className="text-red-600">*</span>

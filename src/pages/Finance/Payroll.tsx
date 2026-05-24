@@ -933,6 +933,15 @@ const Payroll: React.FC = () => {
   const tx = (key: string, vars: Record<string, string>) =>
     Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{{${k}}}`, v), tf(key));
 
+  // ── Get current user for role check ────────────────────────────────────────
+  const currentUser = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('bakery_user') || 'null'); }
+    catch { return null; }
+  }, []);
+  const isAdmin = currentUser?.role === 'admin';
+  const isManager = currentUser?.role === 'manager';
+  const canAccessConfig = isAdmin || isManager;
+
   // ── Sub-tab ────────────────────────────────────────────────────────────────
   const [activeSubTab, setActiveSubTab] = useState('employees');
 
@@ -1241,7 +1250,7 @@ const Payroll: React.FC = () => {
     <div className="space-y-6">
       {/* Sub-tabs */}
       <div className="flex items-center gap-4 border-b border-slate-100 dark:border-white/10">
-        {['employees', 'runs'].map(tab => (
+        {(['employees', 'runs'] as const).concat(canAccessConfig ? ['config'] : []).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveSubTab(tab)}
@@ -1252,7 +1261,10 @@ const Payroll: React.FC = () => {
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             )}
           >
-            <BilingualLabel tKey={tab === 'employees' ? 'financeEmployees' : 'financePayrollRuns'} tf />
+            <BilingualLabel
+              tKey={tab === 'employees' ? 'financeEmployees' : tab === 'runs' ? 'financePayrollRuns' : 'payrollConfigTab'}
+              tf
+            />
             {activeSubTab === tab && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
             )}
@@ -1810,6 +1822,11 @@ const Payroll: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── CONFIGURATION TAB (admin/manager only) ── */}
+      {activeSubTab === 'config' && canAccessConfig && (
+        <PayrollConfigAdmin />
       )}
 
       {/* ════════════════════════════════════════════════════════════════════

@@ -2,6 +2,45 @@
 
 ---
 
+## Session 8 — 2026-05-24
+
+### Phase
+4 — Admin config UI integration (tab wiring only)
+
+### Completed
+- **Added "Configuration" tab to Payroll page** (`src/pages/Finance/Payroll.tsx`)
+  - Role-based access: visible to admin/manager only (checked via `localStorage.getItem('bakery_user').role`)
+  - Uses `canAccessConfig = isAdmin || isManager` guard
+  - Tab added dynamically to tab array: `['employees', 'runs'].concat(canAccessConfig ? ['config'] : [])`
+  - Tab label uses i18n key: `payrollConfigTab` (already defined in constants.ts)
+  - Renders `<PayrollConfigAdmin />` component when `activeSubTab === 'config'` and user has permission
+- **Verified integration**
+  - Build: no syntax errors ✓
+  - Tests: 66 passing (5 test files) ✓
+  - i18n keys for config UI already complete in `constants.ts` (lines 1970-2020 FR, 2390-2440 AR)
+
+### Decisions made
+- Configuration tab shows only to admin/manager, not staff/cashier
+- Tab placement: after "Runs" tab (employees → runs → config)
+- Reused existing `PayrollConfigAdmin` component (no new component built)
+
+### Open issues
+- `PayrollConfigAdmin` component exists but may need testing/review for completeness
+- No e2e Playwright tests for config workflow yet
+- BRD.md still not updated (Phase 6)
+
+### Files modified
+- `src/pages/Finance/Payroll.tsx` — added role check, updated tabs array, added config tab rendering
+
+### Next exact task
+**Phase 4 continued — Full config UI validation**
+1. Test the configuration tab in browser (run `npm run dev:backend` + `cd frontend && npm run dev`)
+2. Verify all form fields render and save correctly
+3. If any issues, fix them
+4. Then: BRD.md update + e2e Playwright tests (Phase 6)
+
+---
+
 ## Session 7 — 2026-05-23
 
 ### Phase

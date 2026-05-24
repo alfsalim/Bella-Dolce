@@ -1565,6 +1565,94 @@ async function startServer() {
     }
   });
 
+  app.post("/api/db/utilities/generate-recurring", requireAuth, async (req: any, res: express.Response) => {
+    const { definitionId } = req.body;
+    if (!definitionId) {
+      return res.status(400).json({ error: 'definitionId is required' });
+    }
+
+    try {
+      const prisma = getPrisma();
+      const definition = await prisma.utilityDefinition.findUnique({ where: { id: definitionId } });
+      if (!definition || !definition.fixedPrice) {
+        return res.status(400).json({ error: 'Definition not found or fixedPrice not set' });
+      }
+
+      const now = new Date();
+      const startDate = definition.contractStartDate || now;
+      const endDate = definition.contractEndDate || new Date(now.getFullYear() + 2, now.getMonth(), now.getDate());
+
+      const created = [];
+      let current = new Date(startDate);
+
+      while (current <= endDate) {
+        const periodStart = new Date(current);
+        let periodEnd = new Date(current);
+
+        // Calculate period end based on frequency
+        if (definition.frequency === 'MONTHLY') {
+          periodEnd.setMonth(periodEnd.getMonth() + 1);
+          periodEnd.setDate(0);
+        } else if (definition.frequency === 'QUARTERLY') {
+          periodEnd.setMonth(periodEnd.getMonth() + 3);
+          periodEnd.setDate(0);
+        } else if (definition.frequency === 'ANNUAL') {
+          periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+          periodEnd.setDate(periodEnd.getDate() - 1);
+        }
+
+        // Calculate due date
+        const dueDate = new Date(periodEnd);
+        const dueDay = definition.dueDay || 31;
+        if (dueDay < 31) {
+          dueDate.setDate(dueDay);
+        }
+
+        // Check if utility for this period already exists
+        const existing = await prisma.utility.findFirst({
+          where: {
+            definitionId,
+            periodStart: {
+              gte: new Date(periodStart.getFullYear(), periodStart.getMonth(), 1),
+              lt: new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 1)
+            }
+          }
+        });
+
+        if (!existing) {
+          const utility = await prisma.utility.create({
+            data: {
+              definitionId,
+              type: definition.type,
+              provider: definition.provider,
+              periodStart,
+              periodEnd,
+              amount: definition.fixedPrice,
+              dueDate,
+              currency: 'DZD',
+              status: 'PENDING'
+            }
+          });
+          created.push(utility);
+        }
+
+        // Move to next period
+        if (definition.frequency === 'MONTHLY') {
+          current.setMonth(current.getMonth() + 1);
+        } else if (definition.frequency === 'QUARTERLY') {
+          current.setMonth(current.getMonth() + 3);
+        } else if (definition.frequency === 'ANNUAL') {
+          current.setFullYear(current.getFullYear() + 1);
+        }
+      }
+
+      res.json({ created: created.length, utilities: created });
+    } catch (error) {
+      console.error('Error generating recurring utilities:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   // Generalized API routes for CRUD (Prisma bridge)
   app.get("/api/db/:collection", (req, res, next) => {
     if (PUBLIC_GET_COLLECTIONS.includes(req.params.collection)) return next();
