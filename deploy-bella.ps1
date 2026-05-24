@@ -2,7 +2,7 @@
 $IMAGE_NAME = "bella-dolce2-bella-dolce2:latest"
 $TAR_FILE = "bella-dolce.tar"
 $CONTAINER_NAME = "bella-dolce2"
-$EXT_PORT = 3500
+$EXT_PORT = 443
 $INT_PORT = 3000
 $DB_URL = "file:/app/data/dev.db"
 
