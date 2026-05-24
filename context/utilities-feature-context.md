@@ -198,16 +198,65 @@ formatCurrency(1234.56) // "1 234,56 DA"
 
 ---
 
-## For Utilities Feature Development
+## Profitability Engine (2026-05-24)
 
-**No profitability utilities exist yet.** When building the utilities feature, you will likely need to:
-1. Create margin calculation functions (product-level)
-2. Create COGS (Cost of Goods Sold) aggregation
-3. Add utilities for operating expense categorization (if expanding beyond today's raw materials / consumables split)
-4. Possibly add utilities for financial ratio calculations (profit margin %, ROI, etc.)
+### Implementation
+**File**: `src/lib/profitabilityEngine.ts` (created 2026-05-24)
 
-All new utilities should:
-- Be placed in `src/lib/` with appropriate naming (e.g., `profitabilityEngine.ts`, `costCalculations.ts`)
-- Use `formatCurrency()` from LanguageContext for any output
-- Use translation keys from `FINANCIAL_TRANSLATIONS` for any labels
-- Keep files under 500 lines (per CLAUDE.md project rules)
+**Main function**: `calculateProfitability(sales, invoices, utilities, period) → ProfitabilityMetrics`
+```typescript
+interface ProfitabilityMetrics {
+  revenue: number;           // Sum of sales.totalAmount in period
+  cogs: number;              // Sum of invoices.totalAmount (Cost of Goods Sold from purchases)
+  grossProfit: number;       // Revenue - COGS
+  opex: number;              // Operating Expenses (utilities total)
+  operatingProfit: number;   // Gross Profit - OpEx (EBIT)
+  utilities: number;         // Utilities total for period
+}
+```
+
+**Accounting rules**:
+- **Revenue**: From sales API (POS transactions)
+- **COGS**: From supplier invoices (purchased materials)
+- **Gross Profit**: Revenue - COGS
+- **OpEx**: Sum of utilities.amount for the period (operating expenses)
+- **Operating Profit (EBIT)**: Gross Profit - OpEx
+- **Shop rent**: NOT included (property is owned)
+
+### Dashboard Integration (2026-05-24)
+**File**: `src/pages/Finance/FinancialDashboard.tsx` (updated 2026-05-24)
+
+**Changes**:
+- Imports `calculateProfitability` from profitabilityEngine
+- Fetches utilities via `/api/db/utilities` endpoint
+- Calculates profitability metrics on period change
+- Displays 4 main KPI cards:
+  1. Revenue (emerald)
+  2. COGS (red) — replaces "expenses" to clarify cost structure
+  3. Gross Profit (blue)
+  4. Operating Profit / EBIT (purple)
+- Displays secondary metrics:
+  1. OpEx card — shows total operating expenses + utilities breakdown
+  2. Risk Score card (preserved)
+
+### i18n Keys (2026-05-24)
+**File**: `src/constants.ts` (added translations)
+
+**French keys** (line 2031–2036):
+- `grossProfit`: "Résultat brut"
+- `operatingProfit`: "Résultat opérationnel (EBIT)"
+- `cogs`: "Coût d'achat des matières"
+- `opex`: "Dépenses opérationnelles"
+- `utilitiesCosts`: "Services généraux"
+
+**Arabic keys** (added at equivalent offset in ar section):
+- `grossProfit`: "إجمالي الربح"
+- `operatingProfit`: "الربح التشغيلي (EBIT)"
+- `cogs`: "تكلفة البضائع المباعة"
+- `opex`: "المصاريف التشغيلية"
+- `utilitiesCosts`: "المرافق والخدمات"
+
+### Reports Pending
+- **P&L Statement** (not yet implemented)
+- **Monthly Summary** (not yet implemented)
+These would benefit from displaying utilities line for operating expense breakdown.

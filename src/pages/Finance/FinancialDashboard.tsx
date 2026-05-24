@@ -13,6 +13,7 @@ import {
 import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
 import { authFetch, getAuthHeaders } from '../../lib/api-client';
+import { calculateProfitability, ProfitabilityMetrics } from '../../lib/profitabilityEngine';
 import {
   AreaChart,
   Area,
@@ -30,6 +31,8 @@ const FinancialDashboard: React.FC = () => {
   const [period, setPeriod] = useState<Period>('month');
   const [sales, setSales] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [utilities, setUtilities] = useState<any[]>([]);
+  const [profitability, setProfitability] = useState<ProfitabilityMetrics | null>(null);
 
   const riskScore = 82;
 
@@ -42,6 +45,11 @@ const FinancialDashboard: React.FC = () => {
     authFetch('/api/db/purchases', { headers: getAuthHeaders() })
       .then(r => r.ok ? r.json() : [])
       .then(d => setInvoices(Array.isArray(d) ? d : []))
+      .catch(() => {});
+
+    authFetch('/api/db/utilities', { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setUtilities(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, []);
 
@@ -129,7 +137,31 @@ const FinancialDashboard: React.FC = () => {
     return { totalRevenue: rev, totalExpenses: exp };
   }, [sales, invoices, period]);
 
-  const netProfit = totalRevenue - totalExpenses;
+  useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    let startDate: Date, endDate: Date;
+    if (period === 'day') {
+      startDate = new Date(now);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(now);
+      endDate.setHours(23, 59, 59, 999);
+    } else if (period === 'month') {
+      startDate = new Date(year, month, 1);
+      endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    } else {
+      startDate = new Date(year, 0, 1);
+      endDate = new Date(year, 11, 31, 23, 59, 59, 999);
+    }
+
+    const metrics = calculateProfitability(sales, invoices, utilities, {
+      startDate,
+      endDate,
+    });
+    setProfitability(metrics);
+  }, [sales, invoices, utilities, period]);
 
   const periodButtons: { key: Period; label: string }[] = [
     { key: 'day',   label: tf('day')   || 'Jour' },
@@ -155,42 +187,82 @@ const FinancialDashboard: React.FC = () => {
             <BilingualLabel tKey="revenue" tf />
           </p>
           <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-1">
-            {formatCurrency(totalRevenue)}
+            {formatCurrency(profitability?.revenue ?? 0)}
           </p>
         </div>
 
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-rose-50 dark:bg-rose-900/20 rounded-lg text-rose-600">
+            <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-600">
               <TrendingDown className="w-5 h-5" />
             </div>
-            <span className="text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded-full flex items-center gap-1">
+            <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-full flex items-center gap-1">
               <ArrowDownRight className="w-3 h-3" />
-              {tf('expenses')}
+              {tf('cogs')}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            <BilingualLabel tKey="expenses" tf />
+            <BilingualLabel tKey="cogs" tf />
           </p>
           <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-1">
-            {formatCurrency(totalExpenses)}
+            {formatCurrency(profitability?.cogs ?? 0)}
           </p>
         </div>
 
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-primary-50 dark:bg-primary-900/20 rounded-lg text-primary-600">
+            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600">
               <Activity className="w-5 h-5" />
             </div>
-            <span className="text-xs font-bold text-primary-600 bg-primary-50 dark:bg-primary-900/20 px-2 py-1 rounded-full">
+            <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full">
               {tf('financialStatusHealthy')}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            <BilingualLabel tKey="netProfit" tf />
+            <BilingualLabel tKey="grossProfit" tf />
           </p>
-          <p className={`text-2xl font-display font-bold mt-1 ${netProfit >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
-            {formatCurrency(netProfit)}
+          <p className={`text-2xl font-display font-bold mt-1 ${(profitability?.grossProfit ?? 0) >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
+            {formatCurrency(profitability?.grossProfit ?? 0)}
+          </p>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-purple-600">
+              <Activity className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold text-purple-600 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-full">
+              EBIT
+            </span>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            <BilingualLabel tKey="operatingProfit" tf />
+          </p>
+          <p className={`text-2xl font-display font-bold mt-1 ${(profitability?.operatingProfit ?? 0) >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
+            {formatCurrency(profitability?.operatingProfit ?? 0)}
+          </p>
+        </div>
+      </div>
+
+      {/* Secondary Stats - OpEx Breakdown and Risk */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-600">
+              <Zap className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-bold text-orange-600 bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-full">
+              OpEx
+            </span>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            <BilingualLabel tKey="opex" tf />
+          </p>
+          <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-1">
+            {formatCurrency(profitability?.opex ?? 0)}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+            {tf('utilitiesCosts')}: {formatCurrency(profitability?.utilities ?? 0)}
           </p>
         </div>
 
