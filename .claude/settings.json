@@ -13,7 +13,9 @@
       "Bash(./deploy-bella.sh --prod)",
       "Bash(curl -sk --max-time 10 https://100.114.12.38:3500/)",
       "Bash(node -e ' *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(DOCKER_HOST=tcp://100.114.12.38:2375 docker logs bella-dolce2 --tail 50)",
+      "Bash(DOCKER_HOST=tcp://100.114.12.38:2375 docker exec bella-dolce2 sh -c \"mkdir -p /app/certs && openssl req -x509 -newkey rsa:4096 -keyout /app/certs/key.pem -out /app/certs/cert.pem -days 365 -nodes -subj '/CN=localhost'\")"
     ]
   }
 }

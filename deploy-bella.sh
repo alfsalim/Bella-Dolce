@@ -12,6 +12,7 @@ CONTAINER_NAME="bella-dolce2"
 EXT_PORT=443
 INT_PORT=3000
 DB_URL="file:/app/data/dev.db"
+JWT_SECRET="${JWT_SECRET:-$(grep '^JWT_SECRET=' "$(dirname "$0")/.env" 2>/dev/null | cut -d= -f2-)}"
 
 # ── Production (Windows) ─────────────────────────────────
 PROD_DATA_DIR="C:/Users/CD COMPANY/Bella-Dolce/data"
@@ -383,6 +384,7 @@ SEED_EOF
             -e NODE_ENV=production \
             -e BELLA_HTTP_ONLY=1 \
             -e REDIS_URL="redis://redis:6379" \
+            -e JWT_SECRET="$JWT_SECRET" \
             -v "$PROD_DATA_DIR:/app/data" \
             -v "$PROD_BACKUP_DIR:/app/backups" \
             --restart unless-stopped \
