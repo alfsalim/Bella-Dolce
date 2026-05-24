@@ -217,6 +217,12 @@ else
     fi
 fi
 
+# Re-capture CHANGED_FILES from the committed diff (excludes .env, deploy-bella.sh, etc.)
+if git rev-parse HEAD~1 >/dev/null 2>&1; then
+    CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -v '^$')
+fi
+log_info "App files changed: $(echo "$CHANGED_FILES" | grep -c . || echo 0)"
+
 # ════════════════════════════════════════════════
 #   DETERMINE DEPLOY TYPE — full vs incremental
 # ════════════════════════════════════════════════
