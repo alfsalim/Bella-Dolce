@@ -98,7 +98,7 @@ prisma/
 A task is ONLY complete when ALL pass:
 - [ ] Vitest tests pass (npm run test)
 - [ ] Playwright E2E passes (npx playwright test)
-- [ ] BRD.md updated with feature spec + test coverage
+- [ ] doc/BRD.md updated with feature spec + test coverage
 - [ ] Zero hardcoded strings or values in the diff
 
 ### Deploy (only when dev is clean)

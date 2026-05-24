@@ -749,3 +749,258 @@ export async function downloadPayslipPdf(opts: {
   }
   pdf.save(opts.filename);
 }
+
+// ─── IFU G12 Annual Summary PDF ────────────────────────────────────────────────
+
+export async function downloadG12Pdf(opts: {
+  filename: string;
+  isRTL: boolean;
+  currencyUnit: string;
+  labels: Record<string, string>;
+  declaration: {
+    year: number;
+    grossTurnover: number;
+    taxRatePercent: number;
+    taxAmountDue: number;
+    status: string;
+    submittedAt?: string;
+    configSnapshot?: string;
+  };
+  monthlyTurnover: Record<number, number>;
+  companyName?: string;
+  companyAddress?: string;
+  nif?: string;
+  nis?: string;
+  rc?: string;
+  submissionDate?: string;
+}): Promise<void> {
+  const { isRTL, currencyUnit: cu, labels: L, declaration, monthlyTurnover, submissionDate } = opts;
+  const pdf = newA4Pdf();
+  const first = { value: true };
+  const logo = await getLogoDataUrl();
+
+  // Parse company info from configSnapshot or use defaults
+  let cfg: Record<string, any> = {};
+  try { if (declaration.configSnapshot) cfg = JSON.parse(declaration.configSnapshot); } catch { /* ignore */ }
+
+  const companyName = opts.companyName || cfg.companyName || 'Bella Dolce';
+  const companyAddress = opts.companyAddress || cfg.companyAddress || '';
+  const nif = opts.nif || cfg.nif || '';
+  const nis = opts.nis || cfg.nis || '';
+  const rc = opts.rc || cfg.rc || '';
+
+  // Format values for display
+  const fmt = (n: number) => `${n.toLocaleString(isRTL ? 'ar-DZ' : 'fr-DZ')} ${cu}`;
+  const fmtPct = (n: number) => `${n.toFixed(2)}%`;
+
+  // Month names in French/Arabic
+  const monthNames = [
+    isRTL
+      ? ['يناير', 'فبراير', 'مارس', 'إبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+      : ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+  ][0];
+
+  // Build monthly table rows
+  const monthRows = Object.entries(monthlyTurnover)
+    .map(([monthStr, amount]) => {
+      const monthNum = parseInt(monthStr);
+      return `<tr style="border-bottom:1px solid #e8dcc8;">
+        <td style="padding:10px 12px;color:#8b7355;font-size:11px;">${esc(monthNames[monthNum - 1])}</td>
+        <td style="padding:10px 12px;text-align:end;color:#1c1208;font-weight:700;font-family:monospace;font-size:11px;">${fmt(amount)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const monthTotalRow = `<tr style="background:#f0e8d8;border-bottom:1px solid #e8dcc8;">
+    <td style="padding:12px;font-weight:800;color:#1c1208;">${esc(L.total || 'Total')}</td>
+    <td style="padding:12px;text-align:end;font-weight:800;color:#1c1208;font-family:monospace;font-size:12px;">${fmt(declaration.grossTurnover)}</td>
+  </tr>`;
+
+  const statusColor = declaration.status === 'SOUMIS'
+    ? '#059669'
+    : declaration.status === 'FINALISÉ'
+      ? '#0284c7'
+      : '#b45309';
+
+  const inner =
+    banner(L, `${L.ifuG12Annual || 'DÉCLARATION IFU (G12)'} — ${declaration.year}`, [
+      companyName,
+      companyAddress,
+      nif ? `NIF: ${nif}` : '',
+      nis ? `NIS: ${nis}` : '',
+      rc ? `RC: ${rc}` : '',
+    ].filter(Boolean), logo) +
+    `<div style="padding:0 22px;">
+
+    <!-- STATUS BADGE -->
+    <div style="display:flex;gap:12px;margin-bottom:20px;">
+      <div style="flex:1;background:#fff;border:1px solid #e8dcc8;border-radius:12px;padding:12px 16px;">
+        <div style="font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">${esc(L.ifuStatus || 'Statut')}</div>
+        <div style="font-size:13px;font-weight:800;margin-top:4px;color:${statusColor};">${esc(
+          declaration.status === 'SOUMIS' ? (L.ifuStatusSubmitted || 'SOUMIS') :
+          declaration.status === 'FINALISÉ' ? (L.ifuStatusFinalized || 'FINALISÉ') :
+          (L.ifuStatusDraft || 'BROUILLON')
+        )}</div>
+      </div>
+      <div style="flex:1;background:#fff;border:1px solid #e8dcc8;border-radius:12px;padding:12px 16px;">
+        <div style="font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">${esc(L.date || 'Date de soumission')}</div>
+        <div style="font-size:12px;font-weight:700;margin-top:4px;color:#1c1208;">${esc(submissionDate || '—')}</div>
+      </div>
+    </div>
+
+    <!-- MONTHLY BREAKDOWN TABLE -->
+    <div style="background:#fff;border:1px solid #e8dcc8;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+      <div style="padding:12px 16px;font-weight:800;border-bottom:1px solid #e8dcc8;background:#f0e8d8;">
+        ${esc(L.ifuMonthlyBreakdown || 'Détail mensuel')}
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #e8dcc8;background:#faf7f2;">
+            <th style="padding:10px 12px;text-align:start;font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;">${esc(L.month || 'Mois')}</th>
+            <th style="padding:10px 12px;text-align:end;font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;">${esc(L.amount || 'Montant')}</th>
+          </tr>
+        </thead>
+        <tbody>${monthRows}${monthTotalRow}</tbody>
+      </table>
+    </div>
+
+    <!-- SUMMARY CARDS -->
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+      ${kpiCard(L.ifuAnnualTurnover || 'CA Annuel', fmt(declaration.grossTurnover))}
+      ${kpiCard(L.ifuApplicableRate || 'Taux IFU', fmtPct(declaration.taxRatePercent))}
+      ${kpiCard(L.ifuTaxDue || 'IFU à payer', fmt(declaration.taxAmountDue))}
+    </div>
+
+    <!-- FOOTER -->
+    <div style="border-top:1px solid #e8dcc8;padding-top:16px;margin-top:20px;font-size:9px;color:#8b7355;">
+      <p>${esc(L.ifuDeclaration || 'Déclaration établie conformément à la réglementation fiscale algérienne')}</p>
+      <p style="margin-top:6px;">Généré le ${esc(new Date().toLocaleDateString(isRTL ? 'ar-DZ' : 'fr-DZ'))}</p>
+    </div>
+
+    </div>`;
+
+  const el = document.createElement('div');
+  el.innerHTML = wrapRoot(isRTL, inner);
+  await flushChunks(pdf, [el], first);
+  pdf.save(opts.filename);
+}
+
+// ─── IFU G50ter Quarterly Summary PDF ──────────────────────────────────────────
+
+export async function downloadG50TerPdf(opts: {
+  filename: string;
+  isRTL: boolean;
+  currencyUnit: string;
+  labels: Record<string, string>;
+  declaration: {
+    year: number;
+    quarter: number;
+    employeeCount: number;
+    totalGrossPayroll: number;
+    totalIrgWithheld: number;
+    status: string;
+    submittedAt?: string;
+    configSnapshot?: string;
+  };
+  companyName?: string;
+  companyAddress?: string;
+  nif?: string;
+  nis?: string;
+  rc?: string;
+  submissionDate?: string;
+}): Promise<void> {
+  const { isRTL, currencyUnit: cu, labels: L, declaration, submissionDate } = opts;
+  const pdf = newA4Pdf();
+  const first = { value: true };
+  const logo = await getLogoDataUrl();
+
+  // Parse company info from configSnapshot or use defaults
+  let cfg: Record<string, any> = {};
+  try { if (declaration.configSnapshot) cfg = JSON.parse(declaration.configSnapshot); } catch { /* ignore */ }
+
+  const companyName = opts.companyName || cfg.companyName || 'Bella Dolce';
+  const companyAddress = opts.companyAddress || cfg.companyAddress || '';
+  const nif = opts.nif || cfg.nif || '';
+  const nis = opts.nis || cfg.nis || '';
+  const rc = opts.rc || cfg.rc || '';
+
+  // Format values for display
+  const fmt = (n: number) => `${n.toLocaleString(isRTL ? 'ar-DZ' : 'fr-DZ')} ${cu}`;
+
+  // Quarter name
+  const quarterLabel = isRTL
+    ? ['Q1 (يناير–مارس)', 'Q2 (أبريل–يونيو)', 'Q3 (يوليو–سبتمبر)', 'Q4 (أكتوبر–ديسمبر)'][declaration.quarter - 1]
+    : [`Q${declaration.quarter} (Jan–Mar)`, `Q${declaration.quarter} (Avr–Jun)`, `Q${declaration.quarter} (Jul–Sep)`, `Q${declaration.quarter} (Oct–Dec)`][declaration.quarter - 1];
+
+  const statusColor = declaration.status === 'SOUMIS'
+    ? '#059669'
+    : declaration.status === 'FINALISÉ'
+      ? '#0284c7'
+      : '#b45309';
+
+  const inner =
+    banner(L, `${L.ifuG50Quarterly || 'DÉCLARATION G50 TER'} — ${declaration.year}`, [
+      companyName,
+      companyAddress,
+      nif ? `NIF: ${nif}` : '',
+      nis ? `NIS: ${nis}` : '',
+      rc ? `RC: ${rc}` : '',
+    ].filter(Boolean), logo) +
+    `<div style="padding:0 22px;">
+
+    <!-- PERIOD & STATUS -->
+    <div style="display:flex;gap:12px;margin-bottom:20px;">
+      <div style="flex:1;background:#fff;border:1px solid #e8dcc8;border-radius:12px;padding:12px 16px;">
+        <div style="font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">${esc(L.period || 'Période')}</div>
+        <div style="font-size:13px;font-weight:800;margin-top:4px;color:#1c1208;">${esc(quarterLabel)}</div>
+      </div>
+      <div style="flex:1;background:#fff;border:1px solid #e8dcc8;border-radius:12px;padding:12px 16px;">
+        <div style="font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">${esc(L.ifuStatus || 'Statut')}</div>
+        <div style="font-size:12px;font-weight:800;margin-top:4px;color:${statusColor};">${esc(
+          declaration.status === 'SOUMIS' ? (L.ifuStatusSubmitted || 'SOUMIS') :
+          declaration.status === 'FINALISÉ' ? (L.ifuStatusFinalized || 'FINALISÉ') :
+          (L.ifuStatusDraft || 'BROUILLON')
+        )}</div>
+      </div>
+      <div style="flex:1;background:#fff;border:1px solid #e8dcc8;border-radius:12px;padding:12px 16px;">
+        <div style="font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">${esc(L.date || 'Date de soumission')}</div>
+        <div style="font-size:11px;font-weight:700;margin-top:4px;color:#1c1208;">${esc(submissionDate || '—')}</div>
+      </div>
+    </div>
+
+    <!-- PAYROLL BREAKDOWN TABLE -->
+    <div style="background:#fff;border:1px solid #e8dcc8;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+      <div style="padding:12px 16px;font-weight:800;border-bottom:1px solid #e8dcc8;background:#f0e8d8;">
+        ${esc(L.ifuQuarterlyBreakdown || 'Résumé trimestriel')}
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <tbody>
+          <tr style="border-bottom:1px solid #e8dcc8;">
+            <td style="padding:12px 16px;color:#8b7355;font-weight:700;">${esc(L.ifuEmployeeCount || 'Nombre d\'employés')}</td>
+            <td style="padding:12px 16px;text-align:end;color:#1c1208;font-weight:800;font-family:monospace;font-size:12px;">${declaration.employeeCount}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #e8dcc8;">
+            <td style="padding:12px 16px;color:#8b7355;font-weight:700;">${esc(L.ifuTotalGrossPayroll || 'Masse salariale brute')}</td>
+            <td style="padding:12px 16px;text-align:end;color:#1c1208;font-weight:800;font-family:monospace;font-size:12px;">${fmt(declaration.totalGrossPayroll)}</td>
+          </tr>
+          <tr style="background:#f0e8d8;">
+            <td style="padding:12px 16px;font-weight:800;color:#1c1208;">${esc(L.ifuTotalIrgWithheld || 'IRG retenu')}</td>
+            <td style="padding:12px 16px;text-align:end;font-weight:800;color:#1c1208;font-family:monospace;font-size:13px;">${fmt(declaration.totalIrgWithheld)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- FOOTER -->
+    <div style="border-top:1px solid #e8dcc8;padding-top:16px;margin-top:20px;font-size:9px;color:#8b7355;">
+      <p>${esc(L.ifuG50TerNote || 'Déclaration G50 ter établie conformément à la réglementation fiscale algérienne')}</p>
+      <p style="margin-top:6px;">Généré le ${esc(new Date().toLocaleDateString(isRTL ? 'ar-DZ' : 'fr-DZ'))}</p>
+    </div>
+
+    </div>`;
+
+  const el = document.createElement('div');
+  el.innerHTML = wrapRoot(isRTL, inner);
+  await flushChunks(pdf, [el], first);
+  pdf.save(opts.filename);
+}

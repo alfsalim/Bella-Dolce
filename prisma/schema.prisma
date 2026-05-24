@@ -469,3 +469,41 @@ model Event {
   operation  String?
   createdAt  DateTime @default(now())
 }
+
+model TaxConfig {
+  id              String   @id @default(cuid())
+  type            String
+  year            Int?
+  ratePercent     Float
+  description     String?
+  effectiveFrom   DateTime?
+  effectiveUntil  DateTime?
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([type, year])
+  @@index([type])
+  @@index([year])
+}
+
+model IfuDeclaration {
+  id                  String   @id @default(cuid())
+  year                Int
+  grossTurnover       Float
+  taxRatePercent      Float
+  taxAmountDue        Float
+  configSnapshot      String?
+  status              String   @default("BROUILLON")
+  finalizedBy         String?
+  finalizedAt         DateTime?
+  submittedAt         DateTime?
+  submissionReference String?
+  amendmentOf         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([year])
+  @@index([status])
+  @@index([year])
+}

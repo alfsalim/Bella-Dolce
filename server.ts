@@ -80,7 +80,9 @@ const getModel = (collectionName: string) => {
     'promotions': prisma.promotion,
     'settings': prisma.setting,
     'utilities': prisma.utility,
-    'utilityDefinitions': prisma.utilityDefinition
+    'utilityDefinitions': prisma.utilityDefinition,
+    'taxConfigs': prisma.taxConfig,
+    'ifuDeclarations': prisma.ifuDeclaration
   };
   const model = mapping[collectionName];
   if (!model && collectionName !== 'health') {
@@ -2123,6 +2125,174 @@ async function startServer() {
         });
       }
       res.status(500).json({ error: msg });
+    }
+  });
+
+  // Tax & IFU Declaration Endpoints
+  app.get("/api/tax/ifu-declarations", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const year = req.query.year ? parseInt(String(req.query.year), 10) : undefined;
+      const where = year ? { year } : {};
+      const declarations = await prisma.ifuDeclaration.findMany({ where });
+      res.json(declarations);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.get("/api/tax/ifu-declarations/:id", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const declaration = await prisma.ifuDeclaration.findUnique({ where: { id: req.params.id } });
+      if (!declaration) return res.status(404).json({ error: 'Declaration not found' });
+      res.json(declaration);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/tax/ifu-declarations", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const { year, grossTurnover, taxRatePercent, taxAmountDue, status } = req.body;
+
+      if (!year || grossTurnover === undefined || !taxRatePercent) {
+        return res.status(400).json({ error: 'Missing required fields: year, grossTurnover, taxRatePercent' });
+      }
+
+      const existing = await prisma.ifuDeclaration.findUnique({ where: { year } });
+      if (existing) {
+        return res.status(409).json({ error: `Declaration for year ${year} already exists` });
+      }
+
+      const declaration = await prisma.ifuDeclaration.create({
+        data: {
+          year,
+          grossTurnover: Number(grossTurnover),
+          taxRatePercent: Number(taxRatePercent),
+          taxAmountDue: Number(taxAmountDue || 0),
+          status: status || 'BROUILLON',
+        },
+      });
+      res.json(declaration);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.put("/api/tax/ifu-declarations/:id", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const { grossTurnover, taxRatePercent, taxAmountDue, status } = req.body;
+
+      const updates: any = {};
+      if (grossTurnover !== undefined) updates.grossTurnover = Number(grossTurnover);
+      if (taxRatePercent !== undefined) updates.taxRatePercent = Number(taxRatePercent);
+      if (taxAmountDue !== undefined) updates.taxAmountDue = Number(taxAmountDue);
+      if (status !== undefined) updates.status = status;
+
+      const declaration = await prisma.ifuDeclaration.update({
+        where: { id: req.params.id },
+        data: updates,
+      });
+      res.json(declaration);
+    } catch (error) {
+      const msg = (error as Error).message;
+      if (msg.includes('not found')) {
+        return res.status(404).json({ error: 'Declaration not found' });
+      }
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  app.post("/api/tax/ifu-declarations/:id/finalize", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const declaration = await prisma.ifuDeclaration.findUnique({ where: { id: req.params.id } });
+      if (!declaration) return res.status(404).json({ error: 'Declaration not found' });
+      if (declaration.status !== 'BROUILLON') {
+        return res.status(409).json({ error: 'Only BROUILLON declarations can be finalized' });
+      }
+
+      const taxConfig = await prisma.taxConfig.findFirst({
+        where: { type: 'IFU_RATE', year: declaration.year },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      let configSnapshot: string | null = null;
+      if (taxConfig) {
+        const snapshot = {
+          taxRatePercent: taxConfig.ratePercent,
+          year: declaration.year,
+          description: taxConfig.description,
+          snapshotDate: new Date().toISOString(),
+          system: 'bella-dolce-v1.0',
+        };
+        configSnapshot = JSON.stringify(snapshot);
+      }
+
+      const finalized = await prisma.ifuDeclaration.update({
+        where: { id: req.params.id },
+        data: {
+          status: 'FINALISÉ',
+          finalizedBy: userId,
+          finalizedAt: new Date(),
+          configSnapshot,
+        },
+      });
+      res.json(finalized);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // Tax Configuration Endpoints
+  app.get("/api/admin/tax-config", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const type = req.query.type || 'IFU_RATE';
+      const year = req.query.year ? parseInt(String(req.query.year), 10) : undefined;
+
+      const where: any = { type };
+      if (year) where.year = year;
+
+      const configs = await prisma.taxConfig.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      });
+      res.json(configs);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/admin/tax-config", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const { type, year, ratePercent, description, effectiveFrom, effectiveUntil } = req.body;
+
+      if (!type || ratePercent === undefined) {
+        return res.status(400).json({ error: 'Missing required fields: type, ratePercent' });
+      }
+
+      const config = await prisma.taxConfig.create({
+        data: {
+          type,
+          year: year ? Number(year) : null,
+          ratePercent: Number(ratePercent),
+          description: description || null,
+          effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : null,
+          effectiveUntil: effectiveUntil ? new Date(effectiveUntil) : null,
+          createdBy: req.user?.id,
+        },
+      });
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
     }
   });
 
