@@ -236,7 +236,7 @@ const TaxReports: React.FC = () => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const G12Screen = () => (
     <div className="space-y-6">
-      {/* Year selector and status badge */}
+      {/* Year selector, status badge and actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <label className="text-sm font-bold text-slate-600 dark:text-slate-400">
@@ -255,6 +255,20 @@ const TaxReports: React.FC = () => {
           </select>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleSaveDeclaration}
+            disabled={isSaving || loading}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-bold rounded-xl transition-all"
+          >
+            {isSaving ? tf('savingInProgress') : <BilingualLabel tKey="ifuActionSaveDraft" tf />}
+          </button>
+          <button
+            onClick={handleExportG12Pdf}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <BilingualLabel tKey="ifuActionExportPdf" tf />
+          </button>
           <span className={clsx(
             'px-3 py-1.5 rounded-full text-xs font-bold',
             currentDeclaration?.status === 'SOUMIS'
@@ -357,30 +371,6 @@ const TaxReports: React.FC = () => {
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-3 flex-wrap">
-        <button
-          onClick={handleSaveDeclaration}
-          disabled={isSaving || loading}
-          className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-bold rounded-xl transition-all"
-        >
-          {isSaving ? tf('savingInProgress') : <BilingualLabel tKey="ifuActionSaveDraft" tf />}
-        </button>
-        <button
-          onClick={handlePrintG12}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl transition-all"
-        >
-          <Printer className="w-4 h-4" />
-          <BilingualLabel tKey="ifuActionPrint" tf />
-        </button>
-        <button
-          onClick={handleExportG12Pdf}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl transition-all"
-        >
-          <Download className="w-4 h-4" />
-          <BilingualLabel tKey="ifuActionExportPdf" tf />
-        </button>
-      </div>
     </div>
   );
 
