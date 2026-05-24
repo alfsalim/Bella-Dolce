@@ -13,6 +13,7 @@ EXT_PORT=443
 INT_PORT=3000
 DB_URL="file:/app/data/dev.db"
 JWT_SECRET="${JWT_SECRET:-$(grep '^JWT_SECRET=' "$(dirname "$0")/.env" 2>/dev/null | cut -d= -f2-)}"
+JWT_EXPIRES_IN="${JWT_EXPIRES_IN:-$(grep '^JWT_EXPIRES_IN=' "$(dirname "$0")/.env" 2>/dev/null | cut -d= -f2-)}"
 
 # ── Production (Windows) ─────────────────────────────────
 PROD_DATA_DIR="C:/Users/CD COMPANY/Bella-Dolce/data"
@@ -382,11 +383,12 @@ SEED_EOF
             -e PORT="$INT_PORT" \
             -e DATABASE_URL="$DB_URL" \
             -e NODE_ENV=production \
-            -e BELLA_HTTP_ONLY=1 \
             -e REDIS_URL="redis://redis:6379" \
             -e JWT_SECRET="$JWT_SECRET" \
+            -e JWT_EXPIRES_IN="$JWT_EXPIRES_IN" \
             -v "$PROD_DATA_DIR:/app/data" \
             -v "$PROD_BACKUP_DIR:/app/backups" \
+            -v "C:/Users/CD COMPANY/Bella-Dolce/certs:/app/certs" \
             --restart unless-stopped \
             "$IMAGE_NAME"
         [ $? -ne 0 ] && log_err "Failed to start container on Windows."

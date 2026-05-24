@@ -24,6 +24,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || "bella-dolce-secret-change-in-production";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "8h";
 const SALT_ROUNDS = 10;
 
 const BACKUP_DIR = path.join(process.cwd(), "backups");
@@ -1269,7 +1270,7 @@ async function startServer() {
       const token = jwt.sign(
         { id: user.id, username: user.username, role: roleForJwt },
         JWT_SECRET,
-        { expiresIn: '8h' }
+        { expiresIn: JWT_EXPIRES_IN as any }
       );
 
       // Embed allowedPaths so the client needs zero extra requests after login.
