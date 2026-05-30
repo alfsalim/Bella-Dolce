@@ -13,6 +13,7 @@ import Pagination from '../components/Pagination';
 import Alert from '../components/Alert';
 import { ItemCategoryConfig, getDefaultItemCategoryConfig, sanitizeItemCategoryConfig } from '../lib/itemCategories';
 import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
+import { authFetch, getAuthHeaders } from '../lib/api-client';
 
 const ProductManagement: React.FC = () => {
   const { t, tProduct, tCategory, isRTL, currencyUnit } = useLanguage();
@@ -432,6 +433,33 @@ const ProductManagement: React.FC = () => {
       setMaterialsPage((page) => Math.min(page, filteredTotalPages));
     }
   }, [activeTab, filteredTotalPages]);
+
+  useEffect(() => {
+    const ings = formData.ingredients;
+    if (!ings?.length) return;
+    authFetch('/api/db/purchases', { headers: getAuthHeaders() })
+      .then(r => r.json())
+      .then((purchases: { materialId?: string; price?: number; quantity?: number; purchaseDate?: string }[]) => {
+        const latestByMaterial = new Map<string, number>();
+        const sorted = [...purchases].sort((a, b) => new Date(b.purchaseDate || 0).getTime() - new Date(a.purchaseDate || 0).getTime());
+        for (const p of sorted) {
+          if (p.materialId && !latestByMaterial.has(p.materialId) && p.quantity && p.price) {
+            latestByMaterial.set(p.materialId, p.price / p.quantity);
+          }
+        }
+        let batchCost = 0;
+        let hasAnyPrice = false;
+        for (const ing of ings) {
+          const unitCost = latestByMaterial.get(ing.materialId);
+          if (unitCost) { batchCost += ing.quantity * unitCost; hasAnyPrice = true; }
+        }
+        if (hasAnyPrice) {
+          const batchSize = formData.batchSize || 1;
+          setFormData(prev => ({ ...prev, costPrice: parseFloat((batchCost / batchSize).toFixed(2)) }));
+        }
+      })
+      .catch(() => {});
+  }, [formData.ingredients, formData.batchSize]);
 
   const resetFilters = () => {
     setSearchTerm('');
@@ -1181,11 +1209,23 @@ const ProductManagement: React.FC = () => {
               ) : (formData as any).itemType === 'material' || formData.category === 'raw_material' ? null : (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <List className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                      {t('ingredients')}
-                    </h3>
-                    <button 
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <List className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                        {t('ingredients')}
+                      </h3>
+                      <div className="relative w-28">
+                        <input
+                          type="number"
+                          min="1"
+                          className="input py-1 pl-2 pr-10 text-sm w-full"
+                          value={formData.batchSize || 1}
+                          onChange={(e) => setFormData({ ...formData, batchSize: Math.max(1, Number(e.target.value)) })}
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase pointer-events-none">{t('units') || 'pcs'}</span>
+                      </div>
+                    </div>
+                    <button
                       type="button"
                       onClick={addIngredient}
                       className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 text-sm font-bold flex items-center gap-1"
@@ -1194,7 +1234,7 @@ const ProductManagement: React.FC = () => {
                       {t('addIngredient')}
                     </button>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {formData.ingredients?.map((ing, index) => (
                       <div key={index} className="flex gap-4 items-end bg-slate-50 dark:bg-[#0a0a0a] p-4 rounded-2xl border border-slate-100 dark:border-[#2a1e17]">
@@ -1248,12 +1288,15 @@ const ProductManagement: React.FC = () => {
                         </div>
                         <div className="w-32 space-y-2">
                           <label className="text-xs font-bold text-slate-500 dark:text-slate-500 uppercase">{t('quantity')}</label>
-                          <input 
-                            type="number" 
-                            className="input"
-                            value={ing.quantity || 0}
-                            onChange={(e) => updateIngredient(index, 'quantity', Number(e.target.value))}
-                          />
+                          <div className="relative">
+                            <input
+                              type="number"
+                              className="input pr-10"
+                              value={ing.quantity || 0}
+                              onChange={(e) => updateIngredient(index, 'quantity', Number(e.target.value))}
+                            />
+                            {ing.type !== 'percentage' && (() => { const mat = materials.find(m => m.id === ing.materialId); return mat?.unit ? <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase pointer-events-none">{t(mat.unit) || mat.unit}</span> : null; })()}
+                          </div>
                         </div>
                         <button 
                           type="button"

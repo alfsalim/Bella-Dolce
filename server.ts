@@ -2156,13 +2156,13 @@ async function startServer() {
   app.post("/api/tax/ifu-declarations", requireAuth, async (req: any, res: express.Response) => {
     try {
       const prisma = getPrisma();
-      const { year, grossTurnover, taxRatePercent, taxAmountDue, status } = req.body;
+      const { year, grossTurnover, taxRatePercent, taxAmountDue, monthlyBreakdown, status } = req.body;
 
       if (!year || grossTurnover === undefined || !taxRatePercent) {
         return res.status(400).json({ error: 'Missing required fields: year, grossTurnover, taxRatePercent' });
       }
 
-      const existing = await prisma.ifuDeclaration.findUnique({ where: { year } });
+      const existing = await prisma.ifuDeclaration.findFirst({ where: { year, version: 1 } });
       if (existing) {
         return res.status(409).json({ error: `Declaration for year ${year} already exists` });
       }
@@ -2170,9 +2170,11 @@ async function startServer() {
       const declaration = await prisma.ifuDeclaration.create({
         data: {
           year,
+          version: 1,
           grossTurnover: Number(grossTurnover),
           taxRatePercent: Number(taxRatePercent),
           taxAmountDue: Number(taxAmountDue || 0),
+          monthlyBreakdown: monthlyBreakdown ? JSON.stringify(monthlyBreakdown) : null,
           status: status || 'BROUILLON',
         },
       });
@@ -2185,13 +2187,17 @@ async function startServer() {
   app.put("/api/tax/ifu-declarations/:id", requireAuth, async (req: any, res: express.Response) => {
     try {
       const prisma = getPrisma();
-      const { grossTurnover, taxRatePercent, taxAmountDue, status } = req.body;
+      const { grossTurnover, taxRatePercent, taxAmountDue, monthlyBreakdown } = req.body;
+
+      const decl = await prisma.ifuDeclaration.findUnique({ where: { id: req.params.id } });
+      if (!decl) return res.status(404).json({ error: 'Declaration not found' });
+      if (decl.status !== 'BROUILLON') return res.status(409).json({ error: 'Only BROUILLON declarations can be updated' });
 
       const updates: any = {};
       if (grossTurnover !== undefined) updates.grossTurnover = Number(grossTurnover);
       if (taxRatePercent !== undefined) updates.taxRatePercent = Number(taxRatePercent);
       if (taxAmountDue !== undefined) updates.taxAmountDue = Number(taxAmountDue);
-      if (status !== undefined) updates.status = status;
+      if (monthlyBreakdown !== undefined) updates.monthlyBreakdown = JSON.stringify(monthlyBreakdown);
 
       const declaration = await prisma.ifuDeclaration.update({
         where: { id: req.params.id },
@@ -2207,17 +2213,14 @@ async function startServer() {
     }
   });
 
-  app.post("/api/tax/ifu-declarations/:id/finalize", requireAuth, async (req: any, res: express.Response) => {
+  app.post("/api/tax/ifu-declarations/:id/submit", requireAuth, async (req: any, res: express.Response) => {
     try {
       const prisma = getPrisma();
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+      const { submissionReference } = req.body;
 
       const declaration = await prisma.ifuDeclaration.findUnique({ where: { id: req.params.id } });
       if (!declaration) return res.status(404).json({ error: 'Declaration not found' });
-      if (declaration.status !== 'BROUILLON') {
-        return res.status(409).json({ error: 'Only BROUILLON declarations can be finalized' });
-      }
+      if (declaration.status !== 'BROUILLON') return res.status(409).json({ error: 'Only BROUILLON declarations can be submitted' });
 
       const taxConfig = await prisma.taxConfig.findFirst({
         where: { type: 'IFU_RATE', year: declaration.year },
@@ -2226,26 +2229,51 @@ async function startServer() {
 
       let configSnapshot: string | null = null;
       if (taxConfig) {
-        const snapshot = {
+        configSnapshot = JSON.stringify({
           taxRatePercent: taxConfig.ratePercent,
           year: declaration.year,
           description: taxConfig.description,
           snapshotDate: new Date().toISOString(),
           system: 'bella-dolce-v1.0',
-        };
-        configSnapshot = JSON.stringify(snapshot);
+        });
       }
 
-      const finalized = await prisma.ifuDeclaration.update({
+      const submitted = await prisma.ifuDeclaration.update({
         where: { id: req.params.id },
         data: {
-          status: 'FINALISÉ',
-          finalizedBy: userId,
-          finalizedAt: new Date(),
+          status: 'SOUMIS',
+          submittedAt: new Date(),
+          submissionReference: submissionReference || null,
           configSnapshot,
         },
       });
-      res.json(finalized);
+      res.json(submitted);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/tax/ifu-declarations/:id/amend", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+
+      const source = await prisma.ifuDeclaration.findUnique({ where: { id: req.params.id } });
+      if (!source) return res.status(404).json({ error: 'Declaration not found' });
+      if (source.status !== 'SOUMIS') return res.status(409).json({ error: 'Only SOUMIS declarations can be amended' });
+
+      const newDecl = await prisma.ifuDeclaration.create({
+        data: {
+          year: source.year,
+          version: source.version + 1,
+          grossTurnover: source.grossTurnover,
+          taxRatePercent: source.taxRatePercent,
+          taxAmountDue: source.taxAmountDue,
+          monthlyBreakdown: source.monthlyBreakdown,
+          amendmentOf: source.id,
+          status: 'BROUILLON',
+        },
+      });
+      res.json(newDecl);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }

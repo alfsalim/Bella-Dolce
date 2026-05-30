@@ -22,6 +22,7 @@ import { CATEGORIES, UNITS } from '../constants';
 import { Percent, Hash } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { compressImage } from '../lib/utils';
+import { authFetch, getAuthHeaders } from '../lib/api-client';
 
 const ProductEdit: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +37,7 @@ const ProductEdit: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [estimatedCost, setEstimatedCost] = useState<number | null>(null);
 
   const validateForm = (): boolean => {
     const errors: string[] = [];
@@ -76,6 +78,29 @@ const ProductEdit: React.FC = () => {
       unsubscribeMaterials();
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!recipe?.ingredients?.length || !materials.length) { setEstimatedCost(null); return; }
+    authFetch('/api/db/purchases', { headers: getAuthHeaders() })
+      .then(r => r.json())
+      .then((purchases: { materialId?: string; price?: number; quantity?: number; purchaseDate?: string }[]) => {
+        const latestByMaterial = new Map<string, { unitCost: number }>();
+        const sorted = [...purchases].sort((a, b) => new Date(b.purchaseDate || 0).getTime() - new Date(a.purchaseDate || 0).getTime());
+        for (const p of sorted) {
+          if (p.materialId && !latestByMaterial.has(p.materialId) && p.quantity && p.price) {
+            latestByMaterial.set(p.materialId, { unitCost: p.price / p.quantity });
+          }
+        }
+        let batchCost = 0;
+        for (const ing of recipe.ingredients) {
+          const entry = latestByMaterial.get(ing.materialId);
+          if (entry) batchCost += ing.quantity * entry.unitCost;
+        }
+        const batchSize = recipe.batchSize || 1;
+        setEstimatedCost(batchCost / batchSize);
+      })
+      .catch(() => setEstimatedCost(null));
+  }, [recipe?.ingredients, recipe?.batchSize, materials]);
 
   const handleDelete = async () => {
     if (!product || !id) return;
@@ -290,14 +315,20 @@ const ProductEdit: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-2">{t('costPrice')} ({currencyUnit}) <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-5 h-5" />
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
-                    className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700" 
+                    className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
                     value={product.costPrice || 0}
                     onChange={(e) => setProduct({...product, costPrice: Number(e.target.value)})}
                   />
                 </div>
+                {estimatedCost !== null && (
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    {t('estimatedCost') || 'Coût estimé'}: {estimatedCost.toFixed(2)} {currencyUnit}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -364,17 +395,18 @@ const ProductEdit: React.FC = () => {
                           <option value="percentage">{t('percentage')}</option>
                         </select>
                       </div>
-                      <div className="w-32 relative">
+                      <div className="w-36 relative">
                         {ing.type === 'weight' ? <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-4 h-4" /> :
                          ing.type === 'percentage' ? <Percent className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-4 h-4" /> :
                          <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 w-4 h-4" />}
-                        <input 
-                          type="number" 
-                          className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
+                        <input
+                          type="number"
+                          className="w-full pl-10 pr-12 py-3 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-700"
                           placeholder={t('placeholderQtyAbbrev')}
                           value={ing.quantity || 0}
                           onChange={(e) => updateIngredient(idx, 'quantity', Number(e.target.value))}
                         />
+                        {ing.type !== 'percentage' && (() => { const mat = materials.find(m => m.id === ing.materialId); return mat?.unit ? <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase">{t(mat.unit) || mat.unit}</span> : null; })()}
                       </div>
                       <button 
                         onClick={() => removeIngredient(idx)}

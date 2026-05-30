@@ -31,13 +31,17 @@ const TaxReports: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'tva' | 'ifu' | 'pl'>('tva');
   const [ifuTab, setIfuTab] = useState<'g12' | 'g50' | 'dashboard' | 'config'>('g12');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [selectedQuarter, setSelectedQuarter] = useState(1);
+  const [selectedQuarter, setSelectedQuarter] = useState(Math.ceil((new Date().getMonth() + 1) / 3));
   const [declarations, setDeclarations] = useState<IfuDeclaration[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [payslips, setPayslips] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasPayroll, setHasPayroll] = useState(false);
+  const [declaredMonthly, setDeclaredMonthly] = useState<Record<number, number>>({});
+  const [editMode, setEditMode] = useState<'total' | 'monthly'>('total');
+  const [declaredTotal, setDeclaredTotal] = useState<number>(0);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   // Mock TVA data
   const tvaSummary = {
@@ -103,8 +107,9 @@ const TaxReports: React.FC = () => {
     const q = quarters[selectedQuarter - 1];
 
     const quarterPayslips = payslips.filter((p) => {
-      const date = new Date(p.executionDate);
-      return date.getFullYear() === selectedYear && date.getMonth() + 1 >= q.start && date.getMonth() + 1 <= q.end;
+      if (!p.period || typeof p.period !== 'string') return false;
+      const [year, month] = p.period.split('-').map(Number);
+      return year === selectedYear && month >= q.start && month <= q.end;
     });
 
     const uniqueEmployees = new Set(quarterPayslips.map((p) => p.employeeId));
@@ -118,12 +123,20 @@ const TaxReports: React.FC = () => {
     };
   }, [payslips, selectedYear, selectedQuarter]);
 
-  // Get or create declaration for year
-  const currentDeclaration = useMemo(() => {
-    return declarations.find((d) => d.year === selectedYear) || null;
+  // All versions for the selected year, sorted ascending
+  const yearVersions = useMemo(() => {
+    return declarations.filter((d) => d.year === selectedYear).sort((a, b) => a.version - b.version);
   }, [declarations, selectedYear]);
 
-  // Calculate total annual turnover
+  // The currently-viewed declaration (by selected version ID, or latest)
+  const currentDeclaration = useMemo(() => {
+    if (selectedVersionId) {
+      return yearVersions.find((d) => d.id === selectedVersionId) || yearVersions[yearVersions.length - 1] || null;
+    }
+    return yearVersions[yearVersions.length - 1] || null;
+  }, [yearVersions, selectedVersionId]);
+
+  // Calculate total annual turnover from real sales
   const annualTurnover = useMemo(() => {
     return Object.values(monthlyTurnover).reduce((sum, val) => sum + val, 0);
   }, [monthlyTurnover]);
@@ -131,20 +144,66 @@ const TaxReports: React.FC = () => {
   // Check if exceeds threshold
   const exceedsThreshold = annualTurnover > 9_000_000;
 
-  // Save or update declaration
+  // Initialize declared monthly from declaration or real data
+  useEffect(() => {
+    if (currentDeclaration?.monthlyBreakdown) {
+      try {
+        const parsed = JSON.parse(currentDeclaration.monthlyBreakdown) as Record<string, number>;
+        const asNumbers: Record<number, number> = {};
+        for (const [k, v] of Object.entries(parsed)) asNumbers[parseInt(k)] = v;
+        setDeclaredMonthly(asNumbers);
+        const total = Object.values(asNumbers).reduce((s, v) => s + v, 0);
+        setDeclaredTotal(total);
+      } catch {}
+    } else {
+      setDeclaredMonthly({ ...monthlyTurnover });
+      setDeclaredTotal(annualTurnover);
+    }
+  }, [currentDeclaration, monthlyTurnover, annualTurnover]);
+
+  // When total mode changes, redistribute proportionally
+  const handleDeclaredTotalChange = useCallback((total: number) => {
+    setDeclaredTotal(total);
+    const realTotal = annualTurnover;
+    if (realTotal === 0) {
+      const even = total / 12;
+      const evenly: Record<number, number> = {};
+      for (let i = 1; i <= 12; i++) evenly[i] = even;
+      setDeclaredMonthly(evenly);
+    } else {
+      const distributed: Record<number, number> = {};
+      for (let i = 1; i <= 12; i++) {
+        distributed[i] = Math.round((monthlyTurnover[i] / realTotal) * total);
+      }
+      setDeclaredMonthly(distributed);
+    }
+  }, [annualTurnover, monthlyTurnover]);
+
+  const declaredAnnualTotal = useMemo(() => {
+    return Object.values(declaredMonthly).reduce((s, v) => s + v, 0);
+  }, [declaredMonthly]);
+
+  // Save draft
   const handleSaveDeclaration = useCallback(async () => {
     try {
       setIsSaving(true);
+      const grossTurnover = declaredAnnualTotal;
+      const taxRatePercent = 1.5;
+      const taxAmountDue = (grossTurnover * taxRatePercent) / 100;
       if (!currentDeclaration) {
-        await taxService.createIfuDeclaration({
+        const created = await taxService.createIfuDeclaration({
           year: selectedYear,
-          grossTurnover: annualTurnover,
-          taxRatePercent: 1.5,
+          grossTurnover,
+          taxRatePercent,
+          monthlyBreakdown: declaredMonthly,
         });
-        toast.success(tf('ifuSubmitSuccess'));
+        setSelectedVersionId(created.id);
       } else {
-        // In a real scenario, you'd update via API
-        toast.success(tf('ifuUpdateFailed')); // Placeholder
+        await taxService.updateIfuDeclaration(currentDeclaration.id, {
+          grossTurnover,
+          taxRatePercent,
+          monthlyBreakdown: declaredMonthly,
+        });
       }
       void fetchData();
     } catch (err) {
@@ -153,7 +212,38 @@ const TaxReports: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedYear, annualTurnover, currentDeclaration, fetchData, tf]);
+  }, [selectedYear, declaredAnnualTotal, declaredMonthly, currentDeclaration, fetchData, tf]);
+
+  // Submit declaration
+  const handleSubmitDeclaration = useCallback(async () => {
+    if (!currentDeclaration) return;
+    try {
+      setIsSaving(true);
+      await taxService.submitIfuDeclaration(currentDeclaration.id);
+      void fetchData();
+    } catch (err) {
+      toast.error(tf('ifuSubmitFailed'));
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [currentDeclaration, fetchData, tf]);
+
+  // Amend declaration
+  const handleAmend = useCallback(async () => {
+    if (!currentDeclaration) return;
+    try {
+      setIsSaving(true);
+      const newDecl = await taxService.amendIfuDeclaration(currentDeclaration.id);
+      await fetchData();
+      setSelectedVersionId(newDecl.id);
+    } catch (err) {
+      toast.error(tf('ifuCreationFailed'));
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [currentDeclaration, fetchData, tf]);
 
   // Print G12 declaration
   const handlePrintG12 = useCallback(() => {
@@ -234,34 +324,58 @@ const TaxReports: React.FC = () => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // G12 ANNUAL DECLARATION
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const G12Screen = () => (
+  const G12Screen = () => {
+    const isBrouillon = currentDeclaration?.status === 'BROUILLON' || !currentDeclaration;
+    const isLatestVersion = !currentDeclaration || currentDeclaration.id === yearVersions[yearVersions.length - 1]?.id;
+    const latestIsSoumis = yearVersions[yearVersions.length - 1]?.status === 'SOUMIS';
+
+    return (
     <div className="space-y-6">
-      {/* Year selector, status badge and actions */}
-      <div className="flex items-center justify-between">
+      {/* Top bar: year selector + actions */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <label className="text-sm font-bold text-slate-600 dark:text-slate-400">
             <BilingualLabel tKey="ifuYear" tf />:
           </label>
           <select
             value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+            onChange={(e) => { setSelectedYear(parseInt(e.target.value)); setSelectedVersionId(null); }}
             className="input py-2 text-sm"
           >
             {[new Date().getFullYear() - 2, new Date().getFullYear() - 1, new Date().getFullYear()].map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
+              <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSaveDeclaration}
-            disabled={isSaving || loading}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-bold rounded-xl transition-all"
-          >
-            {isSaving ? tf('savingInProgress') : <BilingualLabel tKey="ifuActionSaveDraft" tf />}
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {isBrouillon && isLatestVersion && (
+            <>
+              <button
+                onClick={handleSaveDeclaration}
+                disabled={isSaving || loading}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl transition-all disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <BilingualLabel tKey="ifuActionSaveDraft" tf />
+              </button>
+              <button
+                onClick={handleSubmitDeclaration}
+                disabled={isSaving || loading || !currentDeclaration}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-bold rounded-xl transition-all"
+              >
+                <BilingualLabel tKey="ifuActionSubmit" tf />
+              </button>
+            </>
+          )}
+          {isLatestVersion && latestIsSoumis && (
+            <button
+              onClick={handleAmend}
+              disabled={isSaving || loading}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl transition-all disabled:opacity-50"
+            >
+              <BilingualLabel tKey="ifuAmend" tf />
+            </button>
+          )}
           <button
             onClick={handleExportG12Pdf}
             className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl transition-all"
@@ -269,27 +383,45 @@ const TaxReports: React.FC = () => {
             <Download className="w-4 h-4" />
             <BilingualLabel tKey="ifuActionExportPdf" tf />
           </button>
-          <span className={clsx(
-            'px-3 py-1.5 rounded-full text-xs font-bold',
-            currentDeclaration?.status === 'SOUMIS'
-              ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
-              : currentDeclaration?.status === 'FINALISÉ'
-                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
-          )}>
-            <BilingualLabel
-              tKey={
-                currentDeclaration?.status === 'SOUMIS'
-                  ? 'ifuStatusSubmitted'
-                  : currentDeclaration?.status === 'FINALISÉ'
-                    ? 'ifuStatusFinalized'
-                    : 'ifuStatusDraft'
-              }
-              tf
-            />
-          </span>
         </div>
       </div>
+
+      {/* Version pills */}
+      {yearVersions.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <BilingualLabel tKey="ifuVersionLabel" tf />:
+          </span>
+          {yearVersions.map((v) => (
+            <button
+              key={v.id}
+              onClick={() => setSelectedVersionId(v.id)}
+              className={clsx(
+                'px-3 py-1 rounded-full text-xs font-bold border transition-all',
+                currentDeclaration?.id === v.id
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:border-primary-400'
+              )}
+            >
+              v{v.version} {v.status === 'SOUMIS'
+                ? <span className="text-emerald-400">✓</span>
+                : '✏️'}
+            </button>
+          ))}
+          {yearVersions.length > 0 && (
+            <span className={clsx(
+              'px-3 py-1 rounded-full text-xs font-bold ml-2',
+              currentDeclaration?.status === 'SOUMIS'
+                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
+                : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+            )}>
+              {currentDeclaration?.status === 'SOUMIS'
+                ? tf('ifuStatusSubmitted')
+                : tf('ifuStatusDraft')}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Warning if threshold exceeded */}
       {exceedsThreshold && (
@@ -301,11 +433,36 @@ const TaxReports: React.FC = () => {
         </div>
       )}
 
-      {/* Monthly Turnover Table */}
+      {/* Monthly Table */}
       <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
-        <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white mb-6">
-          <BilingualLabel tKey="ifuMonthlyBreakdown" tf />
-        </h3>
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <h3 className="font-display font-bold text-xl text-slate-900 dark:text-white">
+            <BilingualLabel tKey="ifuMonthlyBreakdown" tf />
+          </h3>
+          {/* Mode switcher — only in BROUILLON */}
+          {isBrouillon && isLatestVersion && (
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 rounded-xl p-1">
+              <button
+                onClick={() => setEditMode('monthly')}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
+                  editMode === 'monthly' ? 'bg-white dark:bg-zinc-700 shadow text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'
+                )}
+              >
+                <BilingualLabel tKey="ifuModeMonthly" tf />
+              </button>
+              <button
+                onClick={() => setEditMode('total')}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
+                  editMode === 'total' ? 'bg-white dark:bg-zinc-700 shadow text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'
+                )}
+              >
+                <BilingualLabel tKey="ifuModeTotal" tf />
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -314,30 +471,68 @@ const TaxReports: React.FC = () => {
                 <th className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-400">
                   <BilingualLabel tKey="month" tf />
                 </th>
-                <th className={clsx('text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400', isRTL && 'text-left')}>
-                  <BilingualLabel tKey="ifuMonthlyTurnover" tf />
+                <th className="text-right py-3 px-4 font-bold text-slate-500 dark:text-slate-500">
+                  <BilingualLabel tKey="ifuRealRevenue" tf />
+                </th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  <BilingualLabel tKey="ifuDeclaredAmount" tf />
                 </th>
               </tr>
             </thead>
             <tbody>
-              {Object.entries(monthlyTurnover).map(([monthStr, amount]) => (
-                <tr key={monthStr} className="border-b border-slate-50 dark:border-white/5 last:border-0 hover:bg-slate-50 dark:hover:bg-white/5">
-                  <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
-                    {tf(`monthNames`)[parseInt(monthStr) - 1]}
-                  </td>
-                  <td className={clsx('py-3 px-4 font-mono font-bold text-slate-900 dark:text-white', isRTL && 'text-left')}>
-                    {formatCurrency(amount)}
-                  </td>
-                </tr>
-              ))}
+              {Object.entries(monthlyTurnover).map(([monthStr, realAmount]) => {
+                const m = parseInt(monthStr);
+                const declared = declaredMonthly[m] ?? realAmount;
+                return (
+                  <tr key={monthStr} className="border-b border-slate-50 dark:border-white/5 last:border-0 hover:bg-slate-50 dark:hover:bg-white/5">
+                    <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
+                      {tf('monthNames')[m - 1]}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-slate-400 dark:text-slate-500 text-right">
+                      {formatCurrency(realAmount)}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {(isBrouillon && isLatestVersion && editMode === 'monthly') ? (
+                        <input
+                          type="number"
+                          value={declared}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setDeclaredMonthly((prev) => ({ ...prev, [m]: val }));
+                          }}
+                          className="w-32 px-2 py-1 text-right font-mono bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                        />
+                      ) : (
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                          {formatCurrency(declared)}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 dark:bg-white/5 font-bold">
                 <td className="py-3 px-4 text-slate-900 dark:text-white">
                   <BilingualLabel tKey="total" tf />
                 </td>
-                <td className={clsx('py-3 px-4 font-mono text-slate-900 dark:text-white', isRTL && 'text-left')}>
+                <td className="py-3 px-4 font-mono text-slate-400 dark:text-slate-500 text-right">
                   {formatCurrency(annualTurnover)}
+                </td>
+                <td className="py-3 px-4 text-right">
+                  {(isBrouillon && isLatestVersion && editMode === 'total') ? (
+                    <input
+                      type="number"
+                      value={declaredTotal}
+                      onChange={(e) => handleDeclaredTotalChange(parseFloat(e.target.value) || 0)}
+                      className="w-36 px-2 py-1 text-right font-mono bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                    />
+                  ) : (
+                    <span className="font-mono text-slate-900 dark:text-white">
+                      {formatCurrency(declaredAnnualTotal)}
+                    </span>
+                  )}
                 </td>
               </tr>
             </tfoot>
@@ -346,10 +541,10 @@ const TaxReports: React.FC = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            <BilingualLabel tKey="ifuAnnualTurnover" tf />
+            <BilingualLabel tKey="ifuRealRevenue" tf />
           </p>
           <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-2">
             {formatCurrency(annualTurnover)}
@@ -357,22 +552,36 @@ const TaxReports: React.FC = () => {
         </div>
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            <BilingualLabel tKey="ifuApplicableRate" tf />
+            <BilingualLabel tKey="ifuDeclaredAmount" tf />
           </p>
-          <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-2">1.5%</p>
+          <p className="text-2xl font-display font-bold text-slate-900 dark:text-white mt-2">
+            {formatCurrency(declaredAnnualTotal)}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-white/10 shadow-sm">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            <BilingualLabel tKey="ifuGap" tf />
+          </p>
+          <p className={clsx(
+            'text-2xl font-display font-bold mt-2',
+            declaredAnnualTotal - annualTurnover < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'
+          )}>
+            {formatCurrency(declaredAnnualTotal - annualTurnover)}
+          </p>
         </div>
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-primary-100 dark:border-primary-900/20 shadow-sm bg-primary-50/50 dark:bg-primary-900/5">
           <p className="text-sm text-primary-600 dark:text-primary-400 font-bold">
             <BilingualLabel tKey="ifuTaxDue" tf />
           </p>
           <p className="text-2xl font-display font-bold text-primary-600 dark:text-primary-400 mt-2">
-            {formatCurrency((annualTurnover * 1.5) / 100)}
+            {formatCurrency((declaredAnnualTotal * 1.5) / 100)}
           </p>
         </div>
       </div>
 
     </div>
-  );
+    );
+  };
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // G50ter QUARTERLY DECLARATION
@@ -412,10 +621,10 @@ const TaxReports: React.FC = () => {
             onChange={(e) => setSelectedQuarter(parseInt(e.target.value))}
             className="input py-2 text-sm"
           >
-            <option value={1}><BilingualLabel tKey="ifuQuarter1" tf /></option>
-            <option value={2}><BilingualLabel tKey="ifuQuarter2" tf /></option>
-            <option value={3}><BilingualLabel tKey="ifuQuarter3" tf /></option>
-            <option value={4}><BilingualLabel tKey="ifuQuarter4" tf /></option>
+            <option value={1}>{tf('ifuQuarter1')}</option>
+            <option value={2}>{tf('ifuQuarter2')}</option>
+            <option value={3}>{tf('ifuQuarter3')}</option>
+            <option value={4}>{tf('ifuQuarter4')}</option>
           </select>
         </div>
 
@@ -889,22 +1098,20 @@ const TaxReports: React.FC = () => {
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
               )}
             </button>
-            {hasPayroll && (
-              <button
-                onClick={() => setIfuTab('g50')}
-                className={clsx(
-                  'pb-3 text-sm font-bold transition-all relative whitespace-nowrap',
-                  ifuTab === 'g50'
-                    ? 'text-primary-600'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                )}
-              >
-                <BilingualLabel tKey="ifuG50Quarterly" tf />
-                {ifuTab === 'g50' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
-                )}
-              </button>
-            )}
+            <button
+              onClick={() => setIfuTab('g50')}
+              className={clsx(
+                'pb-3 text-sm font-bold transition-all relative whitespace-nowrap',
+                ifuTab === 'g50'
+                  ? 'text-primary-600'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              )}
+            >
+              <BilingualLabel tKey="ifuG50Quarterly" tf />
+              {ifuTab === 'g50' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
+              )}
+            </button>
             <button
               onClick={() => setIfuTab('dashboard')}
               className={clsx(

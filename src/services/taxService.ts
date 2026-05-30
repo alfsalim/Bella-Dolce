@@ -14,13 +14,13 @@ import { authFetch, getAuthHeaders, readApiErrorMessage } from '../lib/api-clien
 export interface IfuDeclaration {
   id: string;
   year: number;
+  version: number;
   grossTurnover: number;
   taxRatePercent: number;
   taxAmountDue: number;
+  monthlyBreakdown?: string;
   configSnapshot?: string;
-  status: 'BROUILLON' | 'FINALISÉ' | 'SOUMIS';
-  finalizedBy?: string;
-  finalizedAt?: string;
+  status: 'BROUILLON' | 'SOUMIS';
   submittedAt?: string;
   submissionReference?: string;
   amendmentOf?: string;
@@ -87,6 +87,7 @@ export const taxService = {
     year: number;
     grossTurnover: number;
     taxRatePercent: number;
+    monthlyBreakdown?: Record<number, number>;
   }): Promise<IfuDeclaration> {
     const validation = validateIfuInput({
       grossTurnover: input.grossTurnover,
@@ -109,6 +110,7 @@ export const taxService = {
         grossTurnover: calculation.grossTurnover,
         taxRatePercent: calculation.taxRatePercent,
         taxAmountDue: calculation.taxAmountDue,
+        monthlyBreakdown: input.monthlyBreakdown,
         status: 'BROUILLON',
       }),
     });
@@ -121,6 +123,7 @@ export const taxService = {
     updates: Partial<{
       grossTurnover: number;
       taxRatePercent: number;
+      monthlyBreakdown: Record<number, number>;
     }>
   ): Promise<IfuDeclaration> {
     let taxAmountDue: number | undefined;
@@ -148,11 +151,21 @@ export const taxService = {
     return res.json();
   },
 
-  async finalizeIfuDeclaration(id: string, userId: string): Promise<IfuDeclaration> {
-    const res = await authFetch(`/api/tax/ifu-declarations/${id}/finalize`, {
+  async submitIfuDeclaration(id: string, submissionReference?: string): Promise<IfuDeclaration> {
+    const res = await authFetch(`/api/tax/ifu-declarations/${id}/submit`, {
       method: 'POST',
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ submissionReference }),
+    });
+    if (!res.ok) throw new Error(await readApiErrorMessage(res));
+    return res.json();
+  },
+
+  async amendIfuDeclaration(id: string): Promise<IfuDeclaration> {
+    const res = await authFetch(`/api/tax/ifu-declarations/${id}/amend`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     });
     if (!res.ok) throw new Error(await readApiErrorMessage(res));
     return res.json();

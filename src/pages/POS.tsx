@@ -352,41 +352,31 @@ const POS: React.FC = () => {
               <>
                 <button
                   onClick={() => setShowRecentSales(true)}
-                  className="px-4 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-2 transition-colors shadow-sm"
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-1.5 transition-colors shadow-sm text-sm"
                   title={t('recentSales')}
                   aria-label={t('recentSales')}
                 >
-                  <History className="w-5 h-5" />
+                  <History className="w-4 h-4" />
                   <span>{t('recentSales')}</span>
                 </button>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-slate-900 dark:text-white">
-                    {total.toLocaleString()} {currencyUnit}
-                  </span>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    {t('cart')}
-                    <ShoppingCart className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                  </h2>
-                </div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  {t('cart')}
+                  <ShoppingCart className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                </h2>
               </>
             ) : (
               <>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <ShoppingCart className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                    {t('cart')}
-                  </h2>
-                  <span className="text-sm font-bold text-slate-900 dark:text-white">
-                    {total.toLocaleString()} {currencyUnit}
-                  </span>
-                </div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShoppingCart className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                  {t('cart')}
+                </h2>
                 <button
                   onClick={() => setShowRecentSales(true)}
-                  className="px-4 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-2 transition-colors shadow-sm"
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-1.5 transition-colors shadow-sm text-sm"
                   title={t('recentSales')}
                   aria-label={t('recentSales')}
                 >
-                  <History className="w-5 h-5" />
+                  <History className="w-4 h-4" />
                   <span>{t('recentSales')}</span>
                 </button>
               </>
@@ -457,26 +447,16 @@ const POS: React.FC = () => {
             )}
           </div>
 
-          <div className="p-6 bg-slate-50 dark:bg-[#1a1512] border-t border-slate-100 dark:border-[#2a1e17] space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-slate-500 dark:text-slate-400 font-medium">
-                <span>{t('subtotal')}</span>
-                <span>{total.toLocaleString()} {currencyUnit}</span>
-              </div>
-              <div className="flex justify-between text-slate-500 dark:text-slate-400 font-medium">
-                <span>{t('tax')} (0%)</span>
-                <span>0 {currencyUnit}</span>
-              </div>
-              <div className="flex justify-between text-slate-900 dark:text-white text-xl font-bold pt-2 border-t border-slate-200 dark:border-[#2a1e17]">
-                <span>{t('total')}</span>
-                <span>{total.toLocaleString()} {currencyUnit}</span>
-              </div>
+          <div className="p-4 bg-slate-50 dark:bg-[#1a1512] border-t border-slate-100 dark:border-[#2a1e17] space-y-3">
+            <div className="flex justify-between text-slate-900 dark:text-white text-lg font-bold">
+              <span>{t('total')}</span>
+              <span>{total.toLocaleString()} {currencyUnit}</span>
             </div>
 
             <button
               onClick={() => setIsCheckoutOpen(true)}
               disabled={cart.length === 0}
-              className="w-full btn-primary py-5 text-xl font-bold rounded-xl disabled:opacity-50 active:scale-95 transition-transform"
+              className="w-full btn-primary py-3 text-base font-bold rounded-xl disabled:opacity-50 active:scale-95 transition-transform"
             >
               {t('checkout')}
             </button>

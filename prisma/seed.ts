@@ -39,6 +39,12 @@ async function main() {
     );
   }
 
+  const existingUser = await prisma.user.findFirst();
+  if (existingUser) {
+    console.log("DB already has data — skipping seed.");
+    return;
+  }
+
   await prisma.user.upsert({
     where: { id: "admin-001" },
     update: {},

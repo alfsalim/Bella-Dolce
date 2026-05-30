@@ -37,6 +37,7 @@ export interface Product {
   specifications?: string;
   weight?: number; // total weight in grams
   ingredients?: RecipeIngredient[];
+  batchSize?: number;
   unit?: string; // e.g., "piece", "kg"
   status?: 'none' | 'frozen' | 'ordered' | 'requested' | 'cancelled';
   isPack?: boolean;
@@ -100,6 +101,7 @@ export interface Recipe {
 export interface ProductionBatch {
   id: string;
   productId: string;
+  productName?: string;
   recipeId: string;
   plannedQty: number;
   actualQty?: number;

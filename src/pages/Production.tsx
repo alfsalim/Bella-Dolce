@@ -32,6 +32,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import { PAGE_SIZE } from '../constants';
 import Alert from '../components/Alert';
+import { authFetch, getAuthHeaders } from '../lib/api-client';
 
 const Production: React.FC = () => {
   const { t, isRTL, tProduct, tCategory } = useLanguage();
@@ -56,6 +57,7 @@ const Production: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [formFeedback, setFormFeedback] = useState<{type: 'error'|'success'; message: string} | null>(null);
   const [rawMaterials, setRawMaterials] = useState<any[]>([]);
+  const [estimatedBatchCost, setEstimatedBatchCost] = useState<number | null>(null);
   const [isDistributionModalOpen, setIsDistributionModalOpen] = useState(false);
   const [batchToComplete, setBatchToComplete] = useState<any | null>(null);
   const [distribution, setDistribution] = useState({ shop: 0, frozen: 0, waste: 0 });
@@ -142,6 +144,31 @@ const Production: React.FC = () => {
       }
     }
   }, [newBatch.productId, recipes, products, isEditingBatch]);
+
+  useEffect(() => {
+    if (!newBatch.productId || !newBatch.plannedQty) { setEstimatedBatchCost(null); return; }
+    const recipe = recipes.find(r => r.productId === newBatch.productId);
+    if (!recipe?.ingredients?.length) { setEstimatedBatchCost(null); return; }
+    authFetch('/api/db/purchases', { headers: getAuthHeaders() })
+      .then(r => r.json())
+      .then((purchases: { materialId?: string; price?: number; quantity?: number; purchaseDate?: string }[]) => {
+        const latestByMaterial = new Map<string, number>();
+        const sorted = [...purchases].sort((a, b) => new Date(b.purchaseDate || 0).getTime() - new Date(a.purchaseDate || 0).getTime());
+        for (const p of sorted) {
+          if (p.materialId && !latestByMaterial.has(p.materialId) && p.quantity && p.price) {
+            latestByMaterial.set(p.materialId, p.price / p.quantity);
+          }
+        }
+        const batchSize = recipe.batchSize || 1;
+        let batchCost = 0;
+        for (const ing of recipe.ingredients) {
+          const unitCost = latestByMaterial.get(ing.materialId);
+          if (unitCost) batchCost += ing.quantity * unitCost;
+        }
+        setEstimatedBatchCost((batchCost / batchSize) * newBatch.plannedQty);
+      })
+      .catch(() => setEstimatedBatchCost(null));
+  }, [newBatch.productId, newBatch.plannedQty, recipes]);
 
   const getMaxPossible = () => {
     if (newBatch.ingredients.length === 0) return 0;
@@ -630,8 +657,10 @@ const Production: React.FC = () => {
 
         setFormFeedback({ type: 'success', message: t('batchUpdatedSuccessfully') || 'Batch updated successfully' });
       } else {
+        const batchProduct = products.find(p => p.id === newBatch.productId);
         const batchRef = await addDoc(collection(db, 'batches'), {
           productId: newBatch.productId,
+          productName: batchProduct ? (batchProduct.name || '') : '',
           recipeId: recipe?.id || '',
           plannedQty: Number(newBatch.plannedQty),
           ingredients: effectiveIngredients,
@@ -1053,7 +1082,7 @@ const Production: React.FC = () => {
                             <ChefHat className="w-6 h-6" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-slate-900 dark:text-white">{product ? tProduct(product) : 'Unknown Product'}</h3>
+                            <h3 className="font-bold text-slate-900 dark:text-white">{product ? tProduct(product) : ((batch as any).productName || 'Unknown Product')}</h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">{tCategory(product?.category || '')}</p>
                           </div>
                         </div>
@@ -1147,7 +1176,7 @@ const Production: React.FC = () => {
                   <tbody className="divide-y divide-slate-50 dark:divide-white/10">
                     {filteredBatches.map((batch) => {
                       const product = products.find(p => p.id === batch.productId);
-                      const productName = product ? tProduct(product) : 'Unknown';
+                      const productName = product ? tProduct(product) : (batch.productName || 'Unknown');
                       return (
                         <tr key={batch.id} className="group hover:bg-primary-50/[0.02] dark:hover:bg-primary-900/[0.05] transition-all">
                           <td className="px-4 py-4">
@@ -1321,6 +1350,11 @@ const Production: React.FC = () => {
                       </p>
                     )}
                   </div>
+                  {estimatedBatchCost !== null && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                      {t('estimatedCost') || 'Coût estimé'}: {estimatedBatchCost.toFixed(2)} {t('currency') || 'DA'}
+                    </p>
+                  )}
                 </div>
               </div>
 

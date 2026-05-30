@@ -411,19 +411,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         const allMaterials = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as RawMaterial));
         setMaterials(allMaterials);
 
-        const maxBrandFill = 10;
-        const materialsWithoutBrand = allMaterials.filter((m) => !m.brand).slice(0, maxBrandFill);
-        if (materialsWithoutBrand.length > 0) {
-          const randomBrands = ['Nestlé', 'Danone', 'Unilever', 'P&G', 'General Mills', 'Kraft Heinz', 'Mars', 'Mondelez', 'PepsiCo', 'Coca-Cola'];
-          for (const material of materialsWithoutBrand) {
-            const randomBrand = randomBrands[Math.floor(Math.random() * randomBrands.length)];
-            try {
-              await updateDoc(doc(db, 'rawMaterials', material.id), { brand: randomBrand });
-            } catch (error) {
-              console.error('Error updating material brand:', error);
-            }
-          }
-        }
+
       }, (error) => handleFirestoreError(error, OperationType.GET, 'rawMaterials'));
     }
 

@@ -29,6 +29,10 @@
 @variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  html {
+    font-size: 80%;
+  }
+
   body {
     @apply font-sans bg-white text-slate-900 antialiased transition-colors duration-200;
   }

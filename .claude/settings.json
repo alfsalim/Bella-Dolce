@@ -15,7 +15,8 @@
       "Bash(node -e ' *)",
       "Bash(npm run *)",
       "Bash(DOCKER_HOST=tcp://100.114.12.38:2375 docker logs bella-dolce2 --tail 50)",
-      "Bash(DOCKER_HOST=tcp://100.114.12.38:2375 docker exec bella-dolce2 sh -c \"mkdir -p /app/certs && openssl req -x509 -newkey rsa:4096 -keyout /app/certs/key.pem -out /app/certs/cert.pem -days 365 -nodes -subj '/CN=localhost'\")"
+      "Bash(DOCKER_HOST=tcp://100.114.12.38:2375 docker exec bella-dolce2 sh -c \"mkdir -p /app/certs && openssl req -x509 -newkey rsa:4096 -keyout /app/certs/key.pem -out /app/certs/cert.pem -days 365 -nodes -subj '/CN=localhost'\")",
+      "Bash(curl -s http://localhost:3000/api/db/payslips -H \"Authorization: $\\(cat .env)"
     ]
   }
 }
