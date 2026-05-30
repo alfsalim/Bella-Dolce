@@ -218,18 +218,32 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       return;
     }
 
-    if (window.confirm(t('confirmDelete') || 'Are you sure you want to disable this material?')) {
+    // Check if material was ever used (any stock movement recorded)
+    const movementsSnap = await getDocs(query(collection(db, 'stockMovements'), where('itemId', '==', id)));
+    const usedInHistory = !movementsSnap.empty;
+
+    if (window.confirm(t('confirmDelete') || 'Are you sure you want to delete this material?')) {
       try {
-        await updateDoc(doc(db, 'rawMaterials', id), { disabled: true });
-        // Also disable in products if it was synced
-        const prodDoc = await getDoc(doc(db, 'products', id));
-        if (prodDoc.exists()) {
-          await updateDoc(doc(db, 'products', id), { disabled: true });
+        if (usedInHistory) {
+          // Soft delete — preserve for history/reports
+          await updateDoc(doc(db, 'rawMaterials', id), { disabled: true });
+          const prodDoc = await getDoc(doc(db, 'products', id));
+          if (prodDoc.exists()) {
+            await updateDoc(doc(db, 'products', id), { disabled: true });
+          }
+          toast.success(t('materialDisabled') || 'Material disabled successfully');
+        } else {
+          // Hard delete — never used
+          await deleteDoc(doc(db, 'rawMaterials', id));
+          const prodDoc = await getDoc(doc(db, 'products', id));
+          if (prodDoc.exists()) {
+            await deleteDoc(doc(db, 'products', id));
+          }
+          toast.success(t('materialDeleted') || 'Material deleted successfully');
         }
-        toast.success(t('materialDisabled') || 'Material disabled successfully');
       } catch (error) {
-        console.error('Error disabling material:', error);
-        toast.error(t('errorDeletingMaterial') || 'Error disabling material');
+        console.error('Error deleting material:', error);
+        toast.error(t('errorDeletingMaterial') || 'Error deleting material');
       }
     }
   };
@@ -241,18 +255,33 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
       return;
     }
 
-    if (window.confirm(t('confirmDelete') || 'Are you sure you want to disable this product?')) {
+    // Check if product was ever used in any production batch (including completed/cancelled)
+    const allBatchesQ = query(collection(db, 'batches'), where('productId', '==', id));
+    const allBatchesSnap = await getDocs(allBatchesQ);
+    const usedInProduction = !allBatchesSnap.empty;
+
+    if (window.confirm(t('confirmDelete') || 'Are you sure you want to delete this product?')) {
       try {
-        await updateDoc(doc(db, 'products', id), { disabled: true });
-        // Also disable in rawMaterials if it was synced
-        const matDoc = await getDoc(doc(db, 'rawMaterials', id));
-        if (matDoc.exists()) {
-          await updateDoc(doc(db, 'rawMaterials', id), { disabled: true });
+        if (usedInProduction) {
+          // Soft delete — preserve for production history
+          await updateDoc(doc(db, 'products', id), { disabled: true });
+          const matDoc = await getDoc(doc(db, 'rawMaterials', id));
+          if (matDoc.exists()) {
+            await updateDoc(doc(db, 'rawMaterials', id), { disabled: true });
+          }
+          toast.success(t('productDisabled') || 'Product disabled successfully');
+        } else {
+          // Hard delete — never used in production
+          await deleteDoc(doc(db, 'products', id));
+          const matDoc = await getDoc(doc(db, 'rawMaterials', id));
+          if (matDoc.exists()) {
+            await deleteDoc(doc(db, 'rawMaterials', id));
+          }
+          toast.success(t('productDeleted') || 'Product deleted successfully');
         }
-        toast.success(t('productDisabled') || 'Product disabled successfully');
       } catch (error) {
-        console.error('Error disabling product:', error);
-        toast.error(t('errorDeletingProduct') || 'Error disabling product');
+        console.error('Error deleting product:', error);
+        toast.error(t('errorDeletingProduct') || 'Error deleting product');
       }
     }
   };
