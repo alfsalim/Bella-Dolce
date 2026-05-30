@@ -1910,7 +1910,12 @@ async function startServer() {
             : result;
         res.json(payload);
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        const field = error?.meta?.target?.[0] || 'name';
+        const item = collection.replace(/s$/, '');
+        return res.status(409).json({ error: `A ${item} with this ${field} already exists. If it was disabled, re-enable it from the inventory instead of creating a new one.` });
+      }
       res.status(500).json({ error: (error as Error).message });
     }
   });

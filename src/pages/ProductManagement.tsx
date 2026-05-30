@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, getDoc } from '../lib/db';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, getDoc, includeDisabled } from '../lib/db';
 import { Product, RawMaterial, RecipeIngredient, ProductionBatch, Order, Promotion } from '../types';
 import { Plus, Search, Edit2, Trash2, Package, Info, List, Image as ImageIcon, Percent, Scale, Hash, Filter, RotateCcw, ChevronRight, X } from 'lucide-react';
 import { logActivity } from '../lib/logger';
@@ -109,7 +109,8 @@ const ProductManagement: React.FC = () => {
   useEffect(() => {
     const pq = query(
       collection(db, 'products'),
-      orderBy('name')
+      orderBy('name'),
+      includeDisabled()
     );
     const unsubscribeProducts = onSnapshot(pq, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
@@ -117,7 +118,8 @@ const ProductManagement: React.FC = () => {
 
     const mq = query(
       collection(db, 'rawMaterials'),
-      orderBy('name')
+      orderBy('name'),
+      includeDisabled()
     );
     const unsubscribeMaterials = onSnapshot(mq, (snapshot) => {
       setAllMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial)));
