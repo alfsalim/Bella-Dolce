@@ -64,6 +64,8 @@ export function query(collectionRef: any, ...constraints: any[]) {
       params.orderBy = constraint.value;
     } else if (constraint.type === 'limit') {
       params.limit = constraint.value;
+    } else if (constraint.type === 'includeDisabled') {
+      params.includeDisabled = true;
     }
   }
 
@@ -179,6 +181,11 @@ export function limit(n: number) {
     type: 'limit',
     value: n
   };
+}
+
+// IncludeDisabled constraint — pass to query() to fetch disabled items (Inventory only)
+export function includeDisabled() {
+  return { type: 'includeDisabled' };
 }
 
 // Timestamp (use current time)

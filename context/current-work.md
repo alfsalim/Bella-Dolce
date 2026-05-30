@@ -113,6 +113,74 @@ Algeria bakery IFU tax module
 ### Phase 2 Deliverables Complete
 All Phase 2 features verified and documented in session-log.md
 
+---
+
+## Bug Fixes & UI Improvements — Session 2026-05-30
+
+### Issues Fixed
+
+1. **Seeded demo data reappearing after deletion**
+   - Root cause: `server.ts` had inline seeding blocks (products, raw materials, customers, batches, sales) that ran on every restart when count = 0
+   - Fix: Removed all 5 sample-data seeding blocks from `server.ts`. Only admin user, role permissions, and settings seeding remain (safe — idempotent)
+   - Prod: Patched directly in the Docker image via `docker commit`, rebuilt container
+
+2. **Brand auto-assigned to raw materials by system**
+   - Root cause: `Inventory.tsx` had a block that randomly assigned brand names (Nestlé, Danone…) on every page load
+   - Fix: Removed the block entirely. Brand is now only set by user input
+
+3. **User deletion blocked (500 error)**
+   - Root cause: `ActivityLog → User` FK had no `onDelete` (defaulted to RESTRICT)
+   - Fix: Added `onDelete: Cascade` to ActivityLog relation in `prisma/schema.prisma`, applied via `db push`
+
+4. **Unit label missing in ingredient quantity input**
+   - Fixed in both `ProductEdit.tsx` and `ProductManagement.tsx` modal
+   - Unit (kg, g, pcs…) now appears as an inline suffix inside the quantity input, matching the production form style
+
+5. **Estimated cost (prix de revient) not auto-calculated**
+   - Fixed in `ProductManagement.tsx`: when ingredients are defined, fetches latest purchase price per material and auto-fills `costPrice = totalIngredientCost ÷ batchSize`
+   - Fixed in `ProductEdit.tsx`: shows read-only "Coût estimé" hint below cost price field
+   - Fixed in `Production.tsx`: shows estimated total batch cost below the quantity field
+   - Data source: `SupplierInvoice.amountHT` JSON → `price / quantity` = unit cost, most recent purchase per material
+
+6. **Batch size field added to ingredient definition**
+   - Added inline "for X pcs" input next to the Ingrédients title in `ProductManagement.tsx`
+   - Stored as `batchSize` on product document; used as divisor for per-unit cost calculation
+
+7. **POS cart UI overcrowded**
+   - Removed TVA and Sous-total rows — only Total shown
+   - Removed duplicate total from cart header
+   - Shrunk "Ventes récentes" button and "Payer" button
+   - Global 20% UI size reduction via `html { font-size: 80%; }` in `src/index.css`
+
+8. **Production history lost when product deleted**
+   - Root cause: `ProductionBatch.productId` FK was RESTRICT — delete blocked; name resolved live at render
+   - Fix: Made `productId` nullable with `onDelete: SetNull` in schema; new batches now store `productName` at creation; display falls back to stored name if product deleted
+
+9. **authFetch missing auth headers (500 on add ingredient)**
+   - All three `authFetch('/api/db/purchases')` calls in `ProductEdit.tsx`, `Production.tsx`, `ProductManagement.tsx` were missing `{ headers: getAuthHeaders() }`
+   - Fix: Added `getAuthHeaders()` to all three calls
+
+### Prod DB Operations (2026-05-30)
+- Manually deleted all seeded demo rows (10 products, 8 materials, 3 batches, 3 sales, 5 customers) via Prisma node script in Docker container
+- Applied schema migration via `prisma db push` inside prod container (added missing columns: `unit`, `nameAr`, `wasteQuantity`, `status` on Product; `productId` nullable on ProductionBatch)
+- Regenerated Prisma client inside prod container
+- Patched prod image's `server.ts` via `docker commit` to permanently remove seeding blocks
+- Prod DB state after cleanup: 0 products, 0 materials, 0 batches, 0 sales, 0 customers, 1 admin user
+
+### Files Modified
+- `server.ts` — removed sample seeding blocks
+- `src/index.css` — global 20% font-size reduction
+- `src/pages/POS.tsx` — cart UI cleanup
+- `src/pages/ProductEdit.tsx` — unit label, estimated cost, auth fix
+- `src/pages/ProductManagement.tsx` — unit label, batchSize field, auto cost, auth fix
+- `src/pages/Production.tsx` — batch cost estimation, productName stored, auth fix
+- `src/pages/Inventory.tsx` — removed brand auto-population
+- `src/types.ts` — added `batchSize?` and `productName?` fields
+- `src/constants.ts` — added `estimatedCost`, `ingredientsDefinedFor` i18n keys
+- `prisma/schema.prisma` — ActivityLog cascade, ProductionBatch nullable productId + SetNull
+
+---
+
 ### Future Enhancements (Out of Scope)
 - PDF export implementation (button structure in place)
 - Excel export implementation (button structure in place)

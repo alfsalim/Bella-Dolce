@@ -300,13 +300,8 @@ const Production: React.FC = () => {
   }, [profile, products.length]);
 
   useEffect(() => {
-    const unsubscribeMaterials = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
-      const mats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      setRawMaterials(prev => {
-        // Ingredient selector must show all usable raw materials from inventory.
-        const newMats = mats.filter(m => !m.disabled);
-        return newMats;
-      });
+    const unsubscribeMaterials = onSnapshot(query(collection(db, 'rawMaterials'), orderBy('name')), (snapshot) => {
+      setRawMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'rawMaterials'));
     return () => unsubscribeMaterials();
   }, []);
@@ -348,7 +343,7 @@ const Production: React.FC = () => {
       setBatches(allBatches.slice(startIndex, startIndex + PAGE_SIZE));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'batches'));
 
-    const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsubscribeProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'products'));
 

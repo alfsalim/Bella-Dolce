@@ -59,6 +59,7 @@ export async function getDocsFromApi(collectionPath: string, queryParams?: any) 
     if (queryParams.where) url.searchParams.set('where', JSON.stringify(queryParams.where));
     if (queryParams.orderBy) url.searchParams.set('orderBy', JSON.stringify(queryParams.orderBy));
     if (queryParams.limit) url.searchParams.set('take', queryParams.limit.toString());
+    if (queryParams.includeDisabled) url.searchParams.set('includeDisabled', '1');
   }
   const res = await authFetch(url.toString(), { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(await readApiErrorMessage(res));

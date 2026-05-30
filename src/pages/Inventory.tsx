@@ -26,7 +26,7 @@ import {
   History
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, limit, handleFirestoreError, OperationType, getCountFromServer, where, getDoc, getDocs, Timestamp } from '../lib/db';
+import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, limit, handleFirestoreError, OperationType, getCountFromServer, where, getDoc, getDocs, Timestamp, includeDisabled } from '../lib/db';
 import { authFetch } from '../lib/api-client';
 import { Product, RawMaterial, StockMovement, Recipe } from '../types';
 import { logActivity } from '../lib/logger';
@@ -376,7 +376,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
   };
 
   useEffect(() => {
-    let productsQ = query(collection(db, 'products'), orderBy('name'), limit(QUERY_MAX_ITEMS));
+    let productsQ = query(collection(db, 'products'), orderBy('name'), limit(QUERY_MAX_ITEMS), includeDisabled());
     if (selectedCategory !== 'all') {
       productsQ = query(productsQ, where('category', '==', selectedCategory));
     }
@@ -399,7 +399,7 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
 
     let unsubscribeMaterials = () => {};
     if (currentUserProfile) {
-      let materialsQ = query(collection(db, 'rawMaterials'), orderBy('name'));
+      let materialsQ = query(collection(db, 'rawMaterials'), orderBy('name'), includeDisabled());
       if (selectedCategory !== 'all') {
         materialsQ = query(materialsQ, where('category', '==', selectedCategory));
       }

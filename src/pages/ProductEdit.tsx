@@ -15,7 +15,7 @@ import {
   Scale,
   Image as ImageIcon
 } from 'lucide-react';
-import { db, doc, getDoc, updateDoc, onSnapshot, collection, setDoc, deleteDoc } from '../lib/db';
+import { db, doc, getDoc, updateDoc, onSnapshot, collection, query, orderBy, setDoc, deleteDoc } from '../lib/db';
 import { Product, Recipe, RawMaterial, RecipeIngredient } from '../types';
 import { clsx } from 'clsx';
 import { CATEGORIES, UNITS } from '../constants';
@@ -67,7 +67,7 @@ const ProductEdit: React.FC = () => {
       }
     });
 
-    const unsubscribeMaterials = onSnapshot(collection(db, 'rawMaterials'), (snapshot) => {
+    const unsubscribeMaterials = onSnapshot(query(collection(db, 'rawMaterials'), orderBy('name')), (snapshot) => {
       const rows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RawMaterial));
       setMaterials(rows.filter((m) => String(m.category || '').toLowerCase() === 'kitchen'));
     });
