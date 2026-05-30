@@ -276,10 +276,12 @@ const ProductManagement: React.FC = () => {
       const collectionName = isMaterial ? 'rawMaterials' : 'products';
       const currentEditingId = editingProduct?.id || editingMaterial?.id;
 
+      const buildProductPayload = (data: any) => { const { batchSize, ...rest } = data; return rest; };
+
       if (currentEditingId) {
         const dataToSave = isMaterial
           ? buildRawMaterialPayload(formData)
-          : formData;
+          : buildProductPayload(formData);
         await setDoc(doc(db, collectionName, currentEditingId), dataToSave, { merge: true });
         
         // If it's a material that is ALSO used as a product, sync them
@@ -311,7 +313,7 @@ const ProductManagement: React.FC = () => {
       } else {
         const dataToCreate = isMaterial
           ? buildRawMaterialPayload(formData)
-          : formData;
+          : buildProductPayload(formData);
 
         const itemRef = await addDoc(collection(db, collectionName), {
           ...dataToCreate,
@@ -348,9 +350,10 @@ const ProductManagement: React.FC = () => {
         minStock: 10,
         itemType: activeTab === 'products' ? 'product' : 'material'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving item:", error);
-      setFormFeedback({type: 'error', message: t('errorSavingItem') || 'Error saving item'});
+      const msg = error?.message || t('errorSavingItem') || 'Error saving item';
+      setFormFeedback({type: 'error', message: msg});
     }
   };
 
