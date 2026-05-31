@@ -2389,6 +2389,49 @@ async function startServer() {
   });
 
  
+  app.patch("/api/sale/:id/cancel", requireAuth, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const prisma = getPrisma();
+
+      const sale = await prisma.sale.findUnique({ where: { id } });
+      if (!sale) return res.status(404).json({ error: 'Sale not found' });
+
+      const userRole: string = (req.user?.role ?? '').trim();
+      const userId: string = req.user?.id ?? '';
+      if (userRole === 'cashier' && sale.cashierId !== userId) {
+        return res.status(403).json({ error: 'Not authorized to cancel this transaction' });
+      }
+
+      if ((sale as any).status === 'cancelled') {
+        return res.status(400).json({ error: 'Transaction is already cancelled' });
+      }
+
+      const items: Array<{ productId: string; quantity: number }> = JSON.parse(sale.items);
+      await Promise.all(
+        items.map((item) =>
+          prisma.product.update({
+            where: { id: item.productId },
+            data: { shopStock: { increment: item.quantity } },
+          })
+        )
+      );
+
+      const updated = await prisma.sale.update({
+        where: { id },
+        data: {
+          status: 'cancelled',
+          ...(reason ? { returnComment: reason } : {}),
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   app.post("/api/print-receipt", requireAuth, async (req: any, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const PRINT_AGENT_URL = isProduction ? config.PRINT_AGENT_URL_PROD : config.PRINT_AGENT_URL_DEV;

@@ -18,7 +18,7 @@ import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, g
 import { Product, SaleItem, Customer, Promotion } from '../types';
 import { clsx } from 'clsx';
 import { sanitizeItemCategoryConfig, getDefaultItemCategoryConfig, ItemCategoryConfig } from '../lib/itemCategories';
-import { authFetch } from '../lib/api-client';
+import { authFetch, getAuthHeaders } from '../lib/api-client';
 import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 import RecentSalesModal from '../components/RecentSalesModal';
 import ReceiptPreview from '../components/ReceiptPreview';
@@ -51,6 +51,10 @@ const POS: React.FC = () => {
   const [receiptAmountPaid, setReceiptAmountPaid] = useState<number>(0);
   const [returnComment, setReturnComment] = useState<string>('');
   const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
+  const [completedSaleDbId, setCompletedSaleDbId] = useState<string | null>(null);
+  const [cancelReceiptReason, setCancelReceiptReason] = useState('');
+  const [showCancelReceipt, setShowCancelReceipt] = useState(false);
+  const [cancelReceiptError, setCancelReceiptError] = useState<string | null>(null);
 
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
     if (!product) return 0;
@@ -235,6 +239,10 @@ const POS: React.FC = () => {
       setReturnComment('');
       setIsCheckoutOpen(false);
       setSuccessfulSaleId(generateTransactionId(saleData.createdAt || new Date()));
+      setCompletedSaleDbId(saleData.id || null);
+      setCancelReceiptReason('');
+      setShowCancelReceipt(false);
+      setCancelReceiptError(null);
       setCashierNameForReceipt(saleData.cashierName || profile?.name || '');
     } catch (error: any) {
       console.error("Checkout error:", error);
@@ -600,12 +608,72 @@ const POS: React.FC = () => {
               saleId={successfulSaleId}
               onClose={() => {
                 setSuccessfulSaleId(null);
+                setCompletedSaleDbId(null);
                 setReceiptItems([]);
                 setReceiptTotal(0);
                 setReceiptAmountPaid(0);
               }}
               autoCloseDelay={5000}
             />
+            {completedSaleDbId && !showCancelReceipt && (
+              <button
+                onClick={() => setShowCancelReceipt(true)}
+                className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium transition-colors"
+              >
+                {t('cancelTransaction')}
+              </button>
+            )}
+            {completedSaleDbId && showCancelReceipt && (
+              <div className="mt-3 flex flex-col gap-2">
+                <p className="text-sm font-medium text-red-700 dark:text-red-400">{t('cancelConfirm')}</p>
+                <input
+                  type="text"
+                  value={cancelReceiptReason}
+                  onChange={e => setCancelReceiptReason(e.target.value)}
+                  placeholder={t('cancelReason')}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                />
+                {cancelReceiptError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{cancelReceiptError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      setCancelReceiptError(null);
+                      try {
+                        const res = await authFetch(`/api/sale/${completedSaleDbId}/cancel`, {
+                          method: 'PATCH',
+                          headers: getAuthHeaders(),
+                          body: JSON.stringify({ reason: cancelReceiptReason }),
+                        });
+                        if (!res.ok) {
+                          const data = await res.json();
+                          setCancelReceiptError(data.error || 'Failed to cancel');
+                          return;
+                        }
+                        setSuccessfulSaleId(null);
+                        setCompletedSaleDbId(null);
+                        setReceiptItems([]);
+                        setReceiptTotal(0);
+                        setReceiptAmountPaid(0);
+                        setShowCancelReceipt(false);
+                      } catch {
+                        setCancelReceiptError('Network error');
+                      }
+                    }}
+                    className="flex-1 px-4 py-1.5 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                  >
+                    {t('confirm') || 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => { setShowCancelReceipt(false); setCancelReceiptError(null); }}
+                    className="flex-1 px-4 py-1.5 text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                  >
+                    {t('close')}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -614,6 +682,7 @@ const POS: React.FC = () => {
         isOpen={showRecentSales}
         onClose={() => setShowRecentSales(false)}
         cashierId={profile?.id || ''}
+        userRole={profile?.role}
       />
     </div>
   );

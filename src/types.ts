@@ -133,6 +133,7 @@ export interface Sale {
   comment?: string;
   discount?: number;
   returnComment?: string;
+  status?: string;
   createdAt: string;
 }
 

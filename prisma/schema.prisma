@@ -155,6 +155,7 @@ model Sale {
   comment       String?
   returnComment String?
   discount      Float?
+  status        String   @default("completed")
 }
 
 model Supplier {

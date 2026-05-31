@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Printer, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { authFetch } from '../lib/api-client';
+import { authFetch, getAuthHeaders } from '../lib/api-client';
 import { generateTransactionId } from '../lib/transactionId';
 import ReceiptPreview from './ReceiptPreview';
 
@@ -9,6 +9,7 @@ const PAGE_SIZE = 15;
 
 interface Sale {
   id: string;
+  cashierId: string;
   createdAt: string;
   totalAmount: number;
   amountPaid?: number;
@@ -18,21 +19,27 @@ interface Sale {
   cashierName?: string;
   comment?: string;
   returnComment?: string;
+  status?: string;
 }
 
 interface RecentSalesModalProps {
   isOpen: boolean;
   onClose: () => void;
   cashierId: string;
+  userRole?: string;
 }
 
-export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentSalesModalProps) {
+export default function RecentSalesModal({ isOpen, onClose, cashierId, userRole }: RecentSalesModalProps) {
   const { t, isRTL } = useLanguage();
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<Sale | null>(null);
   const [page, setPage] = useState(1);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -84,6 +91,42 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
     }
   };
 
+  const canCancel = (sale: Sale) => {
+    if (sale.status === 'cancelled') return false;
+    if (userRole === 'cashier') return sale.cashierId === cashierId;
+    return true;
+  };
+
+  const handleCancelClick = (saleId: string) => {
+    setCancellingId(saleId);
+    setCancelReason('');
+    setCancelError(null);
+  };
+
+  const handleCancelConfirm = async () => {
+    if (!cancellingId) return;
+    setCancelError(null);
+    try {
+      const res = await authFetch(`/api/sale/${cancellingId}/cancel`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setCancelError(data.error || 'Failed to cancel');
+        return;
+      }
+      setSales(prev => prev.map(s => s.id === cancellingId ? { ...s, status: 'cancelled' } : s));
+      setCancellingId(null);
+      setCancelReason('');
+      setSuccessMessage(t('transactionCancelled'));
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch {
+      setCancelError('Network error');
+    }
+  };
+
   if (!isOpen) return null;
 
   const totalPages = Math.max(1, Math.ceil(sales.length / PAGE_SIZE));
@@ -96,7 +139,7 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
   return (
     <>
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t('recentSales')}</h2>
             <button
@@ -108,6 +151,12 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
               <span>{t('close')}</span>
             </button>
           </div>
+
+          {successMessage && (
+            <div className="mb-3 text-green-700 dark:text-green-400 p-3 bg-green-50 dark:bg-green-900/10 rounded-lg text-sm font-medium">
+              {successMessage}
+            </div>
+          )}
 
           {isLoading && (
             <div className="flex items-center justify-center py-8">
@@ -129,8 +178,8 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
 
           {!isLoading && !error && sales.length > 0 && (
             <>
-              <div className="overflow-y-auto flex-1 -mx-6 px-6">
-                <table className="w-full text-sm">
+              <div className="overflow-y-auto flex-1 -mx-6 px-6 overflow-x-hidden">
+                <table className="w-full text-sm table-fixed">
                   <thead className="sticky top-0 bg-white dark:bg-slate-900">
                     <tr className="border-b border-slate-200 dark:border-slate-700">
                       <th className="text-left p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
@@ -154,56 +203,119 @@ export default function RecentSalesModal({ isOpen, onClose, cashierId }: RecentS
                       <th className="text-center p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
                         {t('reprint')}
                       </th>
+                      <th className="text-center p-3 font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-widest">
+                        {t('status')}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginated.map((sale) => (
-                      <tr
-                        key={sale.id}
-                        className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                      >
-                        <td className="p-3 text-slate-900 dark:text-white font-mono text-xs font-bold">
-                          {generateTransactionId(sale.createdAt)}
-                        </td>
-                        <td className="p-3 text-slate-900 dark:text-white">
-                          {new Date(sale.createdAt).toLocaleTimeString('fr-FR', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit'
-                          })}
-                        </td>
-                        <td className="p-3 text-slate-700 dark:text-slate-300 text-xs max-w-xs">
-                          {sale.items ? (() => {
-                            try {
-                              const items = JSON.parse(sale.items);
-                              return items.slice(0, 2).map((item: any) =>
-                                `${item.name || `Product ${item.productId}`} (${item.quantity})`
-                              ).join(', ') + (items.length > 2 ? '...' : '');
-                            } catch {
-                              return t('noProducts') || 'No products';
-                            }
-                          })() : t('noProducts') || 'No products'}
-                        </td>
-                        <td className="p-3 font-bold text-slate-900 dark:text-white">
-                          {sale.totalAmount.toLocaleString('fr-DZ', { minimumFractionDigits: 2 })} DA
-                        </td>
-                        <td className="p-3 text-slate-700 dark:text-slate-300">
-                          {getPaymentMethodLabel(sale.paymentMethod)}
-                        </td>
-                        <td className="p-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
-                          {sale.comment || '—'}
-                        </td>
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => setSelectedSaleForReceipt(sale)}
-                            className="p-2.5 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
-                            title={t('reprint')}
-                            aria-label={`${t('reprint')} ${sale.id}`}
-                          >
-                            <Printer className="w-5 h-5" />
-                          </button>
-                        </td>
-                      </tr>
+                      <React.Fragment key={sale.id}>
+                        <tr
+                          className={`border-b border-slate-100 dark:border-slate-800 transition-colors ${
+                            sale.status === 'cancelled'
+                              ? 'opacity-60 bg-red-50/40 dark:bg-red-900/10'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
+                        >
+                          <td className="p-3 text-slate-900 dark:text-white font-mono text-xs font-bold">
+                            {generateTransactionId(sale.createdAt)}
+                          </td>
+                          <td className="p-3 text-slate-900 dark:text-white">
+                            {new Date(sale.createdAt).toLocaleTimeString('fr-FR', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit'
+                            })}
+                          </td>
+                          <td className="p-3 text-slate-700 dark:text-slate-300 text-xs max-w-xs">
+                            {sale.items ? (() => {
+                              try {
+                                const items = JSON.parse(sale.items);
+                                return items.slice(0, 2).map((item: any) =>
+                                  `${item.name || `Product ${item.productId}`} (${item.quantity})`
+                                ).join(', ') + (items.length > 2 ? '...' : '');
+                              } catch {
+                                return t('noProducts') || 'No products';
+                              }
+                            })() : t('noProducts') || 'No products'}
+                          </td>
+                          <td className={`p-3 font-bold ${sale.status === 'cancelled' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                            {sale.totalAmount.toLocaleString('fr-DZ', { minimumFractionDigits: 2 })} DA
+                          </td>
+                          <td className="p-3 text-slate-700 dark:text-slate-300">
+                            {getPaymentMethodLabel(sale.paymentMethod)}
+                          </td>
+                          <td className="p-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
+                            {sale.comment || '—'}
+                          </td>
+                          <td className="p-3 text-center">
+                            {sale.status !== 'cancelled' && (
+                              <button
+                                onClick={() => setSelectedSaleForReceipt(sale)}
+                                className="p-2.5 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
+                                title={t('reprint')}
+                                aria-label={`${t('reprint')} ${sale.id}`}
+                              >
+                                <Printer className="w-5 h-5" />
+                              </button>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            {sale.status === 'cancelled' ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                {t('cancelled')}
+                              </span>
+                            ) : canCancel(sale) ? (
+                              <button
+                                onClick={() => handleCancelClick(sale.id)}
+                                className="px-2 py-0.5 text-xs font-semibold rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                aria-label={`${t('cancelTransaction')} ${sale.id}`}
+                              >
+                                {t('cancel')}
+                              </button>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>
+                            )}
+                          </td>
+                        </tr>
+
+                        {cancellingId === sale.id && (
+                          <tr className="bg-red-50 dark:bg-red-900/10 border-b border-red-100 dark:border-red-900/20">
+                            <td colSpan={8} className="px-4 py-3">
+                              <div className="flex flex-col gap-2">
+                                <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                                  {t('cancelConfirm')}
+                                </p>
+                                <input
+                                  type="text"
+                                  value={cancelReason}
+                                  onChange={e => setCancelReason(e.target.value)}
+                                  placeholder={t('cancelReason')}
+                                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                                />
+                                {cancelError && (
+                                  <p className="text-xs text-red-600 dark:text-red-400">{cancelError}</p>
+                                )}
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={handleCancelConfirm}
+                                    className="px-4 py-1.5 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                                  >
+                                    {t('confirm') || 'Confirm'}
+                                  </button>
+                                  <button
+                                    onClick={() => { setCancellingId(null); setCancelError(null); }}
+                                    className="px-4 py-1.5 text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                  >
+                                    {t('close')}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

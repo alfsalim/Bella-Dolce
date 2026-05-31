@@ -196,6 +196,7 @@ const Reports: React.FC = () => {
   });
 
   const filteredSalesAnalytics = filteredSalesByRole.filter(s => {
+    if (s.status === 'cancelled') return false;
     const date = new Date(s.createdAt);
     return isWithinInterval(date, {
       start: startOfDay(new Date(analyticsStart)),
@@ -230,8 +231,9 @@ const Reports: React.FC = () => {
     safeTransactionPage * PAGE_SIZE
   );
 
-  const totalTransactionCount = transactionsListSales.length;
-  const totalAmountTransactions = transactionsListSales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const activeTransactions = transactionsListSales.filter(s => s.status !== 'cancelled');
+  const totalTransactionCount = activeTransactions.length;
+  const totalAmountTransactions = activeTransactions.reduce((sum, s) => sum + s.totalAmount, 0);
 
   const getLineItemLabel = (item: SaleItem & { name?: string }) => {
     const p = products.find(x => x.id === item.productId);
@@ -1287,13 +1289,14 @@ const Reports: React.FC = () => {
                       <th className="px-8 py-4 text-right">{t('amount') || 'Amount'}</th>
                       <th className="px-8 py-4 text-right">{t('discount') || 'Discount'}</th>
                       <th className="px-8 py-4">{t('comment') || 'Comment'}</th>
+                      <th className="px-8 py-4">{t('status')}</th>
                       <th className="px-8 py-4">Reprint</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-white/5">
                     {loading ? (
                       <tr>
-                        <td colSpan={5} className="px-8 py-12 text-center text-slate-400 italic">
+                        <td colSpan={9} className="px-8 py-12 text-center text-slate-400 italic">
                           {t('loading') || 'Loading transactions...'}
                         </td>
                       </tr>
@@ -1302,7 +1305,7 @@ const Reports: React.FC = () => {
                         const items = parseSaleItems(sale);
                         const rest = items.length - LINE_ITEMS_PREVIEW;
                         return (
-                          <tr key={sale.id} className="group hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-all">
+                          <tr key={sale.id} className={`group transition-all ${sale.status === 'cancelled' ? 'opacity-60 bg-red-50/30 dark:bg-red-900/10' : 'hover:bg-slate-50/50 dark:hover:bg-white/[0.02]'}`}>
                             <td className="px-8 py-5">
                               <div className="flex flex-col">
                                 <span className="font-bold text-slate-900 dark:text-white">{format(new Date(sale.createdAt), 'MMM dd, yyyy')}</span>
@@ -1361,16 +1364,29 @@ const Reports: React.FC = () => {
                               {sale.comment || '—'}
                             </td>
                             <td className="px-8 py-5">
-                              <button onClick={() => setSelectedSaleForReceipt(sale)} className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors" title={t('reprint')}>
-                                <Printer className="w-4 h-4" />
-                              </button>
+                              {sale.status === 'cancelled' ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                  {t('cancelled')}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                  {t('completed') || 'Completed'}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-8 py-5">
+                              {sale.status !== 'cancelled' && (
+                                <button onClick={() => setSelectedSaleForReceipt(sale)} className="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors" title={t('reprint')}>
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan={6} className="px-8 py-12 text-center text-slate-400 italic">
+                        <td colSpan={9} className="px-8 py-12 text-center text-slate-400 italic">
                           {t('noSalesFound') || 'No sales found for the selected criteria.'}
                         </td>
                       </tr>
