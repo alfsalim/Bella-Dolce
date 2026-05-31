@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { db, collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, deleteDoc, setDoc, handleFirestoreError, OperationType, getDoc, includeDisabled } from '../lib/db';
+import { db, collection, onSnapshot, query, orderBy, where, addDoc, updateDoc, doc, deleteDoc, setDoc, getDocs, handleFirestoreError, OperationType, getDoc, includeDisabled } from '../lib/db';
 import { Product, RawMaterial, RecipeIngredient, ProductionBatch, Order, Promotion } from '../types';
 import { Plus, Search, Edit2, Trash2, Package, Info, List, Image as ImageIcon, Percent, Scale, Hash, Filter, RotateCcw, ChevronRight, X } from 'lucide-react';
 import { logActivity } from '../lib/logger';
@@ -256,6 +256,23 @@ const ProductManagement: React.FC = () => {
     }
   };
 
+  const openEditProduct = async (product: Product) => {
+    setEditingProduct(product);
+    setEditingMaterial(null);
+    setFormFeedback(null);
+    let base: any = { ...product };
+    const recipes = await getDocs(query(collection(db, 'recipes'), where('productId', '==', product.id)));
+    if (!recipes.empty) {
+      const r = recipes.docs[0].data();
+      base.batchSize = r.batchSize || 1;
+      if (r.ingredients) {
+        try { base.ingredients = typeof r.ingredients === 'string' ? JSON.parse(r.ingredients) : r.ingredients; } catch {}
+      }
+    }
+    setFormData(base);
+    setIsModalOpen(true);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -278,11 +295,28 @@ const ProductManagement: React.FC = () => {
 
       const buildProductPayload = (data: any) => { const { batchSize, ...rest } = data; return rest; };
 
+      const saveRecipeIfProduct = async (productId: string) => {
+        if (isMaterial || !formData.ingredients?.length) return;
+        const existingRecipes = await getDocs(query(collection(db, 'recipes'), where('productId', '==', productId)));
+        const recipeData = {
+          productId,
+          batchSize: formData.batchSize || 1,
+          ingredients: JSON.stringify(formData.ingredients),
+          prepTime: 0,
+        };
+        if (!existingRecipes.empty) {
+          await setDoc(doc(db, 'recipes', existingRecipes.docs[0].id), recipeData, { merge: true });
+        } else {
+          await addDoc(collection(db, 'recipes'), { ...recipeData, createdAt: new Date().toISOString() });
+        }
+      };
+
       if (currentEditingId) {
         const dataToSave = isMaterial
           ? buildRawMaterialPayload(formData)
           : buildProductPayload(formData);
         await setDoc(doc(db, collectionName, currentEditingId), dataToSave, { merge: true });
+        await saveRecipeIfProduct(currentEditingId);
         
         // If it's a material that is ALSO used as a product, sync them
         if (isMaterial) {
@@ -319,6 +353,7 @@ const ProductManagement: React.FC = () => {
           ...dataToCreate,
           createdAt: new Date().toISOString()
         });
+        await saveRecipeIfProduct(itemRef.id);
 
         if (currentUserProfile) {
           await logActivity(
@@ -442,21 +477,41 @@ const ProductManagement: React.FC = () => {
   useEffect(() => {
     const ings = formData.ingredients;
     if (!ings?.length) return;
+
+    // Convert ingredient quantity to the same unit as the purchase unit cost
+    const toKg = (qty: number, unit: string) => unit === 'g' ? qty / 1000 : qty;
+    const toLiter = (qty: number, unit: string) => unit === 'ml' ? qty / 1000 : qty;
+    const normalizeQty = (qty: number, ingUnit: string, purchaseUnit: string): number => {
+      if (ingUnit === purchaseUnit) return qty;
+      if ((ingUnit === 'g' || ingUnit === 'kg') && (purchaseUnit === 'g' || purchaseUnit === 'kg'))
+        return toKg(qty, ingUnit) / (purchaseUnit === 'g' ? 0.001 : 1);
+      if ((ingUnit === 'ml' || ingUnit === 'l') && (purchaseUnit === 'ml' || purchaseUnit === 'l'))
+        return toLiter(qty, ingUnit) / (purchaseUnit === 'ml' ? 0.001 : 1);
+      return qty; // same unit or incompatible — no conversion
+    };
+
     authFetch('/api/db/purchases', { headers: getAuthHeaders() })
       .then(r => r.json())
-      .then((purchases: { materialId?: string; price?: number; quantity?: number; purchaseDate?: string }[]) => {
-        const latestByMaterial = new Map<string, number>();
+      .then((purchases: { materialId?: string; price?: number; quantity?: number; unit?: string; purchaseDate?: string }[]) => {
+        // Store { unitCost, unit } per material from latest purchase
+        const latestByMaterial = new Map<string, { unitCost: number; unit: string }>();
         const sorted = [...purchases].sort((a, b) => new Date(b.purchaseDate || 0).getTime() - new Date(a.purchaseDate || 0).getTime());
         for (const p of sorted) {
           if (p.materialId && !latestByMaterial.has(p.materialId) && p.quantity && p.price) {
-            latestByMaterial.set(p.materialId, p.price / p.quantity);
+            latestByMaterial.set(p.materialId, { unitCost: p.price / p.quantity, unit: p.unit || 'kg' });
           }
         }
         let batchCost = 0;
         let hasAnyPrice = false;
         for (const ing of ings) {
-          const unitCost = latestByMaterial.get(ing.materialId);
-          if (unitCost) { batchCost += ing.quantity * unitCost; hasAnyPrice = true; }
+          const entry = latestByMaterial.get(ing.materialId);
+          if (entry) {
+            const mat = materials.find(m => m.id === ing.materialId);
+            const ingUnit = mat?.unit || entry.unit;
+            const normalizedQty = normalizeQty(ing.quantity, ingUnit, entry.unit);
+            batchCost += normalizedQty * entry.unitCost;
+            hasAnyPrice = true;
+          }
         }
         if (hasAnyPrice) {
           const batchSize = formData.batchSize || 1;
@@ -669,9 +724,7 @@ const ProductManagement: React.FC = () => {
                           <button 
                             onClick={() => {
                               if (isProduct) {
-                                setEditingProduct(product);
-                                setEditingMaterial(null);
-                                setFormData(product!);
+                                openEditProduct(product!);
                               } else {
                                 setEditingMaterial(material);
                                 setEditingProduct(null);
@@ -786,12 +839,7 @@ const ProductManagement: React.FC = () => {
 
                         <div className="mt-4 pt-4 border-t border-slate-50 dark:border-[#2a1e17] flex justify-end">
                           <button 
-                            onClick={() => {
-                              setEditingProduct(product);
-                              setFormData(product!);
-                              setFormFeedback(null);
-                              setIsModalOpen(true);
-                            }}
+                            onClick={() => openEditProduct(product!)}
                             className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-bold text-xs flex items-center gap-1 group/btn"
                           >
                             {t('edit')}
@@ -913,21 +961,7 @@ const ProductManagement: React.FC = () => {
                               <button 
                                 onClick={() => {
                                   if (isProduct) {
-                                    setEditingProduct(product);
-                                    setEditingMaterial(null);
-                                    setFormData({
-                                      ...product,
-                                      name: product.name || '',
-                                      nameAr: product.nameAr || '',
-                                      category: product.category || '',
-                                      sellingPrice: product.sellingPrice || 0,
-                                      costPrice: product.costPrice || 0,
-                                      minStock: product.minStock || 0,
-                                      unit: product.unit || 'g',
-                                      description: product.description || '',
-                                      imageUrl: product.imageUrl || '',
-                                      itemType: product.itemType || 'product'
-                                    });
+                                    openEditProduct(product!);
                                   } else {
                                     setEditingMaterial(material);
                                     setEditingProduct(null);
@@ -1098,7 +1132,7 @@ const ProductManagement: React.FC = () => {
                       <button
                         key={u}
                         type="button"
-                        onClick={() => setFormData({ ...formData, unit: u })}
+                        onClick={() => setFormData(prev => ({ ...prev, unit: u }))}
                         className={clsx(
                           "flex-1 py-2 rounded-lg text-xs font-bold transition-all",
                           (formData.unit || 'g') === u
@@ -1219,15 +1253,20 @@ const ProductManagement: React.FC = () => {
                         <List className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                         {t('ingredients')}
                       </h3>
-                      <div className="relative w-28">
-                        <input
-                          type="number"
-                          min="1"
-                          className="input py-1 pl-2 pr-10 text-sm w-full"
-                          value={formData.batchSize || 1}
-                          onChange={(e) => setFormData({ ...formData, batchSize: Math.max(1, Number(e.target.value)) })}
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase pointer-events-none">{t('units') || 'pcs'}</span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wide">
+                          {t('ingredientsDefinedFor') || 'Ingrédients pour'}
+                        </span>
+                        <div className="relative w-28">
+                          <input
+                            type="number"
+                            min="1"
+                            className="input py-1 pl-2 pr-10 text-sm w-full"
+                            value={(formData as any).batchSize || 1}
+                            onChange={(e) => setFormData(prev => ({ ...prev, batchSize: Math.max(1, Number(e.target.value)) }))}
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase pointer-events-none">{t('units') || 'pcs'}</span>
+                        </div>
                       </div>
                     </div>
                     <button

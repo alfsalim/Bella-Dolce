@@ -1879,6 +1879,11 @@ async function startServer() {
         }
       }
 
+      // Strip frontend-only fields that are not in the Prisma schema
+      if (collection === 'batches') {
+        delete dataToSave.productName;
+      }
+
       // Must run after other collection transforms + stringify; guarantees matricule & Prisma types (compat clients omit matricule).
       if (collection === 'financialEmployees') {
         const rowId = dataToSave.id != null ? String(dataToSave.id) : undefined;
@@ -2012,6 +2017,10 @@ async function startServer() {
         if (dataToSave[key] !== null && typeof dataToSave[key] === 'object' && !(dataToSave[key] instanceof Date)) {
           dataToSave[key] = JSON.stringify(dataToSave[key]);
         }
+      }
+
+      if (collection === 'batches') {
+        delete dataToSave.productName;
       }
 
       if (collection === 'financialEmployees') {
