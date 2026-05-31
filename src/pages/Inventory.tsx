@@ -1056,22 +1056,22 @@ const Inventory: React.FC<InventoryProps> = ({ defaultTab }) => {
         </div>
       </div>
 
-      {getPredictiveSuggestions().length > 0 && (
-        <div className="card bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/30 p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-            <h3 className="font-bold text-amber-900 dark:text-amber-100">{t('reorderSuggestions')}</h3>
+      {getPredictiveSuggestions().length > 0 && (() => {
+        const sorted = [...getPredictiveSuggestions()].sort((a, b) => (a.currentStock / (a.minStock || 1)) - (b.currentStock / (b.minStock || 1)));
+        const top = sorted[0];
+        const rest = sorted.length - 1;
+        return (
+          <div className="card bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/30 p-3">
+            <div className="flex items-center gap-3">
+              <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span className="text-xs font-bold text-amber-900 dark:text-amber-100">{t('reorderSuggestions')}:</span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400">{top.name}</span>
+              <span className="text-[10px] text-amber-600/60 dark:text-amber-400/60">({top.currentStock} {top.unit})</span>
+              {rest > 0 && <span className="text-[10px] text-amber-600/60 dark:text-amber-400/60">+{rest} {t('others') || 'autres'}</span>}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {getPredictiveSuggestions().map(m => (
-              <div key={m.id} className="px-3 py-1 bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-900/30 rounded-lg text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2">
-                {m.name}
-                <span className="text-[10px] opacity-60">({m.currentStock} {m.unit})</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="flex gap-2 p-1 bg-slate-100 dark:bg-zinc-900 rounded-2xl w-fit">
         <button 

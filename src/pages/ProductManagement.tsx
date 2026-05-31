@@ -1249,15 +1249,13 @@ const ProductManagement: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <List className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                        {t('ingredients')}
-                      </h3>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wide">
-                          {t('ingredientsDefinedFor') || 'Ingrédients pour'}
-                        </span>
-                        <div className="relative w-28">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          <List className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                          {t('ingredients')}
+                        </h3>
+                        <span className="text-xs text-slate-400 dark:text-slate-600">{t('ingredientsDefinedFor') || 'pour'}</span>
+                        <div className="relative w-24">
                           <input
                             type="number"
                             min="1"
