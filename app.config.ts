@@ -21,7 +21,7 @@ const config = {
 
   // ── Print Agent ────────────────────────────────────────────
   PRINT_AGENT_URL_DEV:  "http://localhost:5555",
-  PRINT_AGENT_URL_PROD: "http://192.168.100.64:5555",
+  PRINT_AGENT_URL_PROD: "http://192.168.8.105:5555",
   PRINT_AGENT_TIMEOUT:  2000,
   PRINT_LANGUAGE: "FR", // USER | BOTH | FR | AR
 
