@@ -26,6 +26,13 @@ export async function runSyncCycle(): Promise<{ online: boolean; synced: number;
   let synced = 0;
   let failed = 0;
 
+  if (pending.length === 0) {
+    await updateSyncMeta({ syncInProgress: false, syncBatchTotal: 0 });
+    return { online: true, synced: 0, failed: 0 };
+  }
+
+  await updateSyncMeta({ syncInProgress: true, syncBatchTotal: pending.length });
+
   for (const txn of pending) {
     if (txn.syncStatus === 'failed') {
       const dueAt = new Date(txn.createdAt).getTime() + backoffFor(txn.syncAttempts);
@@ -49,7 +56,12 @@ export async function runSyncCycle(): Promise<{ online: boolean; synced: number;
     }
   }
 
-  await updateSyncMeta({ lastTxnPushAt: new Date().toISOString() });
+  const remaining = await db.transactions.where('syncStatus').anyOf('pending', 'syncing', 'failed').count();
+  await updateSyncMeta({
+    lastTxnPushAt: new Date().toISOString(),
+    syncInProgress: remaining > 0,
+    syncBatchTotal: remaining > 0 ? Math.max(pending.length, remaining) : 0,
+  });
 
   // Refresh users cache after every successful sync cycle (in addition to
   // the slow alarm), per the "always sync again to refresh" requirement.

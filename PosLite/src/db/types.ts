@@ -67,4 +67,6 @@ export interface SyncMeta {
   lastTxnPushAt: string | null;
   theme: 'light' | 'dark';
   lang: 'fr' | 'ar' | 'en';
+  syncInProgress: boolean;
+  syncBatchTotal: number; // queue size when the current/last sync cycle started
 }

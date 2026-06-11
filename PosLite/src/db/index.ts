@@ -29,6 +29,8 @@ export async function getSyncMeta(): Promise<SyncMeta> {
     lastTxnPushAt: null,
     theme: 'dark',
     lang: 'fr',
+    syncInProgress: false,
+    syncBatchTotal: 0,
   };
   await db.sync_meta.put(fresh);
   return fresh;
