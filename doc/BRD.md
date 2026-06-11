@@ -29,6 +29,8 @@ The objective of this application is to replace manual processes with a digital 
 *   **Inventory Validation:** Products with zero stock cannot be added to cart. "Add to Cart" button is disabled with visual feedback (reduced opacity).
 *   **Stock-Aware Quantity:** When modifying cart quantities, the system prevents quantity from exceeding available stock. The quantity increase button is disabled when at max stock.
 *   **Sales History:** Searchable log of all past transactions for auditing and customer service.
+*   **Pending Payments:** Cashiers can open a POS lookup for sales with a remaining balance, filter by the remaining amount, and record additional payment against the original transaction.
+*   **Partial Settlement:** When a pending balance is paid, the system updates the sale's paid amount, clears or reduces the remaining discount balance, and marks fully paid transactions as settled.
 *   **Inventory Integration:** Automatic deduction of product stock upon successful sale (server-side atomic transaction).
 
 ### 5.3 Production Management
@@ -512,3 +514,34 @@ This document provides a detailed breakdown of the user stories and functional u
 
 ## 5. Conclusion
 This document outlines the essential interactions within the Bella Dolce Bakery Management System. By following these user stories and use cases, the development and management teams can ensure that the application meets the core business needs of efficiency, accuracy, and strategic growth.
+
+
+
+# POS Lite — Offline-First Chrome Extension (2026-06-11)
+
+## Summary
+A self-contained Manifest V3 Chrome extension (`/PosLite`, sibling to `/PrintAgent`) that lets cashiers ring up sales fully offline and sync them to the existing backend when connectivity returns. Spec source: `doc/Bella Dolce POS Lite — Offline-First Chrome Extension (BRD + Build Spec for Claude Code)-20260610175240.md` (read-only).
+
+## Backend changes (additive only)
+- `prisma/schema.prisma`: added `clientTxnId String? @unique` to `Sale` (migration `20260611120000_add_sale_client_txn_id`).
+- `POST /api/sale`: accepts optional `clientTxnId`; if a sale with that id already exists, returns it instead of creating a duplicate (idempotent retry/sync).
+- `POST /api/auth/login`: accepts optional `deviceLogin: true`; issues a 30-day token (vs default 8h) for use by the extension's background sync engine only.
+
+## Extension architecture (`/PosLite`)
+- **Stack**: Vite + `@crxjs/vite-plugin`, React 19, TypeScript strict, Tailwind v4, Zustand, Dexie.js (IndexedDB).
+- **Local data**: `transactions` (sale queue, PK `clientTxnId`), `products` (cache from `GET /api/db/products`), `users` (cache for offline login), `sync_meta` (auth token, device id, PrintAgent URL).
+- **Sync**: one-way, cashier/tablet → server. `chrome.alarms` runs sync every 30s and cache refresh every 15min. On successful `POST /api/sale`, the local transaction row is purged immediately (no archive). Failed pushes retry with backoff (30s/1m/5m/15m capped) and surface in a "Failed Sales" panel with manual retry.
+- **Login**: online uses `POST /api/auth/login`; offline falls back to the cached `users` table + `bcrypt.compareSync` against the cached password hash.
+- **Printing**: cashier machines call the local PrintAgent (`http://localhost:5555/print`) directly from the extension (not via `/api/print-receipt`, which would resolve PrintAgent on the server's network). Tablets have no `printAgentUrl` configured — printing is silently skipped and only the on-screen `ReceiptPreview` is shown.
+- **Header status indicator**: dot next to the cashier profile — green/red based on `GET /api/health` reachability, with a pending-sync count badge.
+- **i18n**: self-contained AR/FR/EN translation table in `PosLite/src/constants.ts`.
+
+## Known gaps (flagged, not silently worked around)
+- No existing endpoint returns `username` + password hash together for offline-login provisioning (`GET /api/db/users` strips the password via `sanitizeUser`; `GET /api/cashiers` returns only `{id, name, role}`). Until a backend endpoint is added, the offline `users` cache has empty `username`/`password`, and offline login surfaces a clear error rather than failing silently. Online login is unaffected.
+- `Product` has no `taxRate` field; PosLite sales are computed with tax = 0 until the catalog adds one.
+
+## Test coverage
+- `src/__tests__/pos-lite-sync-api.test.ts`: unit tests for `clientTxnId` dedupe lookup logic (3 cases) and `deviceLogin` token-expiry logic (3 cases).
+- Full backend suite: `npm run test` — 112/112 passing (106 pre-existing + 6 new).
+- `PosLite`: `npx tsc --noEmit` clean; `npx vite build` produces a complete unpacked extension in `PosLite/dist/`.
+- Manual E2E (offline sale → sync → purge → dedupe, and PrintAgent vs tablet printing) — pending, to be run by loading `PosLite/dist` as an unpacked extension in Chrome.

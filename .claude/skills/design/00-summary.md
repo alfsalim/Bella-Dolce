@@ -1,0 +1,34 @@
+- [1-colors.md](1-colors.md) — Color tokens: primary, accent, semantic, surfaces, status badges
+- [2-typography.md](2-typography.md) — Font families, type scale, financial number style
+- [3-spacing-and-grid.md](3-spacing-and-grid.md) — Spacing scale, grid, breakpoints, card spacing
+- [4-shadows-radius-and-effects.md](4-shadows-radius-and-effects.md) — Shadow tokens, radius tokens, transitions, backdrop
+- [5-components.md](5-components.md) — Buttons, inputs, cards, tables, modals, badges, tooltips, toasts, dropdowns, tabs, sidebar nav
+- [6-layout.md](6-layout.md) — Shell structure, sidebar, header, global search, content area
+- [7a-dashboard-business-owner.md](7a-dashboard-business-owner.md) — KPI cards, charts, recent invoices, widgets
+- [7b-dashboard-accountant.md](7b-dashboard-accountant.md) — KPI cards, client portfolio grid, deadline timeline, widgets
+- [7c-invoice-list-screen.md](7c-invoice-list-screen.md) — Invoice table, filters, empty state, bulk actions
+- [7d-invoice-create-edit-screen.md](7d-invoice-create-edit-screen.md) — Invoice form, line items, tax summary card, validation
+- [7e-g50-declaration-screen.md](7e-g50-declaration-screen.md) — G50 form sections A–G, 3-step flow, AI insights panel
+- [7f-client-management-screen.md](7f-client-management-screen.md) — Cards/table views, client detail tabs, new client modal
+- [7g-settings-screen.md](7g-settings-screen.md) — 6 settings tabs: entreprise, fiscalité, users, notifications, apparence, import/export
+- [7h-login-screen.md](7h-login-screen.md) — Login card, error states
+- [7i-forgot-password.md](7i-forgot-password.md) — Forgot password form, success state, reset page
+- [7j-invoice-detail.md](7j-invoice-detail.md) — Read-only invoice view, summary card, activity log
+- [7k-reports-screen.md](7k-reports-screen.md) — CA, TVA, Charges, Comparatif tabs with charts and tables
+- [7l-global-search.md](7l-global-search.md) — Ctrl+K overlay, grouped results, keyboard nav, no-results state
+- [7m-404-page.md](7m-404-page.md) — 404 illustration and navigation
+- [7n-user-profile.md](7n-user-profile.md) — Profile photo, security, preferences sections
+- [7o-pdf-preview-and-ai-agent-chat-panel.md](7o-pdf-preview-and-ai-agent-chat-panel.md) — G50 PDF preview + AI chat panel (two 7o sections from source)
+- [7p-document-upload-ocr.md](7p-document-upload-ocr.md) — Upload zone, OCR processing, AI extraction confidence, review actions
+- [7q-bank-sync-dashboard.md](7q-bank-sync-dashboard.md) — Bank accounts, transactions, AI matching, reconciliation, rules engine
+- [7r-smart-g50-auto-generation.md](7r-smart-g50-auto-generation.md) — AI-driven G50 generation: collect, revue, validation steps
+- [7s-anomaly-detection-center.md](7s-anomaly-detection-center.md) — Anomaly list, severity levels, detail view, filters
+- [7t-tax-optimization-suggestions.md](7t-tax-optimization-suggestions.md) — AI savings suggestions, detail expand, legal basis, filters
+- [7u-notification-center.md](7u-notification-center.md) — Notification panel, types, tabs, empty state
+- [7v-audit-trail.md](7v-audit-trail.md) — Activity timeline, before/after diff, filters, export
+- [7w-multi-entity-switcher.md](7w-multi-entity-switcher.md) — Entity dropdown, context switch, add entity modal, plan limits
+- [7x-compliance-monitor.md](7x-compliance-monitor.md) — Health score, obligations grid, calendar, checklist, regulatory updates
+- [7y-smart-matching-ui.md](7y-smart-matching-ui.md) — 3-column matching UI, AI pairs, drag-drop, summary bar
+- [7z-onboarding-ai-setup.md](7z-onboarding-ai-setup.md) — 5-step onboarding wizard with AI agent intro
+- [8-states.md](8-states.md) — Loading, empty, error, success, unsaved changes, offline states
+- [9-flow-map.md](9-flow-map.md) — Auth, onboarding, invoice, G50, bank sync, anomaly, optimization, chat flows

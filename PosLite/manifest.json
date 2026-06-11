@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Bella Dolce POS Lite",
+  "version": "0.1.0",
+  "description": "Offline-first cashier till for Bella Dolce Bakery.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "http://localhost:3100/*",
+    "http://localhost:5555/*",
+    "https://images.unsplash.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Bella Dolce POS Lite"
+  },
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

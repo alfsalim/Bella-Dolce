@@ -1237,7 +1237,7 @@ async function startServer() {
 
   // Auth routes
   app.post("/api/auth/login", async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, deviceLogin } = req.body;
     console.log(`Login attempt for username: ${username}`);
     try {
       const prisma = getPrisma();
@@ -1270,7 +1270,7 @@ async function startServer() {
       const token = jwt.sign(
         { id: user.id, username: user.username, role: roleForJwt },
         JWT_SECRET,
-        { expiresIn: JWT_EXPIRES_IN as any }
+        { expiresIn: (deviceLogin ? "30d" : JWT_EXPIRES_IN) as any }
       );
 
       // Embed allowedPaths so the client needs zero extra requests after login.
@@ -2341,7 +2341,7 @@ async function startServer() {
 
   // Atomic POS sale endpoint — creates sale + deducts stock in a single transaction
   app.post("/api/sale", requireAuth, async (req: any, res) => {
-    const { customerId, totalAmount, amountPaid, change, paymentMethod, items, comment, returnComment } = req.body;
+    const { customerId, totalAmount, amountPaid, change, paymentMethod, items, comment, returnComment, clientTxnId } = req.body;
     const cashierId = req.user.id; // Use authenticated user ID instead of client-provided id
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -2349,6 +2349,11 @@ async function startServer() {
     }
     try {
       const prisma = getPrisma();
+
+      if (clientTxnId) {
+        const existing = await prisma.sale.findUnique({ where: { clientTxnId } });
+        if (existing) return res.json(existing);
+      }
 
       const result = await prisma.$transaction(async (tx) => {
         // Get cashier name
@@ -2375,7 +2380,8 @@ async function startServer() {
             items: JSON.stringify(items),
             discount: discount > 0 ? discount : null,
             comment: comment || null,
-            returnComment: returnComment || null
+            returnComment: returnComment || null,
+            clientTxnId: clientTxnId || null
           }
         });
       });
@@ -2385,6 +2391,113 @@ async function startServer() {
       const msg = (error as Error).message;
       const status = msg.startsWith('Insufficient stock') || msg.startsWith('Product not found') ? 409 : 500;
       res.status(status).json({ error: msg });
+    }
+  });
+
+  app.get("/api/sales/pending-payments", requireAuth, async (req: any, res) => {
+    try {
+      const prisma = getPrisma();
+      const userRole: string = (req.user?.role ?? '').trim();
+      const canSeeAll = userRole === 'admin' || userRole === 'manager';
+
+      const remainingRaw = req.query.remaining;
+      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+      const requestedPageSize = parseInt(req.query.pageSize as string, 10);
+      const pageSize = Math.max(1, Math.min(requestedPageSize || config.PAGE_SIZE, config.QUERY_MAX_ITEMS));
+
+      const where: any = {
+        discount: { gt: 0 },
+        status: { notIn: ['settled', 'cancelled'] },
+      };
+
+      if (!canSeeAll) {
+        where.cashierId = req.user.id;
+      }
+
+      if (remainingRaw !== undefined && String(remainingRaw).trim() !== '') {
+        const remaining = Number(remainingRaw);
+        if (!Number.isFinite(remaining) || remaining < 0) {
+          return res.status(400).json({ error: 'remaining must be a valid number' });
+        }
+        where.discount = { equals: remaining };
+      }
+
+      const matchingSales = await prisma.sale.findMany({ where });
+      const sortedSales = matchingSales.sort((a, b) => {
+        const aHasComment = Boolean(a.comment?.trim());
+        const bHasComment = Boolean(b.comment?.trim());
+        if (aHasComment !== bHasComment) return aHasComment ? -1 : 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+      const total = sortedSales.length;
+      const start = (page - 1) * pageSize;
+      const sales = sortedSales.slice(start, start + pageSize);
+
+      res.json({ sales, total, page, pageSize });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.patch("/api/sale/:id/settle-payment", requireAuth, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { additionalAmountPaid, comment } = req.body;
+      const prisma = getPrisma();
+
+      const parsedAdditionalAmount = Number(additionalAmountPaid);
+      if (!Number.isFinite(parsedAdditionalAmount) || parsedAdditionalAmount <= 0) {
+        return res.status(400).json({ error: 'additionalAmountPaid must be greater than 0' });
+      }
+
+      const sale = await prisma.sale.findUnique({ where: { id } });
+      if (!sale) return res.status(404).json({ error: 'Sale not found' });
+
+      const userRole: string = (req.user?.role ?? '').trim();
+      const userId: string = req.user?.id ?? '';
+      if (userRole === 'cashier' && sale.cashierId !== userId) {
+        return res.status(403).json({ error: 'Not authorized to settle this transaction' });
+      }
+
+      if ((sale as any).status === 'cancelled') {
+        return res.status(400).json({ error: 'Transaction is cancelled' });
+      }
+
+      if ((sale as any).status === 'settled') {
+        return res.status(400).json({ error: 'Transaction is already settled' });
+      }
+
+      const currentAmountPaid = Number(sale.amountPaid ?? 0);
+      const totalAmount = Number(sale.totalAmount);
+      const newAmountPaid = currentAmountPaid + parsedAdditionalAmount;
+
+      if (newAmountPaid > totalAmount) {
+        return res.status(400).json({ error: 'The amount exceeds the remaining balance' });
+      }
+
+      const newDiscount = Math.max(0, totalAmount - newAmountPaid);
+      const status = newAmountPaid >= totalAmount ? 'settled' : sale.status;
+      const paymentNote = `+${parsedAdditionalAmount.toFixed(0)} DA paid on ${new Date().toISOString()}`;
+      const cashierNote = typeof comment === 'string' && comment.trim() ? ` (${comment.trim()})` : '';
+      const existingComment = sale.comment?.trim();
+      const appendedComment = existingComment
+        ? `${existingComment}\n${paymentNote}${cashierNote}`
+        : `${paymentNote}${cashierNote}`;
+
+      const updated = await prisma.sale.update({
+        where: { id },
+        data: {
+          amountPaid: newAmountPaid,
+          discount: newDiscount > 0 ? newDiscount : 0,
+          status,
+          comment: appendedComment,
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
     }
   });
 

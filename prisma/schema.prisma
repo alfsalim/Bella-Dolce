@@ -143,6 +143,7 @@ model ProductionBatch {
 
 model Sale {
   id            String   @id @default(uuid())
+  clientTxnId   String?  @unique
   cashierId     String
   cashierName   String?
   customerId    String?

@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   X,
   User,
-  History
+  History,
+  Wallet
 } from 'lucide-react';
 import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/db';
 import { Product, SaleItem, Customer, Promotion } from '../types';
@@ -21,6 +22,7 @@ import { sanitizeItemCategoryConfig, getDefaultItemCategoryConfig, ItemCategoryC
 import { authFetch, getAuthHeaders } from '../lib/api-client';
 import { getActiveProductPromotion, getEffectiveSellingPrice } from '../lib/promotionPricing';
 import RecentSalesModal from '../components/RecentSalesModal';
+import PendingPaymentsModal from '../components/PendingPaymentsModal';
 import ReceiptPreview from '../components/ReceiptPreview';
 import { generateTransactionId } from '../lib/transactionId';
 
@@ -43,6 +45,7 @@ const POS: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showRecentSales, setShowRecentSales] = useState(false);
+  const [showPendingPayments, setShowPendingPayments] = useState(false);
   const [amountPaid, setAmountPaid] = useState<string>('');
   const [successfulSaleId, setSuccessfulSaleId] = useState<string | null>(null);
   const [cashierNameForReceipt, setCashierNameForReceipt] = useState<string>('');
@@ -358,15 +361,24 @@ const POS: React.FC = () => {
           <div className="p-6 border-b border-slate-100 dark:border-[#2a1e17] flex items-center justify-between bg-slate-50/50 dark:bg-[#1a1512]/50">
             {isRTL ? (
               <>
-                <button
-                  onClick={() => setShowRecentSales(true)}
-                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-1.5 transition-colors shadow-sm text-sm"
-                  title={t('recentSales')}
-                  aria-label={t('recentSales')}
-                >
-                  <History className="w-4 h-4" />
-                  <span>{t('recentSales')}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowPendingPayments(true)}
+                    className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white flex items-center justify-center transition-colors shadow-sm"
+                    title={t('pendingPayments')}
+                    aria-label={t('pendingPayments')}
+                  >
+                    <Wallet className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowRecentSales(true)}
+                    className="w-9 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white flex items-center justify-center transition-colors shadow-sm"
+                    title={t('recentSales')}
+                    aria-label={t('recentSales')}
+                  >
+                    <History className="w-4 h-4" />
+                  </button>
+                </div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   {t('cart')}
                   <ShoppingCart className="w-4 h-4 text-primary-600 dark:text-primary-400" />
@@ -378,15 +390,24 @@ const POS: React.FC = () => {
                   <ShoppingCart className="w-4 h-4 text-primary-600 dark:text-primary-400" />
                   {t('cart')}
                 </h2>
-                <button
-                  onClick={() => setShowRecentSales(true)}
-                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white font-bold flex items-center gap-1.5 transition-colors shadow-sm text-sm"
-                  title={t('recentSales')}
-                  aria-label={t('recentSales')}
-                >
-                  <History className="w-4 h-4" />
-                  <span>{t('recentSales')}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowRecentSales(true)}
+                    className="w-9 h-9 rounded-lg bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white flex items-center justify-center transition-colors shadow-sm"
+                    title={t('recentSales')}
+                    aria-label={t('recentSales')}
+                  >
+                    <History className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowPendingPayments(true)}
+                    className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white flex items-center justify-center transition-colors shadow-sm"
+                    title={t('pendingPayments')}
+                    aria-label={t('pendingPayments')}
+                  >
+                    <Wallet className="w-4 h-4" />
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -681,6 +702,12 @@ const POS: React.FC = () => {
       <RecentSalesModal
         isOpen={showRecentSales}
         onClose={() => setShowRecentSales(false)}
+        cashierId={profile?.id || ''}
+        userRole={profile?.role}
+      />
+      <PendingPaymentsModal
+        isOpen={showPendingPayments}
+        onClose={() => setShowPendingPayments(false)}
         cashierId={profile?.id || ''}
         userRole={profile?.role}
       />
