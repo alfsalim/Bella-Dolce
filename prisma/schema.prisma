@@ -87,7 +87,10 @@ model Recipe {
 
 model Order {
   id             String   @id @default(uuid())
-  customerId     String
+  customerId     String?
+  firstName      String?
+  lastName       String?
+  phone          String?
   clientName     String?
   description    String?
   totalAmount    Float
@@ -100,8 +103,20 @@ model Order {
   expectedTime   String?
   expectedDate   String?
   createdBy      String?
+  amountPaid     Float?
+  paymentStatus  String   @default("n/a")
+  cancellationReason String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model SpecificationOption {
+  id        String   @id @default(uuid())
+  category  String   // 'flavor' | 'glaze' | 'shape' | 'size' | 'addon'
+  value     String
+  createdAt DateTime @default(now())
+
+  @@unique([category, value])
 }
 
 model Delivery {

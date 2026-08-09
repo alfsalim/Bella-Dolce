@@ -93,3 +93,20 @@ public class HealthResponse
     public DateTime ServerTime { get; set; } = DateTime.Now;
     public string Version { get; set; } = "1.0.0";
 }
+
+public class KitchenTicketJob
+{
+    public string OrderId { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
+    public string DeliveryDate { get; set; } = string.Empty;
+    public string DeliveryTime { get; set; } = string.Empty;
+    public List<KitchenTicketItem> Items { get; set; } = new();
+    public string Notes { get; set; } = string.Empty;
+}
+
+public class KitchenTicketItem
+{
+    public string Name { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public string SpecificationsText { get; set; } = string.Empty;
+}

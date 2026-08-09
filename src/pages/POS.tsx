@@ -15,7 +15,7 @@ import {
   History,
   Wallet
 } from 'lucide-react';
-import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc } from '../lib/db';
+import { db, collection, onSnapshot, handleFirestoreError, OperationType, doc, getDoc, updateDoc, addDoc } from '../lib/db';
 import { Product, SaleItem, Customer, Promotion } from '../types';
 import { clsx } from 'clsx';
 import { sanitizeItemCategoryConfig, getDefaultItemCategoryConfig, ItemCategoryConfig } from '../lib/itemCategories';
@@ -59,14 +59,20 @@ const POS: React.FC = () => {
   const [showCancelReceipt, setShowCancelReceipt] = useState(false);
   const [cancelReceiptError, setCancelReceiptError] = useState<string | null>(null);
 
+  /**
+   * Current shop stock for a product. Can be negative — production may lag behind sales,
+   * so the cashier is never blocked; a deficit here is reconciled the next time Production
+   * adds new stock (see normalizedProductBuckets in Production.tsx, which must NOT floor
+   * this at 0 or the deficit would be silently erased instead of netted off).
+   */
   const getShopSellableStock = (product: Partial<Product> | null | undefined): number => {
     if (!product) return 0;
     const hasShopStock = typeof product.shopStock === 'number' && Number.isFinite(product.shopStock);
-    if (hasShopStock) return Math.max(0, product.shopStock as number);
+    if (hasShopStock) return product.shopStock as number;
     const total = Number(product.stock || 0);
     const freezer = Number(product.freezerStock || 0);
     const waste = Number(product.wasteQuantity || 0);
-    return Math.max(0, total - freezer - waste);
+    return total - freezer - waste;
   };
 
   const handleProductImageError = (e: React.SyntheticEvent<HTMLImageElement>, seed: string) => {
@@ -117,12 +123,9 @@ const POS: React.FC = () => {
   });
 
   const addToCart = (product: Product) => {
-    const maxStock = getShopSellableStock(product);
-    if (maxStock <= 0) return;
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       if (existing) {
-        if (existing.quantity >= maxStock) return prev;
         return prev.map(item =>
           item.productId === product.id
             ? { ...item, quantity: item.quantity + 1 }
@@ -140,9 +143,7 @@ const POS: React.FC = () => {
   const updateQuantity = (productId: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.productId === productId) {
-        const product = products.find(p => p.id === productId);
-        const maxStock = getShopSellableStock(product);
-        const newQty = Math.max(1, Math.min(maxStock, item.quantity + delta));
+        const newQty = Math.max(1, item.quantity + delta);
         return { ...item, quantity: newQty };
       }
       return item;
@@ -152,9 +153,7 @@ const POS: React.FC = () => {
   const setQuantity = (productId: string, value: number) => {
     setCart(prev => prev.map(item => {
       if (item.productId === productId) {
-        const product = products.find(p => p.id === productId);
-        const maxStock = getShopSellableStock(product);
-        const newQty = Math.max(1, Math.min(maxStock, value));
+        const newQty = Math.max(1, value);
         return { ...item, quantity: newQty };
       }
       return item;
@@ -204,7 +203,9 @@ const POS: React.FC = () => {
         throw new Error(saleData.error || 'Checkout failed');
       }
 
-      // Deduct shopStock for each sold item
+      // Deduct shopStock for each sold item. Allowed to go negative: production may not
+      // be recorded yet when a cashier needs to sell, so the sale is never blocked — the
+      // deficit is reconciled automatically the next time Production adds new stock.
       // stock = shopStock + freezerStock + wasteQuantity (invariant must hold)
       for (const item of capturedCart) {
         try {
@@ -213,9 +214,27 @@ const POS: React.FC = () => {
           if (productSnap.exists()) {
             const data = productSnap.data();
             const currentShopStock = getShopSellableStock(data as Partial<Product>);
-            const newShopStock = Math.max(0, currentShopStock - item.quantity);
+            const newShopStock = currentShopStock - item.quantity;
             const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
             await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
+
+            if (newShopStock < 0) {
+              await addDoc(collection(db, 'stockMovements'), {
+                itemId: item.productId,
+                itemName: data.name || item.productId,
+                itemType: 'product',
+                type: 'out',
+                quantity: item.quantity,
+                previousStock: currentShopStock,
+                newStock: newShopStock,
+                location: 'shop',
+                reason: 'pos-oversell',
+                referenceId: saleData.id || null,
+                userId: profile?.id || 'system',
+                userName: profile?.name || 'System',
+                timestamp: new Date().toISOString()
+              });
+            }
           }
         } catch (err) {
           console.error(`Error updating stock for product ${item.productId}:`, err);
@@ -315,8 +334,7 @@ const POS: React.FC = () => {
             <button
               key={product.id}
               onClick={() => addToCart(product)}
-              disabled={getShopSellableStock(product) <= 0}
-              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              className="card p-0 overflow-hidden group hover:shadow-xl transition-all duration-300 text-left border-slate-100 dark:border-[#2a1e17] flex flex-col active:scale-95"
             >
                 <div className="h-20 sm:h-28 bg-slate-100 dark:bg-[#1a1512] relative shrink-0">
                   <img
@@ -442,7 +460,6 @@ const POS: React.FC = () => {
                         <input
                           type="number"
                           min={1}
-                          max={Math.max(1, getShopSellableStock(product))}
                           value={item.quantity}
                           onChange={(e) => {
                             const next = Number.parseInt(e.target.value, 10);
@@ -452,8 +469,7 @@ const POS: React.FC = () => {
                         />
                         <button
                           onClick={() => updateQuantity(item.productId, 1)}
-                          disabled={getShopSellableStock(product) <= item.quantity}
-                          className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-[#1a1512] transition-all text-slate-700 dark:text-slate-300 font-bold text-lg"
                         >
                           <Plus className="w-5 h-5" />
                         </button>

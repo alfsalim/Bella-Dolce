@@ -12,6 +12,7 @@ type BuildPurchasesUrlOpts = {
       scope: 'window';
       dateFromYmd: string;
       dateToYmd: string;
+      supplierId?: string;
     }
 );
 
@@ -34,6 +35,7 @@ export function buildPurchasesListUrl(opts: BuildPurchasesUrlOpts): string {
           gte: opts.dateFromYmd,
           lte: `${opts.dateToYmd}T23:59:59.999Z`,
         },
+        ...(opts.supplierId ? { supplierId: opts.supplierId } : {}),
       })
     );
   }

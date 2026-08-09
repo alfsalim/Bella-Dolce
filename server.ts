@@ -35,6 +35,20 @@ function sanitizeUser(user: any) {
   return safe;
 }
 
+function formatSpecificationsText(specifications: any): string {
+  if (!specifications || typeof specifications !== 'object') return '';
+  const parts: string[] = [];
+  if (specifications.flavor) parts.push(`Flavor: ${specifications.flavor}`);
+  if (specifications.glaze) parts.push(`Glaze: ${specifications.glaze}`);
+  if (specifications.shape) parts.push(`Shape: ${specifications.shape}`);
+  if (specifications.size) parts.push(`Size: ${specifications.size}`);
+  if (specifications.addons) {
+    const addons = Array.isArray(specifications.addons) ? specifications.addons.join(', ') : specifications.addons;
+    if (addons) parts.push(`Addons: ${addons}`);
+  }
+  return parts.join(' | ');
+}
+
 let prismaInstance: PrismaClient | null = null;
 
 function getPrisma() {
@@ -83,7 +97,8 @@ const getModel = (collectionName: string) => {
     'utilities': prisma.utility,
     'utilityDefinitions': prisma.utilityDefinition,
     'taxConfigs': prisma.taxConfig,
-    'ifuDeclarations': prisma.ifuDeclaration
+    'ifuDeclarations': prisma.ifuDeclaration,
+    'specificationOptions': prisma.specificationOption
   };
   const model = mapping[collectionName];
   if (!model && collectionName !== 'health') {
@@ -2643,6 +2658,172 @@ async function startServer() {
 
     } catch (error) {
       console.error('Print job failed:', error);
+      return res.json({ status: 'error', message: 'print_failed' });
+    }
+  });
+
+  app.post("/api/orders/:id/close", requireAuth, async (req: any, res: express.Response) => {
+    try {
+      const prisma = getPrisma();
+      const { amountPaid } = req.body;
+
+      const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+
+      const balance = order.totalAmount - (order.amountPaid || 0);
+      const submitted = Number(amountPaid);
+      if (!Number.isFinite(submitted) || submitted < balance) {
+        return res.status(400).json({ error: 'Full remaining balance must be paid to close the order', balance });
+      }
+
+      const closed = await prisma.order.update({
+        where: { id: req.params.id },
+        data: {
+          amountPaid: order.totalAmount,
+          paymentStatus: 'closed',
+          status: 'delivered',
+        },
+      });
+      res.json(closed);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/print-order-receipt", requireAuth, async (req: any, res) => {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const PRINT_AGENT_URL = isProduction ? config.PRINT_AGENT_URL_PROD : config.PRINT_AGENT_URL_DEV;
+    const PRINT_AGENT_TIMEOUT = config.PRINT_AGENT_TIMEOUT;
+    const { orderId, receiptNumber, cashierName, printLanguage, isDeposit } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'orderId is required' });
+    }
+
+    try {
+      const healthCheck = await fetch(`${PRINT_AGENT_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(PRINT_AGENT_TIMEOUT)
+      });
+
+      if (!healthCheck.ok) {
+        console.warn('Print Agent health check failed:', healthCheck.status);
+        return res.json({ status: 'error', message: 'printer_unavailable' });
+      }
+    } catch (error) {
+      console.warn('Print Agent unreachable:', error);
+      return res.json({ status: 'error', message: 'printer_unavailable' });
+    }
+
+    try {
+      const prisma = getPrisma();
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+
+      let items: any[] = [];
+      try { items = JSON.parse(order.items || '[]'); } catch { items = []; }
+
+      const printLang = printLanguage || config.PRINT_LANGUAGE || 'BOTH';
+      const customerName = [order.firstName, order.lastName].filter(Boolean).join(' ') || order.clientName || '';
+
+      const printResponse = await fetch(`${PRINT_AGENT_URL}/print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          SaleId: order.id,
+          ReceiptNumber: receiptNumber || '',
+          Date: new Date().toISOString().split('T')[0],
+          Time: new Date().toTimeString().split(' ')[0],
+          CashierName: cashierName || req.user?.username || 'Unknown',
+          CustomerName: customerName,
+          PaymentMethod: 'cash',
+          Items: items.map((item: any) => ({
+            Name: item.name || item.productId,
+            Quantity: item.quantity,
+            UnitPrice: item.price || 0,
+            LineTotal: item.quantity * (item.price || 0)
+          })),
+          Subtotal: order.totalAmount || 0,
+          TaxRate: 0,
+          TaxAmount: 0,
+          Total: order.totalAmount || 0,
+          AmountPaid: order.amountPaid || 0,
+          ChangeGiven: 0,
+          ProductCount: items.length,
+          UnitCount: items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0),
+          PrintLanguage: printLang,
+          Labels: isDeposit ? { ReceiptLabel: 'Acompte', ReceiptLabel_AR: 'دفعة مقدمة' } : undefined
+        })
+      });
+
+      const result = await printResponse.json();
+      console.log('Print Agent response (order receipt):', result);
+      return res.json(result);
+
+    } catch (error) {
+      console.error('Order receipt print job failed:', error);
+      return res.json({ status: 'error', message: 'print_failed' });
+    }
+  });
+
+  app.post("/api/print-kitchen-ticket", requireAuth, async (req: any, res) => {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const PRINT_AGENT_URL = isProduction ? config.PRINT_AGENT_URL_PROD : config.PRINT_AGENT_URL_DEV;
+    const PRINT_AGENT_TIMEOUT = config.PRINT_AGENT_TIMEOUT;
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'orderId is required' });
+    }
+
+    try {
+      const healthCheck = await fetch(`${PRINT_AGENT_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(PRINT_AGENT_TIMEOUT)
+      });
+
+      if (!healthCheck.ok) {
+        console.warn('Print Agent health check failed:', healthCheck.status);
+        return res.json({ status: 'error', message: 'printer_unavailable' });
+      }
+    } catch (error) {
+      console.warn('Print Agent unreachable:', error);
+      return res.json({ status: 'error', message: 'printer_unavailable' });
+    }
+
+    try {
+      const prisma = getPrisma();
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+
+      let items: any[] = [];
+      try { items = JSON.parse(order.items || '[]'); } catch { items = []; }
+
+      const customerName = [order.firstName, order.lastName].filter(Boolean).join(' ') || order.clientName || '';
+
+      const printResponse = await fetch(`${PRINT_AGENT_URL}/print/kitchen-ticket`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          OrderId: order.id,
+          CustomerName: customerName,
+          DeliveryDate: order.expectedDate || '',
+          DeliveryTime: order.expectedTime || '',
+          Items: items.map((item: any) => ({
+            Name: item.name || item.productId,
+            Quantity: item.quantity,
+            SpecificationsText: formatSpecificationsText(item.specifications)
+          })),
+          Notes: order.notes || ''
+        })
+      });
+
+      const result = await printResponse.json();
+      console.log('Print Agent response (kitchen ticket):', result);
+      return res.json(result);
+
+    } catch (error) {
+      console.error('Kitchen ticket print job failed:', error);
       return res.json({ status: 'error', message: 'print_failed' });
     }
   });

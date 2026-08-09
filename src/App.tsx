@@ -25,6 +25,7 @@ import { seedDatabase } from './lib/seedData';
 
 import PublicLayout from './components/PublicLayout';
 import SystemAlerts from './components/SystemAlerts';
+import DailyOrdersReminder from './components/DailyOrdersReminder';
 
 import { Toaster } from 'react-hot-toast';
 
@@ -52,6 +53,7 @@ const App: React.FC = () => {
       <AuthProvider>
         <LanguageProvider>
           <SystemAlerts />
+          <DailyOrdersReminder />
           <CartProvider>
             <Routes>
               <Route path="/" element={<PublicLayout />}>

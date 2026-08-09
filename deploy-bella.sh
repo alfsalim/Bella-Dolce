@@ -19,7 +19,17 @@ JWT_EXPIRES_IN="${JWT_EXPIRES_IN:-$(grep '^JWT_EXPIRES_IN=' "$(dirname "$0")/.en
 PROD_DATA_DIR="C:/Users/CD COMPANY/Bella-Dolce/data"
 PROD_BACKUP_DIR="C:/Users/CD COMPANY/Bella-Dolce/backups"
 WINDOWS_TAILSCALE_IP="100.114.12.38"
-DEPLOY_MODE="tailscale"          # "tailscale" or "manual"
+DEPLOY_MODE="${DEPLOY_MODE:-tailscale}"          # "tailscale", "ssh", or "manual"
+
+# SSH mode: for machines that can't install Tailscale — tunnels to the Windows
+# Docker daemon through another machine that IS already on the tailnet.
+# Usage: DEPLOY_MODE=ssh SSH_JUMP_HOST=user@host ./deploy-bella.sh --prod
+SSH_JUMP_HOST="${SSH_JUMP_HOST:-}"
+SSH_TUNNEL_PORT="${SSH_TUNNEL_PORT:-2375}"
+# Forward target on the far side of the tunnel: the Windows Tailscale IP if
+# SSH_JUMP_HOST is a separate machine, or "localhost" if SSH_JUMP_HOST IS the
+# Windows box itself (reached directly via its public IP/SSH).
+SSH_REMOTE_HOST="${SSH_REMOTE_HOST:-$WINDOWS_TAILSCALE_IP}"
 
 # ── Dev (Mac local) ──────────────────────────────────────
 DEV_CONTAINER_NAME="bella-dolce2-dev"
@@ -328,12 +338,42 @@ if [ "$MODE" = "--dev" ]; then
 fi
 
 # ════════════════════════════════════════════════
+#   SSH TUNNEL — reach the Windows Docker daemon via a jump host
+#   that is already on the tailnet (for machines without Tailscale)
+# ════════════════════════════════════════════════
+SSH_TUNNEL_PID=""
+open_ssh_tunnel() {
+    # Password-auth users: open the tunnel yourself in another terminal first
+    # (ssh -L 127.0.0.1:2375:<SSH_REMOTE_HOST>:2375 <SSH_JUMP_HOST>) — if the
+    # port is already listening, reuse it instead of opening a second one.
+    if nc -z 127.0.0.1 "$SSH_TUNNEL_PORT" 2>/dev/null; then
+        log_ok "Reusing existing tunnel on 127.0.0.1:${SSH_TUNNEL_PORT}"
+        return
+    fi
+    [ -z "$SSH_JUMP_HOST" ] && log_err "DEPLOY_MODE=ssh requires SSH_JUMP_HOST (e.g. user@host — a machine already on Tailscale that can reach $WINDOWS_TAILSCALE_IP, or the Windows box itself with SSH_REMOTE_HOST=localhost)"
+    log_step "Opening SSH tunnel via $SSH_JUMP_HOST"
+    ssh -fN -L "127.0.0.1:${SSH_TUNNEL_PORT}:${SSH_REMOTE_HOST}:2375" "$SSH_JUMP_HOST"
+    [ $? -ne 0 ] && log_err "Failed to open SSH tunnel via $SSH_JUMP_HOST"
+    SSH_TUNNEL_PID=$(pgrep -f "L 127.0.0.1:${SSH_TUNNEL_PORT}:${SSH_REMOTE_HOST}:2375 ${SSH_JUMP_HOST}")
+    log_ok "Tunnel open: 127.0.0.1:${SSH_TUNNEL_PORT} -> ${SSH_REMOTE_HOST}:2375"
+}
+close_ssh_tunnel() {
+    [ -n "$SSH_TUNNEL_PID" ] && kill "$SSH_TUNNEL_PID" 2>/dev/null
+}
+trap close_ssh_tunnel EXIT
+
+# ════════════════════════════════════════════════
 #   PROD MODE — Windows Server
 # ════════════════════════════════════════════════
 
-if [ "$DEPLOY_MODE" = "tailscale" ] && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
+if { [ "$DEPLOY_MODE" = "tailscale" ] || [ "$DEPLOY_MODE" = "ssh" ]; } && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
 
-    REMOTE="tcp://$WINDOWS_TAILSCALE_IP:2375"
+    if [ "$DEPLOY_MODE" = "ssh" ]; then
+        open_ssh_tunnel
+        REMOTE="tcp://127.0.0.1:${SSH_TUNNEL_PORT}"
+    else
+        REMOTE="tcp://$WINDOWS_TAILSCALE_IP:2375"
+    fi
 
     if [ "$DEPLOY_TYPE" = "incremental" ]; then
         incremental_guard "$CONTAINER_NAME" "$REMOTE"
@@ -341,8 +381,13 @@ if [ "$DEPLOY_MODE" = "tailscale" ] && [ -n "$WINDOWS_TAILSCALE_IP" ]; then
 
     if [ "$DEPLOY_TYPE" = "full" ]; then
         # Step 1: Stop old container on Windows
-        log_step "1/3  Connecting to Windows via Tailscale"
-        log_info "Target : $WINDOWS_TAILSCALE_IP:2375"
+        if [ "$DEPLOY_MODE" = "ssh" ]; then
+            log_step "1/3  Connecting to Windows via SSH tunnel"
+            log_info "Target : $WINDOWS_TAILSCALE_IP:2375 (tunneled through $SSH_JUMP_HOST)"
+        else
+            log_step "1/3  Connecting to Windows via Tailscale"
+            log_info "Target : $WINDOWS_TAILSCALE_IP:2375"
+        fi
         log_info "Stopping old container..."
         DOCKER_HOST="$REMOTE" docker stop "$CONTAINER_NAME" 2>/dev/null
         DOCKER_HOST="$REMOTE" docker rm   "$CONTAINER_NAME" 2>/dev/null
@@ -411,7 +456,11 @@ SEED_EOF
     STATUS=$(DOCKER_HOST="$REMOTE" docker ps --filter "name=$CONTAINER_NAME" --format "{{.Status}}")
     echo ""
     echo "============================================"
-    echo "   PROD DEPLOYMENT COMPLETE (Tailscale)"
+    if [ "$DEPLOY_MODE" = "ssh" ]; then
+        echo "   PROD DEPLOYMENT COMPLETE (SSH Tunnel)"
+    else
+        echo "   PROD DEPLOYMENT COMPLETE (Tailscale)"
+    fi
     echo "   Status  : $STATUS"
     echo "   App URL : https://$WINDOWS_TAILSCALE_IP:$EXT_PORT"
     echo "============================================"

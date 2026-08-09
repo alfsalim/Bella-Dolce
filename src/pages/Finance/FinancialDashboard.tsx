@@ -137,7 +137,7 @@ const FinancialDashboard: React.FC = () => {
     return { totalRevenue: rev, totalExpenses: exp };
   }, [sales, invoices, period]);
 
-  useMemo(() => {
+  useEffect(() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
@@ -156,11 +156,11 @@ const FinancialDashboard: React.FC = () => {
       endDate = new Date(year, 11, 31, 23, 59, 59, 999);
     }
 
-    const metrics = calculateProfitability(sales, invoices, utilities, {
-      startDate,
-      endDate,
+    let cancelled = false;
+    calculateProfitability(sales, invoices, utilities, { startDate, endDate }).then((metrics) => {
+      if (!cancelled) setProfitability(metrics);
     });
-    setProfitability(metrics);
+    return () => { cancelled = true; };
   }, [sales, invoices, utilities, period]);
 
   const periodButtons: { key: Period; label: string }[] = [

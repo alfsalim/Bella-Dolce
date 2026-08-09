@@ -20,5 +20,27 @@
       "Bash(PRISMA_MIGRATE_SKIP_GENERATE=1 npx prisma migrate dev --name add_sale_status --create-only)",
       "Bash(npm view *)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/salim.toutah/.local/bin/graphify hook-guard search"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/salim.toutah/.local/bin/graphify hook-guard read"
+          }
+        ]
+      }
+    ]
   }
 }

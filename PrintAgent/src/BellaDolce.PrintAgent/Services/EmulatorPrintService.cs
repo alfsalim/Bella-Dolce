@@ -62,6 +62,78 @@ namespace BellaDolce.PrintAgent.Services
             }
         }
 
+        public async Task<PrintResult> PrintKitchenTicketAsync(KitchenTicketJob job)
+        {
+            try
+            {
+                var ticket = BuildKitchenTicketText(job);
+
+                Console.WriteLine();
+                Console.WriteLine("╔══════════════════════════════════════╗");
+                Console.WriteLine("║ 🧁 KITCHEN TICKET RECEIVED           ║");
+                Console.WriteLine("╠══════════════════════════════════════╣");
+                Console.WriteLine(ticket);
+                Console.WriteLine("╚══════════════════════════════════════╝");
+                Console.WriteLine();
+
+                var fileName = $"kitchen-ticket_{job.OrderId}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                var filePath = Path.Combine(_outputFolder, fileName);
+                await File.WriteAllTextAsync(filePath, ticket);
+
+                Console.WriteLine($"✅ Kitchen ticket saved to: {filePath}");
+                Console.WriteLine();
+
+                return new PrintResult
+                {
+                    Success = true,
+                    Message = $"Emulator: kitchen ticket saved to {fileName}",
+                    OutputFile = filePath
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Emulator error: {ex.Message}");
+
+                return new PrintResult
+                {
+                    Success = false,
+                    Message = $"Emulator error: {ex.Message}"
+                };
+            }
+        }
+
+        private string BuildKitchenTicketText(KitchenTicketJob job)
+        {
+            var width = 40;
+            var dash = new string('-', width);
+            var lines = new List<string>
+            {
+                dash,
+                $">>> DELIVERY: {job.DeliveryDate} {job.DeliveryTime} <<<",
+                dash,
+                $"Customer: {job.CustomerName}",
+                dash
+            };
+
+            foreach (var item in job.Items)
+            {
+                lines.Add($"{item.Quantity}x {item.Name}".ToUpperInvariant());
+                if (!string.IsNullOrEmpty(item.SpecificationsText))
+                {
+                    lines.Add($"   {item.SpecificationsText}");
+                }
+            }
+            lines.Add(dash);
+
+            if (!string.IsNullOrEmpty(job.Notes))
+            {
+                lines.Add($"Notes: {job.Notes}");
+                lines.Add(dash);
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
         private string BuildReceiptText(PrintJob job)
         {
             var effectiveLanguageMode = !string.IsNullOrEmpty(job.PrintLanguage) ? job.PrintLanguage : "BOTH";

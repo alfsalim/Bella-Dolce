@@ -73,9 +73,11 @@ const Production: React.FC = () => {
     const freezer = Number(product.freezerStock || 0);
     const waste = Number(product.wasteQuantity || 0);
     const hasShop = typeof product.shopStock === 'number' && Number.isFinite(product.shopStock);
-    const shop = hasShop ? Number(product.shopStock) : Math.max(0, total - freezer - waste);
+    // Not floored at 0: the POS allows shop stock to go negative when a sale outpaces
+    // recorded production, and that deficit must be netted off here, not erased.
+    const shop = hasShop ? Number(product.shopStock) : total - freezer - waste;
     return {
-      shop: Math.max(0, shop),
+      shop,
       freezer: Math.max(0, freezer),
       waste: Math.max(0, waste),
     };

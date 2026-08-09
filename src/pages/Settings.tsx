@@ -70,6 +70,7 @@ const Settings: React.FC = () => {
   const [systemAlertsOn, setSystemAlertsOn] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('systemAlerts') === 'true'
   );
+  const [orderReminderConfig, setOrderReminderConfig] = useState<{ enabled: boolean; time: string }>({ enabled: true, time: '06:00' });
   const [itemCategoryConfig, setItemCategoryConfig] = useState<ItemCategoryConfig>(getDefaultItemCategoryConfig());
   const [newProductCategory, setNewProductCategory] = useState('');
   const [newRawMaterialCategory, setNewRawMaterialCategory] = useState('');
@@ -139,6 +140,22 @@ const Settings: React.FC = () => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const saveOrderReminderConfig = async () => {
+    const token = localStorage.getItem('bakery_token');
+    const headers: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    try {
+      const res = await authFetch('/api/db/settings/order_reminder_config', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ id: 'order_reminder_config', ...orderReminderConfig }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(t('save'));
+    } catch {
+      toast.error(t('orderReminderSaveFailed'));
+    }
   };
 
   const saveBackupConfig = async () => {
@@ -259,6 +276,33 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'logs') setLogsPage(1);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'general') return;
+    const token = localStorage.getItem('bakery_token');
+    const headers: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    void authFetch('/api/db/settings/order_reminder_config', { headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((doc) => {
+        if (!doc) return;
+        if (typeof doc.enabled === 'boolean' && typeof doc.time === 'string') {
+          setOrderReminderConfig({ enabled: doc.enabled, time: doc.time });
+        } else if (doc.data && typeof doc.data === 'string') {
+          try {
+            const p = JSON.parse(doc.data);
+            setOrderReminderConfig({
+              enabled: p.enabled !== false,
+              time: typeof p.time === 'string' ? p.time : '06:00',
+            });
+          } catch {
+            /* keep default */
+          }
+        }
+      })
+      .catch(() => {
+        /* 401 handled by authFetch */
+      });
   }, [activeTab]);
 
   useEffect(() => {
@@ -1231,6 +1275,42 @@ const Settings: React.FC = () => {
                     "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
                     systemAlertsOn ? "right-1" : "left-1"
                   )}></div>
+                </button>
+              </div>
+              <div className="p-4 bg-slate-50 dark:bg-black rounded-2xl border border-slate-100 dark:border-white/5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-white">{t('orderReminderLabel')}</p>
+                    <p className="text-xs text-zinc-500">{t('orderReminderHelp')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOrderReminderConfig((c) => ({ ...c, enabled: !c.enabled }))}
+                    className={clsx(
+                      "w-12 h-6 rounded-full relative transition-all",
+                      orderReminderConfig.enabled ? "bg-amber-600" : "bg-slate-200 dark:bg-zinc-800"
+                    )}
+                  >
+                    <div className={clsx(
+                      "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
+                      orderReminderConfig.enabled ? "right-1" : "left-1"
+                    )}></div>
+                  </button>
+                </div>
+                {orderReminderConfig.enabled && (
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">{t('orderReminderTime')}</label>
+                    <input
+                      type="time"
+                      className="input py-2 bg-white dark:bg-zinc-900 border-none text-sm w-32"
+                      value={orderReminderConfig.time}
+                      onChange={(e) => setOrderReminderConfig((c) => ({ ...c, time: e.target.value }))}
+                    />
+                  </div>
+                )}
+                <button type="button" onClick={saveOrderReminderConfig} className="btn-primary gap-2">
+                  <Save className="w-4 h-4" />
+                  {t('save')}
                 </button>
               </div>
               {/* Background cleanup is now handled automatically for admins */}

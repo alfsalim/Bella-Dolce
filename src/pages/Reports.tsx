@@ -26,12 +26,13 @@ import {
 } from 'lucide-react';
 import { authFetch } from '../lib/api-client';
 import { PAGE_SIZE, QUERY_MAX_ITEMS } from '../constants';
-import { 
-  BarChart, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   AreaChart,
   Area,
@@ -49,10 +50,11 @@ import {
 } from 'date-fns';
 import { fr as dateFnsFr, arSA as dateFnsArSA } from 'date-fns/locale';
 import { db, collection, onSnapshot, query, orderBy, limit } from '../lib/db';
-import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog } from '../types';
+import { Sale, Product, Order, RawMaterial, UserProfile, SaleItem, ActivityLog, Supplier, SupplierInvoice } from '../types';
 import { clsx } from 'clsx';
 import Pagination from '../components/Pagination';
 import { downloadReportsPdf } from '../lib/export';
+import { downloadReportsXlsx } from '../lib/reportsExcel';
 
 /** Activities list uses a smaller page size so pagination is usable with typical log volumes. */
 const ACTIVITIES_PAGE_SIZE = 25;
@@ -70,7 +72,7 @@ const Reports: React.FC = () => {
   const { t, tProduct, tCategory, currencyUnit, formatCurrency, isRTL, language } = useLanguage();
   const dateLocale = language === 'ar' ? dateFnsArSA : dateFnsFr;
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'analytics' | 'sales' | 'activities'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'sales' | 'activities' | 'expenses'>('analytics');
 
   const [sales, setSales] = useState<Sale[]>([]);
   const [cashiers, setCashiers] = useState<UserProfile[]>([]);
@@ -87,6 +89,7 @@ const Reports: React.FC = () => {
   const [activityPage, setActivityPage] = useState(1);
   const [productFilterIds, setProductFilterIds] = useState<string[]>([]);
   const [chartMode, setChartMode] = useState<'revenue' | 'orders'>('revenue');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'b2b' | 'special'>('all');
   const [isCumulative, setIsCumulative] = useState(false);
   const [timeFilter, setTimeFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<Sale | null>(null);
@@ -95,6 +98,18 @@ const Reports: React.FC = () => {
   const [analyticsEnd, setAnalyticsEnd] = useState<string>(todayYmd);
   const [reportStart, setReportStart] = useState<string>(todayYmd);
   const [reportEnd, setReportEnd] = useState<string>(todayYmd);
+  const [purchases, setPurchases] = useState<SupplierInvoice[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [utilities, setUtilities] = useState<{ periodStart: string; amount: number }[]>([]);
+  const [maintenances, setMaintenances] = useState<{ date: string; cost: number }[]>([]);
+  const [payrollRuns, setPayrollRuns] = useState<{ period: string; totalGross: number; totalCNASEmployer: number }[]>([]);
+  const [expenseStart, setExpenseStart] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [expenseEnd, setExpenseEnd] = useState<string>(todayYmd);
+  const [expenseSupplierId, setExpenseSupplierId] = useState<string>('all');
+  const [expenseGroupBy, setExpenseGroupBy] = useState<'list' | 'supplier' | 'day' | 'month' | 'year'>('list');
+  const [expensePage, setExpensePage] = useState(1);
+  const [exportFormat, setExportFormat] = useState<'xlsx' | 'pdf'>('xlsx');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   useEffect(() => {
     const now = new Date();
@@ -172,11 +187,36 @@ const Reports: React.FC = () => {
       setActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActivityLog)));
     });
 
+    const unsubscribePurchases = onSnapshot(query(collection(db, 'purchases'), orderBy('date', 'desc'), limit(QUERY_MAX_ITEMS)), (snapshot) => {
+      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupplierInvoice)));
+    });
+
+    const unsubscribeSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
+      setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+    });
+
+    const unsubscribeUtilities = onSnapshot(collection(db, 'utilities'), (snapshot) => {
+      setUtilities(snapshot.docs.map(doc => doc.data() as { periodStart: string; amount: number }));
+    });
+
+    const unsubscribeMaintenances = onSnapshot(collection(db, 'fixedAssetMaintenances'), (snapshot) => {
+      setMaintenances(snapshot.docs.map(doc => doc.data() as { date: string; cost: number }));
+    });
+
+    const unsubscribePayrollRuns = onSnapshot(collection(db, 'payrollRuns'), (snapshot) => {
+      setPayrollRuns(snapshot.docs.map(doc => doc.data() as { period: string; totalGross: number; totalCNASEmployer: number }));
+    });
+
     return () => {
       unsubscribeProducts();
       unsubscribeOrders();
       unsubscribeMaterials();
       unsubscribeActivities();
+      unsubscribePurchases();
+      unsubscribeSuppliers();
+      unsubscribeUtilities();
+      unsubscribeMaintenances();
+      unsubscribePayrollRuns();
     };
   }, []);
 
@@ -206,11 +246,21 @@ const Reports: React.FC = () => {
 
   const filteredOrders = filteredOrdersByRole.filter(o => {
     const date = new Date(o.createdAt);
-    return isWithinInterval(date, {
+    const inRange = isWithinInterval(date, {
       start: startOfDay(new Date(analyticsStart)),
       end: new Date(analyticsEnd + 'T23:59:59')
     });
+    if (!inRange) return false;
+    if (orderTypeFilter === 'special') return o.type === 'special';
+    if (orderTypeFilter === 'b2b') return o.type !== 'special';
+    return true;
   });
+
+  const specialOrdersInRange = filteredOrders.filter(o => o.type === 'special');
+  const specialOrdersDownpaymentCollected = specialOrdersInRange.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
+  const specialOrdersBalanceOutstanding = specialOrdersInRange.reduce(
+    (sum, o) => sum + Math.max(0, o.totalAmount - (o.amountPaid || 0)), 0
+  );
 
   const reportSalesByDate = filteredSalesByRole.filter(s => {
     const date = new Date(s.createdAt);
@@ -288,6 +338,77 @@ const Reports: React.FC = () => {
   const displayPeriodTotal =
     salesSubTab === 'transactions' ? totalAmountTransactions : totalProductReportRevenue;
 
+  const expensePurchasesInRange = useMemo(() => {
+    const interval = { start: startOfDay(new Date(expenseStart)), end: new Date(expenseEnd + 'T23:59:59') };
+    return purchases.filter((p) => {
+      if (!isWithinInterval(new Date(p.date), interval)) return false;
+      if (expenseSupplierId !== 'all' && p.supplierId !== expenseSupplierId) return false;
+      return true;
+    });
+  }, [purchases, expenseStart, expenseEnd, expenseSupplierId]);
+
+  const expenseListRows = useMemo(
+    () => [...expensePurchasesInRange].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [expensePurchasesInRange]
+  );
+
+  const expenseSupplierRows = useMemo(() => {
+    const map = new Map<string, { supplierId: string; supplierName: string; count: number; total: number }>();
+    for (const p of expensePurchasesInRange) {
+      const cur = map.get(p.supplierId) ?? {
+        supplierId: p.supplierId,
+        supplierName: p.supplierName || suppliers.find((s) => s.id === p.supplierId)?.name || '—',
+        count: 0,
+        total: 0,
+      };
+      cur.count += 1;
+      cur.total += p.totalAmount || 0;
+      map.set(p.supplierId, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [expensePurchasesInRange, suppliers]);
+
+  const expenseBucketFormat = expenseGroupBy === 'year' ? 'yyyy' : expenseGroupBy === 'month' ? 'yyyy-MM' : 'yyyy-MM-dd';
+
+  const expenseBucketRows = useMemo(() => {
+    const map = new Map<string, { periodLabel: string; count: number; total: number }>();
+    for (const p of expensePurchasesInRange) {
+      const key = format(new Date(p.date), expenseBucketFormat);
+      const cur = map.get(key) ?? { periodLabel: key, count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += p.totalAmount || 0;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => a.periodLabel.localeCompare(b.periodLabel));
+  }, [expensePurchasesInRange, expenseBucketFormat]);
+
+  /** List mode has no natural axis, so its chart falls back to a daily breakdown. */
+  const expenseChartData = useMemo(() => {
+    if (expenseGroupBy === 'supplier') {
+      return expenseSupplierRows.slice(0, 10).map((r) => ({ name: r.supplierName, total: r.total }));
+    }
+    if (expenseGroupBy === 'list') {
+      const map = new Map<string, number>();
+      for (const p of expensePurchasesInRange) {
+        const key = format(new Date(p.date), 'yyyy-MM-dd');
+        map.set(key, (map.get(key) || 0) + (p.totalAmount || 0));
+      }
+      return Array.from(map.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([name, total]) => ({ name, total }));
+    }
+    return expenseBucketRows.map((r) => ({ name: r.periodLabel, total: r.total }));
+  }, [expenseGroupBy, expenseSupplierRows, expenseBucketRows, expensePurchasesInRange]);
+
+  const expenseTotal = expensePurchasesInRange.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+
+  const expenseListTotalPages = Math.ceil(expenseListRows.length / PAGE_SIZE) || 1;
+  const safeExpensePage = Math.min(expensePage, expenseListTotalPages);
+  const paginatedExpenseList = expenseListRows.slice(
+    (safeExpensePage - 1) * PAGE_SIZE,
+    safeExpensePage * PAGE_SIZE
+  );
+
   const activityMatchesSearch = (a: ActivityLog) => {
     if (!activitySearch) return true;
     const q = activitySearch.toLowerCase();
@@ -355,9 +476,30 @@ const Reports: React.FC = () => {
   const cancelledOrdersCount = filteredOrders.filter(o => o.status === 'cancelled').length;
   const fulfillmentRate = totalOrdersCount > 0 ? (fulfilledOrdersCount / totalOrdersCount) * 100 : 0;
 
-  // Profit and Costs (Simplified calculation)
-  const totalCosts = products.reduce((sum, p) => sum + (p.costPrice || 0) * (p.stock || 0), 0);
-  const totalProfit = totalRevenue - totalCosts;
+  // Profit: period-matched against totalRevenue (analyticsStart..analyticsEnd), not current inventory value.
+  const analyticsInterval = {
+    start: startOfDay(new Date(analyticsStart)),
+    end: new Date(analyticsEnd + 'T23:59:59')
+  };
+  const totalCosts = purchases
+    .filter(p => isWithinInterval(new Date(p.date), analyticsInterval))
+    .reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  const grossProfit = totalRevenue - totalCosts;
+
+  const utilitiesTotal = utilities
+    .filter(u => isWithinInterval(new Date(u.periodStart), analyticsInterval))
+    .reduce((sum, u) => sum + (u.amount || 0), 0);
+  const maintenanceTotal = maintenances
+    .filter(m => isWithinInterval(new Date(m.date), analyticsInterval))
+    .reduce((sum, m) => sum + (m.cost || 0), 0);
+  const payrollTotal = payrollRuns
+    .filter(r => isWithinInterval(new Date(`${r.period}-01`), {
+      start: startOfMonth(analyticsInterval.start),
+      end: analyticsInterval.end
+    }))
+    .reduce((sum, r) => sum + (r.totalGross || 0) + (r.totalCNASEmployer || 0), 0);
+  const operatingExpenses = utilitiesTotal + maintenanceTotal + payrollTotal;
+  const netProfit = grossProfit - operatingExpenses;
 
   // Inventory Consumption (Simplified)
   const inventoryConsumption = materials.map(m => ({
@@ -440,8 +582,10 @@ const Reports: React.FC = () => {
         reportPdfFilteredNote: t('reportPdfFilteredNote'),
         orderReport: t('orderReport'),
         totalRevenue: t('totalRevenue'),
-        profit: t('profit'),
         costs: t('costs'),
+        grossProfit: t('grossProfit'),
+        netProfit: t('netProfit'),
+        operatingExpenses: t('operatingExpenses'),
         avgOrderValue: t('avgOrderValue'),
         totalOrders: t('totalOrders'),
         fulfilled: t('fulfilled'),
@@ -480,17 +624,24 @@ const Reports: React.FC = () => {
         cash: t('cash'),
         card: t('card'),
         mobile: t('mobile'),
+        supplierExpenses: t('supplierExpenses'),
+        supplier: t('supplier'),
+        allSuppliers: t('allSuppliers'),
+        invoiceNumber: t('invoiceNumber'),
+        invoiceCount: t('invoiceCount'),
+        period: t('period'),
       }) as Record<string, string>,
     [t]
   );
 
-  const handleExportPdf = useCallback(async () => {
+  const handleExport = useCallback(async () => {
     if (loading) {
       toast.error(t('loading'));
       return;
     }
     const toastId = toast.loading(t('exportGenerating'));
-    const filename = `BellaDolce-report-${activeTab}-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`;
+    const exportFn = exportFormat === 'pdf' ? downloadReportsPdf : downloadReportsXlsx;
+    const filename = `BellaDolce-report-${activeTab}-${format(new Date(), 'yyyy-MM-dd-HHmm')}.${exportFormat}`;
 
     const timePresetLabel =
       timeFilter === 'day'
@@ -505,7 +656,7 @@ const Reports: React.FC = () => {
 
     try {
       if (activeTab === 'analytics') {
-        await downloadReportsPdf({
+        await exportFn({
           filename,
           isRTL,
           currencyUnit,
@@ -516,8 +667,10 @@ const Reports: React.FC = () => {
             presetLine,
             kpi: {
               totalRevenue,
-              totalProfit,
               totalCosts,
+              grossProfit,
+              operatingExpenses,
+              netProfit,
               avgOrderValue,
             },
             orders: {
@@ -566,7 +719,7 @@ const Reports: React.FC = () => {
               ? t('allCashiers')
               : cashiers.find((c) => c.id === selectedCashier)?.name || t('cashier');
           const filterNote = `${salesPeriodNote} · ${t('cashier')}: ${cashierLabel}`;
-          await downloadReportsPdf({
+          await exportFn({
             filename,
             isRTL,
             currencyUnit,
@@ -590,7 +743,7 @@ const Reports: React.FC = () => {
             productFilterIds.length > 0
               ? `${salesPeriodNote} · ${t('products')}: ${productFilterIds.length}`
               : salesPeriodNote;
-          await downloadReportsPdf({
+          await exportFn({
             filename,
             isRTL,
             currencyUnit,
@@ -617,7 +770,7 @@ const Reports: React.FC = () => {
             },
           });
         }
-      } else {
+      } else if (activeTab === 'activities') {
         if (filteredActivities.length === 0) {
           toast.error(t('reportExportEmpty'), { id: toastId });
           return;
@@ -626,7 +779,7 @@ const Reports: React.FC = () => {
         const filterNote = activitySearch.trim()
           ? `${actPeriod} · ${t('search')}: ${activitySearch.trim()}`
           : actPeriod;
-        await downloadReportsPdf({
+        await exportFn({
           filename,
           isRTL,
           currencyUnit,
@@ -638,11 +791,42 @@ const Reports: React.FC = () => {
             formatLogTime: (iso: string) => format(new Date(iso), 'PPp', { locale: dateLocale }),
           },
         });
+      } else {
+        if (expensePurchasesInRange.length === 0) {
+          toast.error(t('reportExportEmpty'), { id: toastId });
+          return;
+        }
+        const supplierLabel =
+          expenseSupplierId === 'all'
+            ? t('allSuppliers')
+            : suppliers.find((s) => s.id === expenseSupplierId)?.name || t('supplier');
+        const expensePeriodNote = `${t('fromDate')}: ${format(new Date(expenseStart), 'PP', { locale: dateLocale })} — ${t('toDate')}: ${format(new Date(expenseEnd), 'PP', { locale: dateLocale })}`;
+        const filterNote = `${expensePeriodNote} · ${t('suppliers')}: ${supplierLabel}`;
+        await exportFn({
+          filename,
+          isRTL,
+          currencyUnit,
+          labels: pdfLabels,
+          mode: 'supplier_expenses',
+          supplierExpenses: {
+            groupBy: expenseGroupBy,
+            filterNote,
+            total: expenseTotal,
+            listRows: expenseListRows.map((p) => ({
+              date: format(new Date(p.date), 'PP', { locale: dateLocale }),
+              supplierName: p.supplierName || suppliers.find((s) => s.id === p.supplierId)?.name || '—',
+              invoiceNumber: p.invoiceNumber,
+              amount: p.totalAmount,
+            })),
+            supplierRows: expenseSupplierRows.map((r) => ({ supplierName: r.supplierName, count: r.count, total: r.total })),
+            bucketRows: expenseBucketRows.map((r) => ({ periodLabel: r.periodLabel, count: r.count, total: r.total })),
+          },
+        });
       }
-      toast.success(t('pdfDownloaded'), { id: toastId });
+      toast.success(t('reportDownloaded'), { id: toastId });
     } catch (e) {
       console.error(e);
-      toast.error(t('pdfError'), { id: toastId });
+      toast.error(t('reportDownloadError'), { id: toastId });
     }
   }, [
     loading,
@@ -662,8 +846,10 @@ const Reports: React.FC = () => {
     topSellers,
     inventoryConsumption,
     totalRevenue,
-    totalProfit,
     totalCosts,
+    grossProfit,
+    operatingExpenses,
+    netProfit,
     avgOrderValue,
     totalOrdersCount,
     fulfilledOrdersCount,
@@ -691,6 +877,17 @@ const Reports: React.FC = () => {
     getPaymentLabel,
     tProduct,
     tCategory,
+    exportFormat,
+    expensePurchasesInRange,
+    expenseListRows,
+    expenseSupplierRows,
+    expenseBucketRows,
+    expenseTotal,
+    expenseGroupBy,
+    expenseSupplierId,
+    expenseStart,
+    expenseEnd,
+    suppliers,
   ]);
 
   return (
@@ -702,17 +899,46 @@ const Reports: React.FC = () => {
           <p className="text-slate-500 dark:text-zinc-500 font-medium">{t('reportsDesc')}</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <button
-            type="button"
-            onClick={handleExportPdf}
-            disabled={loading}
-            className="px-6 py-2.5 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-          >
-            <Download className="w-4 h-4" />
-            {t('exportPDF')}
-          </button>
+          <div className="relative flex">
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={loading}
+              className="px-3.5 py-1.5 bg-amber-600 text-white text-sm font-bold rounded-s-lg hover:bg-amber-500 transition-all shadow-sm flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {exportFormat === 'xlsx' ? t('exportExcel') : t('exportPDF')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setExportMenuOpen((v) => !v)}
+              disabled={loading}
+              aria-label={t('exportFormat') || 'Export format'}
+              className="px-1.5 bg-amber-700 text-white text-xs rounded-e-lg hover:bg-amber-600 transition-all shadow-sm flex items-center justify-center border-s border-amber-500/40 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              ▾
+            </button>
+            {exportMenuOpen && (
+              <div className="absolute top-full mt-2 end-0 z-20 w-36 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => { setExportFormat('xlsx'); setExportMenuOpen(false); }}
+                  className={clsx("w-full text-start px-3 py-1.5 text-xs font-bold hover:bg-slate-50 dark:hover:bg-white/5", exportFormat === 'xlsx' && "text-amber-600")}
+                >
+                  {t('exportFormatExcel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setExportFormat('pdf'); setExportMenuOpen(false); }}
+                  className={clsx("w-full text-start px-3 py-1.5 text-xs font-bold hover:bg-slate-50 dark:hover:bg-white/5", exportFormat === 'pdf' && "text-amber-600")}
+                >
+                  {t('exportFormatPdf')}
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
-            <button 
+            <button
               onClick={() => setActiveTab('analytics')}
               className={clsx(
                 "px-6 py-2 rounded-xl text-sm font-bold transition-all",
@@ -729,6 +955,15 @@ const Reports: React.FC = () => {
               )}
             >
               {t('salesReport')}
+            </button>
+            <button
+              onClick={() => setActiveTab('expenses')}
+              className={clsx(
+                "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+                activeTab === 'expenses' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {t('supplierExpenses')}
             </button>
             <button
               onClick={() => setActiveTab('activities')}
@@ -776,7 +1011,7 @@ const Reports: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
@@ -788,12 +1023,21 @@ const Reports: React.FC = () => {
             </div>
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-500/20">
+                  <TrendingDown className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('costs')}</p>
+              <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{totalCosts.toLocaleString()} {currencyUnit}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
                   <TrendingUp className="w-5 h-5" />
                 </div>
               </div>
-              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('profit')}</p>
-              <h3 className="text-2xl font-display font-bold text-emerald-600 dark:text-emerald-400">{totalProfit.toLocaleString()} {currencyUnit}</h3>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('grossProfit')}</p>
+              <h3 className="text-2xl font-display font-bold text-emerald-600 dark:text-emerald-400">{grossProfit.toLocaleString()} {currencyUnit}</h3>
             </div>
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
@@ -801,8 +1045,17 @@ const Reports: React.FC = () => {
                   <TrendingDown className="w-5 h-5" />
                 </div>
               </div>
-              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('costs')}</p>
-              <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{totalCosts.toLocaleString()} {currencyUnit}</h3>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('operatingExpenses')}</p>
+              <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{operatingExpenses.toLocaleString()} {currencyUnit}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center border", netProfit >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20")}>
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('netProfit')}</p>
+              <h3 className={clsx("text-2xl font-display font-bold", netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>{netProfit.toLocaleString()} {currencyUnit}</h3>
             </div>
             <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-4">
@@ -826,11 +1079,50 @@ const Reports: React.FC = () => {
 
 
       <section className="space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="w-1 h-8 bg-amber-600 rounded-full"></div>
-          <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{t('orderReport')}</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-8 bg-amber-600 rounded-full"></div>
+            <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{t('orderReport')}</h2>
+          </div>
+          <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
+            {(['all', 'b2b', 'special'] as const).map((tf) => (
+              <button
+                key={tf}
+                onClick={() => setOrderTypeFilter(tf)}
+                className={clsx(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                  orderTypeFilter === tf ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                {t(tf === 'all' ? 'ordersTypeAll' : tf === 'b2b' ? 'ordersTypeB2B' : 'ordersTypeSpecial')}
+              </button>
+            ))}
+          </div>
         </div>
-        
+
+        {specialOrdersInRange.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('downpayment')}</p>
+              <h3 className="text-2xl font-display font-bold text-emerald-600 dark:text-emerald-400">{specialOrdersDownpaymentCollected.toLocaleString()} {currencyUnit}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
+                  <Clock className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('balanceDue')}</p>
+              <h3 className="text-2xl font-display font-bold text-amber-600 dark:text-amber-500">{specialOrdersBalanceOutstanding.toLocaleString()} {currencyUnit}</h3>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
             <div className="flex items-center justify-between mb-4">
@@ -1612,6 +1904,169 @@ const Reports: React.FC = () => {
                 variant="footer"
               />
             </div>
+          </div>
+        </div>
+      )}
+      {activeTab === 'expenses' && (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 dark:bg-white/[0.02] p-4 rounded-3xl border border-slate-100 dark:border-white/5">
+            <div className="flex flex-wrap gap-3">
+              <select
+                className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm font-bold rounded-xl px-4 py-2 focus:ring-amber-500"
+                value={expenseSupplierId}
+                onChange={(e) => { setExpenseSupplierId(e.target.value); setExpensePage(1); }}
+              >
+                <option value="all">{t('allSuppliers')}</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <select
+                className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm font-bold rounded-xl px-4 py-2 focus:ring-amber-500"
+                value={expenseGroupBy}
+                onChange={(e) => { setExpenseGroupBy(e.target.value as any); setExpensePage(1); }}
+              >
+                <option value="list">{t('reportGroupByList')}</option>
+                <option value="supplier">{t('reportGroupBySupplier')}</option>
+                <option value="day">{t('day')}</option>
+                <option value="month">{t('month')}</option>
+                <option value="year">{t('year')}</option>
+              </select>
+              <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 px-3 py-1 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm">
+                <Calendar className="w-4 h-4 text-amber-500" />
+                <input
+                  type="date"
+                  className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white"
+                  value={expenseStart}
+                  onChange={(e) => setExpenseStart(e.target.value)}
+                />
+                <span className="text-slate-400 dark:text-zinc-500">-</span>
+                <input
+                  type="date"
+                  className="bg-transparent border-none text-sm font-bold focus:ring-0 text-slate-900 dark:text-white"
+                  value={expenseEnd}
+                  onChange={(e) => setExpenseEnd(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-500/20">
+                  <TrendingDown className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('supplierExpenses')}</p>
+              <h3 className="text-2xl font-display font-bold text-red-600 dark:text-red-400">{expenseTotal.toLocaleString()} {currencyUnit}</h3>
+            </div>
+            <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-500 flex items-center justify-center border border-amber-500/20">
+                  <Banknote className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{t('invoiceCount')}</p>
+              <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white">{expensePurchasesInRange.length}</h3>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] p-8 border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-8">{t('supplierExpenses')}</h2>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={expenseChartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" className="dark:stroke-zinc-800" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--tooltip-bg)',
+                      borderRadius: '16px',
+                      border: '1px solid var(--tooltip-border)',
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      color: 'var(--tooltip-text)'
+                    }}
+                    itemStyle={{ color: '#d97706', fontWeight: 'bold' }}
+                  />
+                  <Bar dataKey="total" fill="#d97706" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-zinc-900 rounded-[32px] border border-slate-100 dark:border-white/10 shadow-sm dark:shadow-none overflow-hidden">
+            {expenseGroupBy === 'list' && (
+              <>
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase">
+                    <tr>
+                      <th className="px-6 py-4 text-start">{t('fromDate')}</th>
+                      <th className="px-6 py-4 text-start">{t('supplier')}</th>
+                      <th className="px-6 py-4 text-start">{t('invoiceNumber')}</th>
+                      <th className="px-6 py-4 text-end">{t('amount')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedExpenseList.map((p) => (
+                      <tr key={p.id} className="border-t border-slate-100 dark:border-white/5">
+                        <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{format(new Date(p.date), 'PP', { locale: dateLocale })}</td>
+                        <td className="px-6 py-4">{p.supplierName || suppliers.find((s) => s.id === p.supplierId)?.name || '—'}</td>
+                        <td className="px-6 py-4 font-mono text-xs">{p.invoiceNumber}</td>
+                        <td className="px-6 py-4 text-end font-bold">{p.totalAmount.toLocaleString()} {currencyUnit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {expenseListRows.length === 0 && (
+                  <div className="p-12 text-center text-slate-500 dark:text-zinc-500 font-medium">{t('reportExportEmpty')}</div>
+                )}
+                <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end">
+                  <Pagination currentPage={safeExpensePage} totalPages={expenseListTotalPages} onPageChange={setExpensePage} variant="footer" />
+                </div>
+              </>
+            )}
+            {expenseGroupBy === 'supplier' && (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase">
+                  <tr>
+                    <th className="px-6 py-4 text-start">{t('supplier')}</th>
+                    <th className="px-6 py-4 text-end">{t('invoiceCount')}</th>
+                    <th className="px-6 py-4 text-end">{t('amount')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenseSupplierRows.map((r) => (
+                    <tr key={r.supplierId} className="border-t border-slate-100 dark:border-white/5">
+                      <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{r.supplierName}</td>
+                      <td className="px-6 py-4 text-end">{r.count}</td>
+                      <td className="px-6 py-4 text-end font-bold">{r.total.toLocaleString()} {currencyUnit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {(expenseGroupBy === 'day' || expenseGroupBy === 'month' || expenseGroupBy === 'year') && (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-zinc-500 text-xs font-bold uppercase">
+                  <tr>
+                    <th className="px-6 py-4 text-start">{t('period')}</th>
+                    <th className="px-6 py-4 text-end">{t('invoiceCount')}</th>
+                    <th className="px-6 py-4 text-end">{t('amount')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenseBucketRows.map((r) => (
+                    <tr key={r.periodLabel} className="border-t border-slate-100 dark:border-white/5">
+                      <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{r.periodLabel}</td>
+                      <td className="px-6 py-4 text-end">{r.count}</td>
+                      <td className="px-6 py-4 text-end font-bold">{r.total.toLocaleString()} {currencyUnit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

@@ -82,6 +82,52 @@ namespace BellaDolce.PrintAgent.Controllers
             }
         }
 
+        // POST /print/kitchen-ticket
+        [HttpPost("/print/kitchen-ticket")]
+        public async Task<IActionResult> PrintKitchenTicket([FromBody] KitchenTicketJob job)
+        {
+            if (job == null)
+            {
+                _logger.LogWarning("Kitchen ticket request with null body");
+                return BadRequest(new { status = "error", message = "Request body is required" });
+            }
+
+            if (string.IsNullOrEmpty(job.OrderId))
+            {
+                _logger.LogWarning("Kitchen ticket request without orderId");
+                return BadRequest(new { status = "error", message = "orderId is required" });
+            }
+
+            var result = await _printService.PrintKitchenTicketAsync(job);
+
+            if (result.Success)
+            {
+                var response = new Dictionary<string, object>
+                {
+                    { "status", "printed" },
+                    { "message", result.Message },
+                    { "orderId", job.OrderId }
+                };
+
+                if (!string.IsNullOrEmpty(result.OutputFile))
+                {
+                    response.Add("outputFile", result.OutputFile);
+                }
+
+                return Ok(response);
+            }
+            else
+            {
+                _logger.LogError("Kitchen ticket print failed: {Message}", result.Message);
+                return StatusCode(500, new
+                {
+                    status = "error",
+                    message = result.Message,
+                    orderId = job.OrderId
+                });
+            }
+        }
+
         // GET /printers (list available printers — useful for config)
         [HttpGet("/printers")]
         public IActionResult ListPrinters()

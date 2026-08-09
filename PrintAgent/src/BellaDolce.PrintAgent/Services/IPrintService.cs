@@ -5,6 +5,7 @@ namespace BellaDolce.PrintAgent.Services
     public interface IPrintService
     {
         Task<PrintResult> PrintAsync(PrintJob job);
+        Task<PrintResult> PrintKitchenTicketAsync(KitchenTicketJob job);
         string Mode { get; }
     }
 

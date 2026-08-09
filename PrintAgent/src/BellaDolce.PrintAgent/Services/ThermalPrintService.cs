@@ -13,6 +13,7 @@ namespace BellaDolce.PrintAgent.Services
         private readonly int _paperHeight;
         private readonly string _languageMode;
         private PrintJob? _currentJob;
+        private KitchenTicketJob? _currentKitchenJob;
 
         public string Mode => "printer";
 
@@ -62,6 +63,114 @@ namespace BellaDolce.PrintAgent.Services
                     Message = $"Print error: {ex.Message}"
                 });
             }
+        }
+
+        public Task<PrintResult> PrintKitchenTicketAsync(KitchenTicketJob job)
+        {
+            try
+            {
+                _currentKitchenJob = job;
+
+                var doc = new PrintDocument();
+                doc.PrinterSettings.PrinterName = _printerName;
+
+                if (!doc.PrinterSettings.IsValid)
+                {
+                    return Task.FromResult(new PrintResult
+                    {
+                        Success = false,
+                        Message = $"Printer '{_printerName}' not found. Available: {GetAvailablePrinters()}"
+                    });
+                }
+
+                doc.DefaultPageSettings.PaperSize = new PaperSize("Receipt", _paperWidth, _paperHeight);
+                doc.DefaultPageSettings.Margins = new Margins(5, 5, 5, 5);
+                doc.PrintPage += OnPrintKitchenTicketPage;
+                doc.Print();
+
+                return Task.FromResult(new PrintResult
+                {
+                    Success = true,
+                    Message = $"Kitchen ticket printed on '{_printerName}'"
+                });
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(new PrintResult
+                {
+                    Success = false,
+                    Message = $"Print error: {ex.Message}"
+                });
+            }
+        }
+
+        private void OnPrintKitchenTicketPage(object sender, PrintPageEventArgs e)
+        {
+            if (_currentKitchenJob == null || e.Graphics == null) return;
+
+            var job = _currentKitchenJob;
+            var g = e.Graphics;
+            var pageWidth = e.PageBounds.Width - 10;
+            var y = 5f;
+
+            var fontDelivery = new Font("Arial", 20, FontStyle.Bold);
+            var fontProduct = new Font("Arial", 18, FontStyle.Bold);
+            var fontSpecs = new Font("Arial", 16, FontStyle.Regular);
+            var fontSmall = new Font("Arial", 10, FontStyle.Regular);
+
+            void DrawCenter(string text, Font font)
+            {
+                var size = g.MeasureString(text, font, (int)pageWidth);
+                g.DrawString(text, font, Brushes.Black, new RectangleF(0, y, pageWidth, size.Height), new StringFormat { Alignment = StringAlignment.Center });
+                y += size.Height + 4;
+            }
+
+            void DrawLeft(string text, Font font)
+            {
+                var size = g.MeasureString(text, font, (int)pageWidth);
+                g.DrawString(text, font, Brushes.Black, new RectangleF(5, y, pageWidth - 10, size.Height));
+                y += size.Height + 2;
+            }
+
+            void DrawDash()
+            {
+                g.DrawString(new string('-', 30), fontSmall, Brushes.Black, 5, y);
+                y += fontSmall.GetHeight() + 4;
+            }
+
+            DrawDash();
+            DrawCenter($"{job.DeliveryDate} {job.DeliveryTime}".Trim(), fontDelivery);
+            DrawDash();
+
+            if (!string.IsNullOrEmpty(job.CustomerName))
+            {
+                DrawLeft(job.CustomerName, fontSpecs);
+                DrawDash();
+            }
+
+            foreach (var item in job.Items)
+            {
+                DrawLeft($"{item.Quantity}x {item.Name}", fontProduct);
+                if (!string.IsNullOrEmpty(item.SpecificationsText))
+                {
+                    DrawLeft(item.SpecificationsText, fontSpecs);
+                }
+                y += 4;
+            }
+            DrawDash();
+
+            if (!string.IsNullOrEmpty(job.Notes))
+            {
+                DrawLeft(job.Notes, fontSpecs);
+                DrawDash();
+            }
+
+            e.HasMorePages = false;
+
+            fontDelivery.Dispose();
+            fontProduct.Dispose();
+            fontSpecs.Dispose();
+            fontSmall.Dispose();
         }
 
         private void OnPrintPage(object sender, PrintPageEventArgs e)

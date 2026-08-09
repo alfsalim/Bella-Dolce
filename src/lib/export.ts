@@ -217,8 +217,10 @@ export type AnalyticsPdfPayload = {
   presetLine: string;
   kpi: {
     totalRevenue: number;
-    totalProfit: number;
     totalCosts: number;
+    grossProfit: number;
+    operatingExpenses: number;
+    netProfit: number;
     avgOrderValue: number;
   };
   orders: {
@@ -242,12 +244,21 @@ export type AnalyticsPdfPayload = {
   inventoryRows: { name: string; consumption: string; stock: number }[];
 };
 
+export type SupplierExpensesPdfPayload = {
+  groupBy: 'list' | 'supplier' | 'day' | 'month' | 'year';
+  filterNote: string;
+  total: number;
+  listRows: { date: string; supplierName: string; invoiceNumber: string; amount: number }[];
+  supplierRows: { supplierName: string; count: number; total: number }[];
+  bucketRows: { periodLabel: string; count: number; total: number }[];
+};
+
 export async function downloadReportsPdf(opts: {
   filename: string;
   isRTL: boolean;
   currencyUnit: string;
   labels: Record<string, string>;
-  mode: 'analytics' | 'sales_transactions' | 'sales_by_product' | 'activities';
+  mode: 'analytics' | 'sales_transactions' | 'sales_by_product' | 'activities' | 'supplier_expenses';
   analytics?: AnalyticsPdfPayload;
   salesTransactions?: {
     sales: Sale[];
@@ -266,6 +277,7 @@ export async function downloadReportsPdf(opts: {
     filterNote: string;
     formatLogTime: (iso: string) => string;
   };
+  supplierExpenses?: SupplierExpensesPdfPayload;
 }): Promise<void> {
   const { isRTL, currencyUnit: cu, labels: L } = opts;
   const pdf = newA4Pdf();
@@ -279,8 +291,10 @@ export async function downloadReportsPdf(opts: {
       `<div style="padding:0 22px;">
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
           ${kpiCard(L.totalRevenue, `${a.kpi.totalRevenue.toLocaleString()} ${cu}`)}
-          ${kpiCard(L.profit, `${a.kpi.totalProfit.toLocaleString()} ${cu}`)}
           ${kpiCard(L.costs, `${a.kpi.totalCosts.toLocaleString()} ${cu}`)}
+          ${kpiCard(L.grossProfit, `${a.kpi.grossProfit.toLocaleString()} ${cu}`)}
+          ${kpiCard(L.operatingExpenses, `${a.kpi.operatingExpenses.toLocaleString()} ${cu}`)}
+          ${kpiCard(L.netProfit, `${a.kpi.netProfit.toLocaleString()} ${cu}`)}
           ${kpiCard(L.avgOrderValue, `${a.kpi.avgOrderValue.toLocaleString()} ${cu}`)}
         </div>
         <div style="font-size:15px;font-weight:800;margin:8px 0 12px;color:#0f172a;">${esc(L.orderReport)}</div>
@@ -443,6 +457,120 @@ export async function downloadReportsPdf(opts: {
       return el;
     });
     await flushChunks(pdf, elements, first);
+
+  } else if (opts.mode === 'supplier_expenses' && opts.supplierExpenses) {
+    const se = opts.supplierExpenses;
+    const chartRows =
+      se.groupBy === 'supplier'
+        ? se.supplierRows.map((r) => ({ label: r.supplierName, total: r.total }))
+        : se.groupBy === 'list'
+          ? []
+          : se.bucketRows.map((r) => ({ label: r.periodLabel, total: r.total }));
+    const maxTotal = Math.max(1, ...chartRows.map((r) => r.total));
+    const totalCount =
+      se.groupBy === 'list' ? se.listRows.length : se.groupBy === 'supplier' ? se.supplierRows.reduce((s, r) => s + r.count, 0) : se.bucketRows.reduce((s, r) => s + r.count, 0);
+
+    const chartInner = chartRows.length
+      ? `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:800;margin-bottom:12px;">${esc(L.supplierExpenses)}</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${chartRows
+              .map(
+                (r) => `<div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:110px;font-size:10px;font-weight:700;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.label)}</div>
+              <div style="flex:1;background:#f1f5f9;border-radius:6px;overflow:hidden;height:14px;">
+                <div style="height:100%;background:#d97706;width:${Math.max(2, (r.total / maxTotal) * 100)}%;"></div>
+              </div>
+              <div style="width:90px;text-align:end;font-size:10px;font-weight:800;">${r.total.toLocaleString()} ${esc(cu)}</div>
+            </div>`
+              )
+              .join('')}
+          </div>
+        </div>`
+      : '';
+
+    const headInner =
+      banner(L, L.supplierExpenses, [se.filterNote, L.reportPdfFilteredNote], logo) +
+      `<div style="padding:0 22px;">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+          ${kpiCard(L.supplierExpenses, `${se.total.toLocaleString()} ${cu}`)}
+          ${kpiCard(L.invoiceCount, String(totalCount))}
+        </div>
+        ${chartInner}
+      </div>`;
+    const headEl = document.createElement('div');
+    headEl.innerHTML = wrapRoot(isRTL, headInner);
+
+    let tableElements: HTMLElement[] = [];
+    if (se.groupBy === 'list') {
+      const chunks = chunkArray(se.listRows, 30);
+      tableElements = chunks.map((batch, idx) => {
+        const body = batch
+          .map(
+            (r) =>
+              `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 10px;">${esc(r.date)}</td><td style="padding:8px 10px;">${esc(r.supplierName)}</td><td style="padding:8px 10px;font-family:monospace;font-size:10px;">${esc(r.invoiceNumber)}</td><td style="padding:8px 10px;text-align:end;font-weight:800;">${r.amount.toLocaleString()} ${esc(cu)}</td></tr>`
+          )
+          .join('');
+        const inner =
+          banner(L, L.supplierExpenses, [se.filterNote, `${idx + 1}/${chunks.length}`], logo) +
+          `<div style="padding:0 18px;">
+            <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:14px;font-size:11px;">
+              <thead><tr style="background:#f8fafc;color:#64748b;font-size:9px;font-weight:800;text-transform:uppercase;">
+                <th style="padding:10px;text-align:start;">${esc(L.fromDate)}</th>
+                <th style="padding:10px;text-align:start;">${esc(L.supplier)}</th>
+                <th style="padding:10px;text-align:start;">${esc(L.invoiceNumber)}</th>
+                <th style="padding:10px;text-align:end;">${esc(L.amount)}</th>
+              </tr></thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>`;
+        const el = document.createElement('div');
+        el.innerHTML = wrapRoot(isRTL, inner);
+        return el;
+      });
+    } else if (se.groupBy === 'supplier') {
+      const body = se.supplierRows
+        .map(
+          (r) =>
+            `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 10px;font-weight:700;">${esc(r.supplierName)}</td><td style="padding:8px 10px;text-align:end;">${r.count}</td><td style="padding:8px 10px;text-align:end;font-weight:800;">${r.total.toLocaleString()} ${esc(cu)}</td></tr>`
+        )
+        .join('');
+      const inner = `<div style="padding:0 18px;">
+        <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:14px;font-size:11px;">
+          <thead><tr style="background:#f8fafc;color:#64748b;font-size:9px;font-weight:800;text-transform:uppercase;">
+            <th style="padding:10px;text-align:start;">${esc(L.supplier)}</th>
+            <th style="padding:10px;text-align:end;">${esc(L.invoiceCount)}</th>
+            <th style="padding:10px;text-align:end;">${esc(L.amount)}</th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+      const el = document.createElement('div');
+      el.innerHTML = wrapRoot(isRTL, inner);
+      tableElements = [el];
+    } else {
+      const body = se.bucketRows
+        .map(
+          (r) =>
+            `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 10px;font-weight:700;">${esc(r.periodLabel)}</td><td style="padding:8px 10px;text-align:end;">${r.count}</td><td style="padding:8px 10px;text-align:end;font-weight:800;">${r.total.toLocaleString()} ${esc(cu)}</td></tr>`
+        )
+        .join('');
+      const inner = `<div style="padding:0 18px;">
+        <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:14px;font-size:11px;">
+          <thead><tr style="background:#f8fafc;color:#64748b;font-size:9px;font-weight:800;text-transform:uppercase;">
+            <th style="padding:10px;text-align:start;">${esc(L.period)}</th>
+            <th style="padding:10px;text-align:end;">${esc(L.invoiceCount)}</th>
+            <th style="padding:10px;text-align:end;">${esc(L.amount)}</th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+      const el = document.createElement('div');
+      el.innerHTML = wrapRoot(isRTL, inner);
+      tableElements = [el];
+    }
+
+    await flushChunks(pdf, [headEl, ...tableElements], first);
   }
 
   pdf.save(opts.filename);

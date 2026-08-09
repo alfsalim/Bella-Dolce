@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { 
-  ClipboardList, 
-  Search, 
-  Filter, 
-  Clock, 
-  User, 
-  Truck, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  ClipboardList,
+  Search,
+  Filter,
+  Clock,
+  User,
+  Truck,
+  CheckCircle2,
+  XCircle,
   AlertCircle,
   MoreVertical,
   Calendar,
@@ -20,19 +20,55 @@ import {
   FileText,
   Printer,
   Download,
-  X
+  X,
+  Plus,
+  Trash2,
+  Wallet,
+  Phone
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, limit, where, handleFirestoreError, OperationType, getDoc, getCountFromServer } from '../lib/db';
+import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, limit, where, handleFirestoreError, OperationType, getDoc, getCountFromServer, addDoc } from '../lib/db';
+import { authFetch, getAuthHeaders, readApiErrorMessage } from '../lib/api-client';
 import { toast } from 'react-hot-toast';
 import { Order, Product } from '../types';
 import { clsx } from 'clsx';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { downloadInvoicePdf } from '../lib/export';
 import { PAGE_SIZE } from '../constants';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import DeliveryManagement from './DeliveryManagement';
+import EditableSelect from '../components/EditableSelect';
+
+interface SpecialOrderItemDraft {
+  productId: string;
+  quantity: number;
+  price: number;
+  expanded: boolean;
+  specifications: {
+    flavor?: string;
+    glaze?: string;
+    shape?: string;
+    size?: string;
+    addons?: string;
+  };
+}
+
+const emptySpecialOrderItem = (): SpecialOrderItemDraft => ({
+  productId: '',
+  quantity: 1,
+  price: 0,
+  expanded: false,
+  specifications: {},
+});
+
+const getDefaultExpectedDateTime = () => {
+  const inTwoDays = addDays(new Date(), 2);
+  return {
+    expectedDate: format(inTwoDays, 'yyyy-MM-dd'),
+    expectedTime: format(inTwoDays, 'HH:mm'),
+  };
+};
 
 const Orders: React.FC = () => {
   const { t, isRTL, tProduct, currencyUnit } = useLanguage();
@@ -51,6 +87,24 @@ const Orders: React.FC = () => {
   });
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<Order | null>(null);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+
+  const [isSpecialOrderModalOpen, setIsSpecialOrderModalOpen] = useState(false);
+  const [isSubmittingSpecialOrder, setIsSubmittingSpecialOrder] = useState(false);
+  const [specialOrderForm, setSpecialOrderForm] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '0',
+    ...getDefaultExpectedDateTime(),
+    notes: '',
+    downpayment: '',
+    items: [emptySpecialOrderItem()] as SpecialOrderItemDraft[],
+  });
+  const [closeBalanceInput, setCloseBalanceInput] = useState<Record<string, string>>({});
+  const [closingOrderId, setClosingOrderId] = useState<string | null>(null);
+
+  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('ordersViewMode', viewMode);
@@ -172,6 +226,54 @@ const Orders: React.FC = () => {
     }
   };
 
+  const handleCancelOrder = async () => {
+    const order = cancellingOrder;
+    if (!order) return;
+    if (!cancelReason.trim()) {
+      toast.error(t('cancellationReasonRequired'));
+      return;
+    }
+
+    setIsCancellingOrder(true);
+    try {
+      // Restore shopStock (orders come from shop) — stock = shopStock + freezerStock + wasteQuantity (invariant)
+      for (const item of order.items) {
+        try {
+          const productRef = doc(db, 'products', item.productId);
+          const productSnap = await getDoc(productRef);
+          if (productSnap.exists()) {
+            const data = productSnap.data();
+            const newShopStock = (data.shopStock || 0) + item.quantity;
+            const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
+            await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
+          }
+        } catch (err) {
+          console.error(`Error returning stock for product ${item.productId}:`, err);
+        }
+      }
+
+      await updateDoc(doc(db, 'orders', order.id), {
+        status: 'cancelled',
+        amountPaid: 0,
+        paymentStatus: 'n/a',
+        cancellationReason: cancelReason.trim(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      if (profile) {
+        logActivity(profile.id, profile.name, 'Order', `Order ${order.id} cancelled: ${cancelReason.trim()}`);
+      }
+
+      toast.success(t('orderCancelledSuccess'));
+      setCancellingOrder(null);
+      setCancelReason('');
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  };
+
   const getStatusColor = (status: Order['status']) => {
     switch (status) {
       case 'ordered': return 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400';
@@ -248,6 +350,206 @@ const Orders: React.FC = () => {
     } catch (error) {
       console.error('PDF generation error:', error);
       toast.error(t('pdfError'), { id: toastId });
+    }
+  };
+
+  const resetSpecialOrderForm = () => {
+    setSpecialOrderForm({
+      firstName: '',
+      lastName: '',
+      phone: '0',
+      ...getDefaultExpectedDateTime(),
+      notes: '',
+      downpayment: '',
+      items: [emptySpecialOrderItem()],
+    });
+  };
+
+  const updateSpecialOrderItem = (index: number, patch: Partial<SpecialOrderItemDraft>) => {
+    setSpecialOrderForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    }));
+  };
+
+  const updateSpecialOrderItemSpec = (index: number, key: keyof SpecialOrderItemDraft['specifications'], value: string) => {
+    setSpecialOrderForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item, i) => (i === index ? { ...item, specifications: { ...item.specifications, [key]: value } } : item)),
+    }));
+  };
+
+  const addSpecialOrderItem = () => {
+    setSpecialOrderForm((prev) => ({ ...prev, items: [...prev.items, emptySpecialOrderItem()] }));
+  };
+
+  const removeSpecialOrderItem = (index: number) => {
+    setSpecialOrderForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+  };
+
+  const handleProductSelectForItem = (index: number, productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    updateSpecialOrderItem(index, { productId, price: product?.sellingPrice || 0 });
+  };
+
+  const specialOrderTotal = specialOrderForm.items.reduce(
+    (sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0
+  );
+
+  const handleCreateSpecialOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { firstName, lastName, phone, expectedDate, expectedTime, items, notes, downpayment } = specialOrderForm;
+
+    const validItems = items.filter((item) => item.productId && item.quantity > 0);
+    if (!firstName.trim() || !lastName.trim() || !phone.trim() || !expectedDate || !expectedTime || validItems.length === 0) {
+      toast.error(t('requiredFieldsMissing'));
+      return;
+    }
+
+    if (!/^0[0-9]{9}$/.test(phone.trim())) {
+      toast.error(t('phoneInvalid'));
+      return;
+    }
+
+    setIsSubmittingSpecialOrder(true);
+    try {
+      const totalAmount = validItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+      const downpaymentAmount = Math.max(0, parseFloat(downpayment) || 0);
+      const paymentStatus = totalAmount > 0 && downpaymentAmount >= totalAmount ? 'paid_full' : 'deposit';
+
+      const orderData = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim(),
+        type: 'special',
+        status: 'ordered',
+        items: validItems.map((item) => {
+          const product = products.find((p) => p.id === item.productId);
+          return {
+            productId: item.productId,
+            name: product ? tProduct(product) : '',
+            quantity: item.quantity,
+            price: item.price,
+            specifications: item.specifications,
+          };
+        }),
+        totalAmount,
+        amountPaid: downpaymentAmount,
+        paymentStatus,
+        expectedDate,
+        expectedTime,
+        notes: notes.trim() || undefined,
+        createdBy: profile?.name,
+        createdAt: new Date().toISOString(),
+      };
+
+      const { id } = await addDoc(collection(db, 'orders'), orderData);
+
+      // Kitchen ticket prints immediately, regardless of payment status.
+      const kitchenToastId = toast.loading(t('kitchenTicketPrinting'));
+      try {
+        const kitchenRes = await authFetch('/api/print-kitchen-ticket', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ orderId: id }),
+        });
+        const kitchenData = await kitchenRes.json();
+        if (kitchenData.status === 'error') {
+          toast.error(t('kitchenTicketError'), { id: kitchenToastId });
+        } else {
+          toast.success(t('kitchenTicketPrinted'), { id: kitchenToastId });
+        }
+      } catch (err) {
+        console.error('Kitchen ticket print error:', err);
+        toast.error(t('kitchenTicketError'), { id: kitchenToastId });
+      }
+
+      // Receipt for whatever was collected at creation time (deposit or full).
+      if (downpaymentAmount > 0) {
+        try {
+          const receiptRes = await authFetch('/api/print-order-receipt', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              orderId: id,
+              receiptNumber: String(id).slice(-8).toUpperCase(),
+              cashierName: profile?.name,
+              isDeposit: paymentStatus === 'deposit',
+            }),
+          });
+          const receiptData = await receiptRes.json();
+          if (receiptData.status !== 'error') {
+            toast.success(t('orderReceiptPrinted'));
+          }
+        } catch (err) {
+          console.error('Order receipt print error:', err);
+        }
+      }
+
+      if (profile) {
+        logActivity(profile.id, profile.name, 'Order', `Special order ${id} created`);
+      }
+
+      toast.success(t('specialOrderCreated'));
+      setIsSpecialOrderModalOpen(false);
+      resetSpecialOrderForm();
+    } catch (error) {
+      console.error('Error creating special order:', error);
+      toast.error(t('specialOrderCreateFailed'));
+    } finally {
+      setIsSubmittingSpecialOrder(false);
+    }
+  };
+
+  const handleCloseOrder = async (order: Order) => {
+    const balance = Math.max(0, order.totalAmount - (order.amountPaid || 0));
+    const entered = parseFloat(closeBalanceInput[order.id] ?? String(balance)) || 0;
+    if (entered < balance) {
+      toast.error(t('fullBalanceRequiredError'));
+      return;
+    }
+
+    setClosingOrderId(order.id);
+    try {
+      const res = await authFetch(`/api/orders/${order.id}/close`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ amountPaid: entered }),
+      });
+      if (!res.ok) {
+        toast.error(await readApiErrorMessage(res));
+        return;
+      }
+
+      if (order.paymentStatus !== 'paid_full') {
+        try {
+          const receiptRes = await authFetch('/api/print-order-receipt', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              orderId: order.id,
+              receiptNumber: order.id.slice(-8).toUpperCase(),
+              cashierName: profile?.name,
+              isDeposit: false,
+            }),
+          });
+          const receiptData = await receiptRes.json();
+          if (receiptData.status !== 'error') {
+            toast.success(t('orderReceiptPrinted'));
+          }
+        } catch (err) {
+          console.error('Closure receipt print error:', err);
+        }
+      }
+
+      if (profile) {
+        logActivity(profile.id, profile.name, 'Order', `Order ${order.id} closed`);
+      }
+      toast.success(t('statusClosed'));
+    } catch (error) {
+      console.error('Error closing order:', error);
+    } finally {
+      setClosingOrderId(null);
     }
   };
 
@@ -373,33 +675,346 @@ const Orders: React.FC = () => {
         </div>
       )}
 
+      {/* New Special Order Modal */}
+      {isSpecialOrderModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1a1512] w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl border border-slate-100 dark:border-[#2a1e17]">
+            <div className="p-6 border-b border-slate-100 dark:border-[#2a1e17] flex items-center justify-between sticky top-0 bg-white dark:bg-[#1a1512] z-10">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-primary-600" />
+                {t('newSpecialOrder')}
+              </h2>
+              <button
+                type="button"
+                onClick={() => { setIsSpecialOrderModalOpen(false); resetSpecialOrderForm(); }}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSpecialOrder} className="p-6 space-y-6">
+              <div>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">{t('walkInCustomerInfo')}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label htmlFor="special-order-firstName" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('firstName')} <span className="text-red-500">*</span></label>
+                    <input
+                      id="special-order-firstName"
+                      type="text"
+                      required
+                      className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
+                      value={specialOrderForm.firstName}
+                      onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, firstName: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="special-order-lastName" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('lastName')} <span className="text-red-500">*</span></label>
+                    <input
+                      id="special-order-lastName"
+                      type="text"
+                      required
+                      className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
+                      value={specialOrderForm.lastName}
+                      onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, lastName: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="special-order-expectedDate" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('expectedDateTime')} <span className="text-red-500">*</span></label>
+                    <div className="flex gap-2">
+                      <input
+                        id="special-order-expectedDate"
+                        type="date"
+                        required
+                        aria-label={t('expectedDate')}
+                        className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
+                        value={specialOrderForm.expectedDate}
+                        onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, expectedDate: e.target.value }))}
+                      />
+                      <input
+                        id="special-order-expectedTime"
+                        type="time"
+                        required
+                        aria-label={t('expectedTime')}
+                        className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
+                        value={specialOrderForm.expectedTime}
+                        onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, expectedTime: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label htmlFor="special-order-phone" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('phone')} <span className="text-red-500">*</span></label>
+                    <input
+                      id="special-order-phone"
+                      type="tel"
+                      required
+                      inputMode="numeric"
+                      maxLength={10}
+                      pattern="0[0-9]{9}"
+                      title={t('phoneInvalid')}
+                      className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
+                      value={specialOrderForm.phone}
+                      onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="special-order-downpayment" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('downpayment')}</label>
+                    <input
+                      id="special-order-downpayment"
+                      type="number"
+                      min={0}
+                      className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
+                      value={specialOrderForm.downpayment}
+                      onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, downpayment: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('products')} <span className="text-red-500">*</span></h3>
+                  {specialOrderForm.items.length > 1 && (
+                    <span className="text-xs font-bold text-slate-400">{specialOrderForm.items.length} {t('items')}</span>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  {specialOrderForm.items.map((item, index) => (
+                    <div key={index} className="p-4 bg-slate-50 dark:bg-[#1a1512] rounded-2xl space-y-3">
+                      <div className="flex items-end gap-3">
+                        <div className="flex-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('selectProduct')}</label>
+                          <select
+                            required
+                            aria-label={t('selectProduct')}
+                            className="input w-full bg-white dark:bg-black border-none text-sm dark:text-white"
+                            value={item.productId}
+                            onChange={(e) => handleProductSelectForItem(index, e.target.value)}
+                          >
+                            <option value="" className="dark:bg-black">{t('selectProduct')}</option>
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id} className="dark:bg-black">{tProduct(p)}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('quantity')}</label>
+                          <input
+                            type="number"
+                            min={1}
+                            required
+                            aria-label={t('quantity')}
+                            className="input w-20 bg-white dark:bg-black border-none text-sm"
+                            value={item.quantity}
+                            onChange={(e) => updateSpecialOrderItem(index, { quantity: parseInt(e.target.value, 10) || 1 })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('price')}</label>
+                          <input
+                            type="number"
+                            min={0}
+                            required
+                            aria-label={t('price')}
+                            className="input w-28 bg-white dark:bg-black border-none text-sm"
+                            value={item.price}
+                            onChange={(e) => updateSpecialOrderItem(index, { price: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateSpecialOrderItem(index, { expanded: !item.expanded })}
+                          className="btn-secondary py-2.5 px-4 text-sm whitespace-nowrap"
+                        >
+                          {t('customization')}
+                        </button>
+                        {specialOrderForm.items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSpecialOrderItem(index)}
+                            className="p-2.5 text-red-400 hover:text-red-600"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {item.expanded && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-white/10">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('flavor')}</label>
+                            <EditableSelect category="flavor" ariaLabel={t('flavor')} value={item.specifications.flavor || ''} onChange={(v) => updateSpecialOrderItemSpec(index, 'flavor', v)} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('glaze')}</label>
+                            <EditableSelect category="glaze" ariaLabel={t('glaze')} value={item.specifications.glaze || ''} onChange={(v) => updateSpecialOrderItemSpec(index, 'glaze', v)} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('shape')}</label>
+                            <EditableSelect category="shape" ariaLabel={t('shape')} value={item.specifications.shape || ''} onChange={(v) => updateSpecialOrderItemSpec(index, 'shape', v)} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('size')}</label>
+                            <EditableSelect category="size" ariaLabel={t('size')} value={item.specifications.size || ''} onChange={(v) => updateSpecialOrderItemSpec(index, 'size', v)} />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">{t('addons')}</label>
+                            <EditableSelect category="addon" ariaLabel={t('addons')} value={item.specifications.addons || ''} onChange={(v) => updateSpecialOrderItemSpec(index, 'addons', v)} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={addSpecialOrderItem}
+                  className="btn-secondary gap-2 mt-3"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('addAnotherProduct')}
+                </button>
+              </div>
+
+              <div>
+                <div>
+                  <label htmlFor="special-order-notes" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('notes')}</label>
+                  <textarea
+                    id="special-order-notes"
+                    rows={2}
+                    className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none resize-none"
+                    value={specialOrderForm.notes}
+                    onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-[#2a1e17]">
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('totalAmount')}</p>
+                  <p className="text-2xl font-display font-bold text-primary-600">{specialOrderTotal.toLocaleString()} {currencyUnit}</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setIsSpecialOrderModalOpen(false); resetSpecialOrderForm(); }}
+                    className="btn-secondary"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingSpecialOrder}
+                    className="btn-primary gap-2 disabled:opacity-50"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    {t('newSpecialOrder')}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Order Modal — secondary validation with mandatory reason */}
+      {cancellingOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div role="dialog" aria-label={t('cancelOrderAction')} className="bg-white dark:bg-[#1a1512] w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-[#2a1e17]">
+            <div className="p-6 border-b border-slate-100 dark:border-[#2a1e17] flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-red-500" />
+                {t('cancelOrderAction')}
+              </h2>
+              <button
+                type="button"
+                onClick={() => { setCancellingOrder(null); setCancelReason(''); }}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600 dark:text-slate-300">{t('confirmCancelOrder')}</p>
+              <div>
+                <label htmlFor="cancel-order-reason" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">
+                  {t('cancellationReasonLabel')} <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="cancel-order-reason"
+                  autoFocus
+                  required
+                  rows={3}
+                  className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none resize-none"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="p-6 pt-0 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setCancellingOrder(null); setCancelReason(''); }}
+                className="btn-secondary"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelOrder}
+                disabled={isCancellingOrder || !cancelReason.trim()}
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {t('cancelOrderAction')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="print:hidden space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">{t('orders')}</h1>
             <p className="text-slate-500 dark:text-slate-400 font-medium">{t('manageOrdersDesc')}</p>
           </div>
-          <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={clsx(
-                "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
-                activeTab === 'orders' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              <ClipboardList className="w-4 h-4" />
-              {t('orders')}
-            </button>
-            <button
-              onClick={() => setActiveTab('tracking')}
-              className={clsx(
-                "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
-                activeTab === 'tracking' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              <Truck className="w-4 h-4" />
-              {t('tracking')}
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/10">
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={clsx(
+                  "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                  activeTab === 'orders' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                <ClipboardList className="w-4 h-4" />
+                {t('orders')}
+              </button>
+              <button
+                onClick={() => setActiveTab('tracking')}
+                className={clsx(
+                  "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                  activeTab === 'tracking' ? "bg-white dark:bg-zinc-900 text-primary-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                <Truck className="w-4 h-4" />
+                {t('tracking')}
+              </button>
+            </div>
+            {activeTab === 'orders' && (
+              <button
+                onClick={() => setIsSpecialOrderModalOpen(true)}
+                className="btn-primary gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                {t('newSpecialOrder')}
+              </button>
+            )}
           </div>
         </div>
 
@@ -487,25 +1102,51 @@ const Orders: React.FC = () => {
                     </div>
                     
                     <div className="space-y-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-primary-600 dark:text-primary-400">
-                          <User className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('clientName')}</p>
-                          <p className="font-bold text-slate-900 dark:text-white">{order.clientName || t('walkInCustomer')}</p>
-                        </div>
-                      </div>
+                      {order.type === 'special' ? (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-primary-600 dark:text-primary-400">
+                              <User className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('clientName')}</p>
+                              <p className="font-bold text-slate-900 dark:text-white">{[order.firstName, order.lastName].filter(Boolean).join(' ') || t('walkInCustomer')}</p>
+                            </div>
+                          </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-amber-600 dark:text-amber-400">
-                          <Truck className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('deliveryType')}</p>
-                          <p className="font-bold text-slate-900 dark:text-white">{t(order.deliveryType)}</p>
-                        </div>
-                      </div>
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-amber-600 dark:text-amber-400">
+                              <Phone className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('phone')}</p>
+                              <p className="font-bold text-slate-900 dark:text-white">{order.phone || '-'}</p>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-primary-600 dark:text-primary-400">
+                              <User className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('clientName')}</p>
+                              <p className="font-bold text-slate-900 dark:text-white">{order.clientName || t('walkInCustomer')}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-amber-600 dark:text-amber-400">
+                              <Truck className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('deliveryType')}</p>
+                              <p className="font-bold text-slate-900 dark:text-white">{t(order.deliveryType)}</p>
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-amber-600 dark:text-amber-400">
@@ -517,15 +1158,30 @@ const Orders: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-slate-600 dark:text-slate-400">
-                          <User className="w-5 h-5" />
+                      {order.type === 'special' && order.status !== 'cancelled' ? (
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                            <Wallet className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('paymentStatusLabel')}</p>
+                            <p className="font-bold text-slate-900 dark:text-white">
+                              {t(order.paymentStatus === 'closed' ? 'statusClosed' : order.paymentStatus === 'paid_full' ? 'statusPaidFull' : 'statusDeposit')}
+                              {' — '}{t('balanceDue')}: {Math.max(0, order.totalAmount - (order.amountPaid || 0)).toLocaleString()} {currencyUnit}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('createdBy')}</p>
-                          <p className="font-bold text-slate-900 dark:text-white">{order.createdBy || '-'}</p>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-white dark:bg-black shadow-sm border border-slate-100 dark:border-[#2a1e17] flex items-center justify-center text-slate-600 dark:text-slate-400">
+                            <User className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">{t('createdBy')}</p>
+                            <p className="font-bold text-slate-900 dark:text-white">{order.createdBy || '-'}</p>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
 
@@ -569,10 +1225,10 @@ const Orders: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex-1 flex flex-wrap gap-2">
+                      <div className="flex-1 flex flex-wrap items-center gap-3">
                         {/* Status Buttons */}
                         <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-[#1a1512] p-1 rounded-xl">
-                          {(['ordered', 'in-progress', 'delivered', 'cancelled'] as Order['status'][]).map((status) => (
+                          {(['ordered', 'in-progress', 'delivered'] as Order['status'][]).map((status) => (
                             <button
                               key={status}
                               onClick={() => updateOrderStatus(order.id, status)}
@@ -588,35 +1244,73 @@ const Orders: React.FC = () => {
                           ))}
                         </div>
 
-                        {/* Delivery Status Buttons */}
-                        <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-[#1a1512] p-1 rounded-xl">
-                          {(['pending', 'assigned', 'picked-up', 'delivered'] as Order['deliveryStatus'][]).map((ds) => (
-                            <button
-                              key={ds}
-                              onClick={() => updateDeliveryStatus(order.id, ds)}
-                              className={clsx(
-                                "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
-                                (order.deliveryStatus || 'pending') === ds
-                                  ? "bg-white dark:bg-black text-amber-600 dark:text-amber-400 shadow-sm"
-                                  : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
-                              )}
-                            >
-                              {t(ds)}
-                            </button>
-                          ))}
-                        </div>
+                        {/* Delivery Status Buttons / Close Order */}
+                        {order.type === 'special' ? (
+                          order.paymentStatus !== 'closed' && (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder={t('balanceDue')}
+                                className="input w-24 py-2 bg-white dark:bg-black border border-slate-200 dark:border-white/10 text-[10px]"
+                                value={closeBalanceInput[order.id] ?? String(Math.max(0, order.totalAmount - (order.amountPaid || 0)))}
+                                onChange={(e) => setCloseBalanceInput((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                              />
+                              <button
+                                onClick={() => handleCloseOrder(order)}
+                                disabled={
+                                  closingOrderId === order.id ||
+                                  (parseFloat(closeBalanceInput[order.id] ?? String(Math.max(0, order.totalAmount - (order.amountPaid || 0)))) || 0) <
+                                    Math.max(0, order.totalAmount - (order.amountPaid || 0))
+                                }
+                                className="px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600 text-white disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                              >
+                                {t('closeOrder')}
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-[#1a1512] p-1 rounded-xl">
+                            {(['pending', 'assigned', 'picked-up', 'delivered'] as Order['deliveryStatus'][]).map((ds) => (
+                              <button
+                                key={ds}
+                                onClick={() => updateDeliveryStatus(order.id, ds)}
+                                className={clsx(
+                                  "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                                  (order.deliveryStatus || 'pending') === ds
+                                    ? "bg-white dark:bg-black text-amber-600 dark:text-amber-400 shadow-sm"
+                                    : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+                                )}
+                              >
+                                {t(ds)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <button 
-                        onClick={() => {
-                          setSelectedOrderForInvoice(order);
-                          setIsInvoiceModalOpen(true);
-                        }}
-                        className="btn-secondary gap-2"
-                        title={t('issueInvoice')}
-                      >
-                        <FileText className="w-4 h-4" />
-                        <span className="hidden sm:inline">{t('issueInvoice')}</span>
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedOrderForInvoice(order);
+                            setIsInvoiceModalOpen(true);
+                          }}
+                          className="btn-secondary gap-2"
+                          title={t('issueInvoice')}
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span className="hidden sm:inline">{t('issueInvoice')}</span>
+                        </button>
+                        {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                          <button
+                            onClick={() => { setCancellingOrder(order); setCancelReason(''); }}
+                            className="btn-secondary gap-2 !text-red-600 !border-red-200 hover:!bg-red-50 dark:!text-red-400 dark:!border-red-900/40 dark:hover:!bg-red-900/20"
+                            title={t('cancelOrderAction')}
+                          >
+                            <XCircle className="w-4 h-4" />
+                            <span className="hidden sm:inline">{t('cancelOrderAction')}</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -650,38 +1344,78 @@ const Orders: React.FC = () => {
                       <span className="text-xs font-bold text-slate-400 dark:text-slate-600">#{order.id.slice(-6).toUpperCase()}</span>
                     </td>
                     <td className="p-4">
-                      <p className="font-bold text-slate-900 dark:text-white">{order.clientName || t('walkInCustomer')}</p>
+                      {order.type === 'special' ? (
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white">{[order.firstName, order.lastName].filter(Boolean).join(' ') || t('walkInCustomer')}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{order.phone}</p>
+                        </div>
+                      ) : (
+                        <p className="font-bold text-slate-900 dark:text-white">{order.clientName || t('walkInCustomer')}</p>
+                      )}
                     </td>
                     <td className="p-4">
                       <div className={clsx("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider inline-block", getStatusColor(order.status))}>
                         {t(order.status)}
                       </div>
+                      {order.type === 'special' && order.status !== 'cancelled' && (
+                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 mt-1">
+                          {t(order.paymentStatus === 'closed' ? 'statusClosed' : order.paymentStatus === 'paid_full' ? 'statusPaidFull' : 'statusDeposit')}
+                        </p>
+                      )}
                     </td>
                     <td className="p-4">
                       <p className="font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toLocaleString()} {currencyUnit}</p>
+                      {order.type === 'special' && order.status !== 'cancelled' && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{t('balanceDue')}: {Math.max(0, order.totalAmount - (order.amountPaid || 0)).toLocaleString()} {currencyUnit}</p>
+                      )}
                     </td>
                     <td className="p-4">
                       <p className="text-sm text-slate-600 dark:text-slate-300">{order.expectedDate} {order.expectedTime}</p>
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end items-center gap-3">
-                        <div className="flex bg-slate-50 dark:bg-zinc-900 p-1 rounded-xl border border-slate-100 dark:border-white/5">
-                          {(['ordered', 'in-progress', 'delivered', 'cancelled'] as Order['status'][]).map((status) => (
-                            <button
-                              key={status}
-                              onClick={() => updateOrderStatus(order.id, status)}
-                              className={clsx(
-                                "px-2 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all",
-                                order.status === status
-                                  ? "bg-white dark:bg-black text-primary-600 dark:text-primary-400 shadow-sm"
-                                  : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
-                              )}
-                            >
-                              {t(status)}
-                            </button>
-                          ))}
-                        </div>
-                        <button 
+                        {order.type === 'special' ? (
+                          order.paymentStatus !== 'closed' && (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                className="input w-24 py-1.5 bg-slate-50 dark:bg-zinc-900 border-none text-xs"
+                                value={closeBalanceInput[order.id] ?? String(Math.max(0, order.totalAmount - (order.amountPaid || 0)))}
+                                onChange={(e) => setCloseBalanceInput((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                              />
+                              <button
+                                onClick={() => handleCloseOrder(order)}
+                                disabled={
+                                  closingOrderId === order.id ||
+                                  (parseFloat(closeBalanceInput[order.id] ?? String(Math.max(0, order.totalAmount - (order.amountPaid || 0)))) || 0) <
+                                    Math.max(0, order.totalAmount - (order.amountPaid || 0))
+                                }
+                                className="px-2 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider bg-emerald-600 text-white disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                              >
+                                {t('closeOrder')}
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          <div className="flex bg-slate-50 dark:bg-zinc-900 p-1 rounded-xl border border-slate-100 dark:border-white/5">
+                            {(['ordered', 'in-progress', 'delivered'] as Order['status'][]).map((status) => (
+                              <button
+                                key={status}
+                                onClick={() => updateOrderStatus(order.id, status)}
+                                className={clsx(
+                                  "px-2 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all",
+                                  order.status === status
+                                    ? "bg-white dark:bg-black text-primary-600 dark:text-primary-400 shadow-sm"
+                                    : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
+                                )}
+                              >
+                                {t(status)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <button
                           onClick={() => {
                             setSelectedOrderForInvoice(order);
                             setIsInvoiceModalOpen(true);
@@ -691,6 +1425,15 @@ const Orders: React.FC = () => {
                         >
                           <FileText className="w-4 h-4" />
                         </button>
+                        {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                          <button
+                            onClick={() => { setCancellingOrder(order); setCancelReason(''); }}
+                            className="p-2 text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            title={t('cancelOrderAction')}
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

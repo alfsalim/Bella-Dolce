@@ -67,6 +67,8 @@ const Expenses: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'invoices' | 'assets'>('invoices');
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoicePage, setInvoicePage] = useState(1);
+  const [invoicePeriodFrom, setInvoicePeriodFrom] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [invoicePeriodTo, setInvoicePeriodTo] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [purchaseRows, setPurchaseRows] = useState<PurchaseExpenseRow[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(true);
 
@@ -185,7 +187,7 @@ const Expenses: React.FC = () => {
 
   useEffect(() => {
     setInvoicePage(1);
-  }, [invoiceSearch]);
+  }, [invoiceSearch, invoicePeriodFrom, invoicePeriodTo]);
 
   useEffect(() => {
     setAssetPage(1);
@@ -193,8 +195,13 @@ const Expenses: React.FC = () => {
 
   const filteredPurchases = useMemo(() => {
     const q = invoiceSearch.trim().toLowerCase();
-    if (!q) return purchaseRows;
+    const fromTs = invoicePeriodFrom ? new Date(`${invoicePeriodFrom}T00:00:00.000Z`).getTime() : null;
+    const toTs = invoicePeriodTo ? new Date(`${invoicePeriodTo}T23:59:59.999Z`).getTime() : null;
     return purchaseRows.filter((row) => {
+      const rowTs = new Date(row.date).getTime();
+      if (fromTs != null && rowTs < fromTs) return false;
+      if (toTs != null && rowTs > toTs) return false;
+      if (!q) return true;
       const det = parsePurchaseDetails(row.amountHT);
       return (
         (row.supplierName ?? '').toLowerCase().includes(q) ||
@@ -203,7 +210,7 @@ const Expenses: React.FC = () => {
         row.id.toLowerCase().includes(q)
       );
     });
-  }, [purchaseRows, invoiceSearch]);
+  }, [purchaseRows, invoiceSearch, invoicePeriodFrom, invoicePeriodTo]);
 
   const invoiceTotalPages = Math.max(1, Math.ceil(filteredPurchases.length / PAGE_SIZE));
   const safeInvoicePage = Math.min(invoicePage, invoiceTotalPages);
@@ -452,13 +459,33 @@ const Expenses: React.FC = () => {
                 )}
               />
             </div>
-            <button
-              type="button"
-              onClick={() => void fetchPurchases()}
-              className="text-sm font-bold text-primary-600 hover:text-primary-700"
-            >
-              {t('sync')}
-            </button>
+            <div className="flex items-end gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 block">{tf('assetFinancePeriodFrom')}</label>
+                <input
+                  type="date"
+                  value={invoicePeriodFrom}
+                  onChange={(e) => setInvoicePeriodFrom(e.target.value)}
+                  className="input py-1.5 text-sm mt-0.5"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 block">{tf('assetFinancePeriodTo')}</label>
+                <input
+                  type="date"
+                  value={invoicePeriodTo}
+                  onChange={(e) => setInvoicePeriodTo(e.target.value)}
+                  className="input py-1.5 text-sm mt-0.5"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchPurchases()}
+                className="text-sm font-bold text-primary-600 hover:text-primary-700"
+              >
+                {t('sync')}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

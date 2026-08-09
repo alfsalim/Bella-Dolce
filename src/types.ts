@@ -112,12 +112,28 @@ export interface ProductionBatch {
   createdBy?: string;
 }
 
+export interface OrderItemSpecifications {
+  flavor?: string;
+  glaze?: string;
+  shape?: string;
+  size?: string;
+  addons?: string;
+}
+
 export interface SaleItem {
   productId: string;
   name?: string;
   quantity: number;
   price: number;
   location?: 'shop' | 'frozen';
+  specifications?: OrderItemSpecifications;
+}
+
+export interface SpecificationOption {
+  id: string;
+  category: 'flavor' | 'glaze' | 'shape' | 'size' | 'addon';
+  value: string;
+  createdAt: string;
 }
 
 export interface Sale {
@@ -159,7 +175,10 @@ export interface Customer {
 
 export interface Order {
   id: string;
-  customerId: string;
+  customerId?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
   clientName?: string;
   description?: string;
   items: SaleItem[];
@@ -167,6 +186,7 @@ export interface Order {
   status: 'ordered' | 'in-progress' | 'delayed' | 'delivered' | 'cancelled';
   deliveryStatus?: 'pending' | 'assigned' | 'picked-up' | 'delivered';
   deliveryType: 'customer' | 'business';
+  type?: string;
   expectedTime: string;
   expectedDate: string;
   createdAt: string;
@@ -174,6 +194,9 @@ export interface Order {
   deliveryId?: string;
   notes?: string;
   createdBy?: string;
+  amountPaid?: number;
+  paymentStatus?: 'n/a' | 'deposit' | 'paid_full' | 'closed';
+  cancellationReason?: string;
 }
 
 export interface Delivery {
