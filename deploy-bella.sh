@@ -18,6 +18,7 @@ JWT_EXPIRES_IN="${JWT_EXPIRES_IN:-$(grep '^JWT_EXPIRES_IN=' "$(dirname "$0")/.en
 # ── Production (Windows) ─────────────────────────────────
 PROD_DATA_DIR="C:/Users/CD COMPANY/Bella-Dolce/data"
 PROD_BACKUP_DIR="C:/Users/CD COMPANY/Bella-Dolce/backups"
+PROD_CERTS_DIR="C:/Users/CD COMPANY/Bella-Dolce/certs"
 WINDOWS_TAILSCALE_IP="100.114.12.38"
 DEPLOY_MODE="${DEPLOY_MODE:-tailscale}"          # "tailscale", "ssh", or "manual"
 
@@ -426,6 +427,22 @@ SEED_EOF
         [ $? -ne 0 ] && log_err "Docker build failed on Windows."
         log_ok "Image built on Windows"
 
+        # Seed certs from the freshly built image if the host folder doesn't have them
+        # yet. The certs volume mount below replaces whatever the image baked in at
+        # /app/certs, so without this, server.ts silently falls back to plain HTTP with
+        # no error logged. Once seeded, later deploys reuse the same cert instead of
+        # regenerating one each time (which would make browsers re-warn on every deploy).
+        if ! DOCKER_HOST="$REMOTE" docker run --rm -v "$PROD_CERTS_DIR:/check" "$IMAGE_NAME" \
+            sh -c "test -f /check/cert.pem && test -f /check/key.pem" >/dev/null 2>&1; then
+            log_info "No certs found in $PROD_CERTS_DIR — seeding from the built image"
+            DOCKER_HOST="$REMOTE" docker create --name bella-cert-seed "$IMAGE_NAME" >/dev/null
+            DOCKER_HOST="$REMOTE" docker cp "bella-cert-seed:/app/certs/." "$PROD_CERTS_DIR"
+            DOCKER_HOST="$REMOTE" docker rm bella-cert-seed >/dev/null
+            log_ok "Certs seeded to $PROD_CERTS_DIR"
+        else
+            log_ok "Certs already present in $PROD_CERTS_DIR — reusing"
+        fi
+
         # Step 3: Start container
         log_step "3/3  Starting container"
         DOCKER_HOST="$REMOTE" docker run -d \
@@ -439,7 +456,7 @@ SEED_EOF
             -e JWT_EXPIRES_IN="$JWT_EXPIRES_IN" \
             -v "$PROD_DATA_DIR:/app/data" \
             -v "$PROD_BACKUP_DIR:/app/backups" \
-            -v "C:/Users/CD COMPANY/Bella-Dolce/certs:/app/certs" \
+            -v "$PROD_CERTS_DIR:/app/certs" \
             --restart unless-stopped \
             "$IMAGE_NAME"
         [ $? -ne 0 ] && log_err "Failed to start container on Windows."
@@ -462,7 +479,7 @@ SEED_EOF
         echo "   PROD DEPLOYMENT COMPLETE (Tailscale)"
     fi
     echo "   Status  : $STATUS"
-    echo "   App URL : https://$WINDOWS_TAILSCALE_IP:$EXT_PORT"
+    echo "   App URL : https://$WINDOWS_TAILSCALE_IP:$EXT_PORT/belladolce"
     echo "============================================"
 
 else

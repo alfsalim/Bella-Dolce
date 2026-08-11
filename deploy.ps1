@@ -65,6 +65,23 @@ foreach ($dir in @($DATA_DIR, $BACKUP_DIR, $CERTS_DIR)) {
     }
 }
 
+# Seed certs from the freshly built image if the host folder doesn't have them yet.
+# The certs volume mount below replaces whatever the image baked in at /app/certs,
+# so without this, server.ts silently falls back to plain HTTP with no error logged.
+# Once seeded, later deploys reuse the same cert instead of regenerating one each time
+# (regenerating would make browsers re-warn about an "untrusted" cert on every deploy).
+$certPemPath = Join-Path $CERTS_DIR "cert.pem"
+$keyPemPath  = Join-Path $CERTS_DIR "key.pem"
+if (!(Test-Path $certPemPath) -or !(Test-Path $keyPemPath)) {
+    Log-Info "No certs found in $CERTS_DIR - seeding from the built image"
+    docker create --name bella-cert-seed $IMAGE_NAME | Out-Null
+    docker cp "bella-cert-seed:/app/certs/." $CERTS_DIR
+    docker rm bella-cert-seed | Out-Null
+    Log-OK "Certs seeded to $CERTS_DIR"
+} else {
+    Log-OK "Certs already present in $CERTS_DIR - reusing"
+}
+
 # Step 4: Stop old container
 Log-Step "4/6  Checking for existing container"
 $existing = docker ps -a --filter "name=^/${CONTAINER_NAME}$" --format "{{.Names}}"
@@ -141,7 +158,7 @@ if ($status) {
     Write-Host "  Status    : $status"                       -ForegroundColor White
     Write-Host "  Uptime    : $uptime"                       -ForegroundColor White
     Write-Host "  Image     : $imageId"                      -ForegroundColor White
-    Write-Host "  App URL   : https://localhost:$EXT_PORT"    -ForegroundColor White
+    Write-Host "  App URL   : https://localhost:$EXT_PORT/belladolce" -ForegroundColor White
     Write-Host "  Data Dir  : $DATA_DIR"                     -ForegroundColor White
     Write-Host "  Backups   : $BACKUP_DIR"                   -ForegroundColor White
     Write-Host "============================================" -ForegroundColor Green
