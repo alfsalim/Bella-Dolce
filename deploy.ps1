@@ -7,7 +7,7 @@ $DATA_DIR       = "C:\Users\CD COMPANY\Bella-Dolce\data"
 $BACKUP_DIR     = "C:\Users\CD COMPANY\Bella-Dolce\backups"
 $CERTS_DIR      = "C:\Users\CD COMPANY\Bella-Dolce\certs"
 $ENV_FILE       = "C:\Users\CD COMPANY\Bella-Dolce\.env"
-$EXT_PORT       = 443
+$EXT_PORT       = 8443
 $INT_PORT       = 3000
 $DB_URL         = "file:/app/data/dev.db"
 

@@ -9,7 +9,7 @@ IMAGE_NAME="bella-dolce2-bella-dolce2:latest"
 TAR_FILE="bella-dolce.tar"
 ZIP_FILE="bella-dolce-production.zip"
 CONTAINER_NAME="bella-dolce2"
-EXT_PORT=443
+EXT_PORT=8443
 INT_PORT=3000
 DB_URL="file:/app/data/dev.db"
 JWT_SECRET="${JWT_SECRET:-$(grep '^JWT_SECRET=' "$(dirname "$0")/.env" 2>/dev/null | cut -d= -f2-)}"
