@@ -1,12 +1,13 @@
-# deploy.ps1 - Bella-Dolce Production Deployment
+# deploy.ps1 - Bella-Dolce Production Deployment (builds from source on this machine)
+# Run from inside the extracted source folder (e.g. downloaded as a GitHub ZIP).
 
-$ZIP_FILE       = "bella-dolce-production.zip"
-$TAR_FILE       = "bella-dolce.tar"
 $IMAGE_NAME     = "bella-dolce2-bella-dolce2:latest"
 $CONTAINER_NAME = "bella-dolce2"
 $DATA_DIR       = "C:\Users\CD COMPANY\Bella-Dolce\data"
 $BACKUP_DIR     = "C:\Users\CD COMPANY\Bella-Dolce\backups"
-$EXT_PORT       = 3500
+$CERTS_DIR      = "C:\Users\CD COMPANY\Bella-Dolce\certs"
+$ENV_FILE       = "C:\Users\CD COMPANY\Bella-Dolce\.env"
+$EXT_PORT       = 443
 $INT_PORT       = 3000
 $DB_URL         = "file:/app/data/dev.db"
 
@@ -22,48 +23,50 @@ Write-Host "   Bella-Dolce Production Deployment"        -ForegroundColor Magent
 Write-Host "   $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Magenta
 Write-Host "============================================" -ForegroundColor Magenta
 
-# Step 1: Unzip
-Log-Step "1/7  Checking deployment package"
-if (Test-Path $ZIP_FILE) {
-    Log-Info "Found $ZIP_FILE - extracting..."
-    Expand-Archive -Path $ZIP_FILE -DestinationPath "." -Force
-    Log-OK "Extracted successfully"
-} elseif (Test-Path $TAR_FILE) {
-    Log-Warn "No zip found - using existing $TAR_FILE"
-} else {
-    Log-Error "Neither $ZIP_FILE nor $TAR_FILE found. Aborting."
+# Step 1: Load secrets from a stable .env outside the source folder — the source is a
+# fresh download every deploy and .env is gitignored, so it can't live alongside it.
+Log-Step "1/6  Loading secrets from $ENV_FILE"
+if (!(Test-Path $ENV_FILE)) {
+    Log-Error "$ENV_FILE not found. Create it with JWT_SECRET=... and JWT_EXPIRES_IN=... before deploying."
     exit 1
 }
-
-# Step 2: Data directory
-Log-Step "2/7  Checking data directory"
-if (!(Test-Path $DATA_DIR)) {
-    Log-Info "Data directory not found - creating $DATA_DIR"
-    New-Item -ItemType Directory -Path $DATA_DIR | Out-Null
-    Log-OK "Data directory created"
-} else {
-    Log-OK "Data directory exists: $DATA_DIR"
+$envVars = @{}
+Get-Content $ENV_FILE | ForEach-Object {
+    if ($_ -match '^\s*([A-Z_]+)=(.*)$') {
+        $envVars[$Matches[1]] = $Matches[2]
+    }
 }
-if (!(Test-Path $BACKUP_DIR)) {
-    Log-Info "Backup directory not found - creating $BACKUP_DIR"
-    New-Item -ItemType Directory -Path $BACKUP_DIR | Out-Null
-    Log-OK "Backup directory created"
-} else {
-    Log-OK "Backup directory exists: $BACKUP_DIR"
+$JWT_SECRET     = $envVars['JWT_SECRET']
+$JWT_EXPIRES_IN = $envVars['JWT_EXPIRES_IN']
+if (-not $JWT_SECRET -or -not $JWT_EXPIRES_IN) {
+    Log-Error "JWT_SECRET or JWT_EXPIRES_IN missing from $ENV_FILE"
+    exit 1
 }
+Log-OK "Secrets loaded"
 
-# Step 3: Load image
-Log-Step "3/7  Loading Docker image (may take 1-2 minutes)"
-Log-Info "Loading from $TAR_FILE into Docker..."
-docker load -i $TAR_FILE
+# Step 2: Build the image from source (current directory)
+Log-Step "2/6  Building image from source"
+docker build -t $IMAGE_NAME .
 if ($LASTEXITCODE -ne 0) {
-    Log-Error "Failed to load Docker image. Check that Docker Desktop is running."
+    Log-Error "Docker build failed."
     exit 1
 }
-Log-OK "Image loaded: $IMAGE_NAME"
+Log-OK "Image built: $IMAGE_NAME"
+
+# Step 3: Data/backup/certs directories
+Log-Step "3/6  Checking data/backup/certs directories"
+foreach ($dir in @($DATA_DIR, $BACKUP_DIR, $CERTS_DIR)) {
+    if (!(Test-Path $dir)) {
+        Log-Info "Not found - creating $dir"
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        Log-OK "Created: $dir"
+    } else {
+        Log-OK "Exists: $dir"
+    }
+}
 
 # Step 4: Stop old container
-Log-Step "4/7  Checking for existing container"
+Log-Step "4/6  Checking for existing container"
 $existing = docker ps -a --filter "name=^/${CONTAINER_NAME}$" --format "{{.Names}}"
 if ($existing -eq $CONTAINER_NAME) {
     $oldImage = docker inspect --format "{{.Image}}" $CONTAINER_NAME
@@ -78,7 +81,7 @@ if ($existing -eq $CONTAINER_NAME) {
 }
 
 # Step 5: Start new container
-Log-Step "5/7  Starting new container"
+Log-Step "5/6  Starting new container"
 Log-Info "Image     : $IMAGE_NAME"
 Log-Info "Name      : $CONTAINER_NAME"
 Log-Info "Ports     : $EXT_PORT -> $INT_PORT"
@@ -91,8 +94,12 @@ docker run -d `
     -e PORT=$INT_PORT `
     -e DATABASE_URL=$DB_URL `
     -e NODE_ENV=production `
+    -e REDIS_URL="redis://redis:6379" `
+    -e JWT_SECRET=$JWT_SECRET `
+    -e JWT_EXPIRES_IN=$JWT_EXPIRES_IN `
     -v "${DATA_DIR}:/app/data" `
     -v "${BACKUP_DIR}:/app/backups" `
+    -v "${CERTS_DIR}:/app/certs" `
     --restart unless-stopped `
     $IMAGE_NAME
 
@@ -102,8 +109,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 Log-OK "Container started"
 
-# Step 6: Schema sync (entrypoint.sh runs db push — wait for it to finish)
-Log-Step "6/7  Waiting for schema sync via entrypoint.sh"
+# Step 6: Schema sync (entrypoint.sh runs db push — wait for it to finish) + verify
+Log-Step "6/6  Waiting for schema sync via entrypoint.sh"
 Log-Info "Waiting 12 seconds for db push to complete..."
 Start-Sleep -Seconds 12
 
@@ -120,8 +127,6 @@ if ($schemaLog) {
     Log-OK "Schema pushed manually"
 }
 
-# Step 7: Verify container is still running after schema sync
-Log-Step "7/7  Verifying deployment"
 $status  = docker ps --filter "name=^/${CONTAINER_NAME}$" --format "{{.Status}}"
 $uptime  = docker ps --filter "name=^/${CONTAINER_NAME}$" --format "{{.RunningFor}}"
 $imageId = docker ps --filter "name=^/${CONTAINER_NAME}$" --format "{{.Image}}"
