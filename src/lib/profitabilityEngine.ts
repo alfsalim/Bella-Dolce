@@ -1,5 +1,16 @@
 import { authFetch, getAuthHeaders } from './api-client';
 
+// Orders (special orders / storefront checkouts) carry their own amountPaid — this
+// folds qualifying ones into a sales-shaped list so existing revenue math (which only
+// knows how to sum totalAmount by createdAt) picks them up without a second code path.
+// Cancelled orders are excluded so cancelling/deleting automatically removes them from
+// revenue — no separate reversal step needed.
+export function ordersAsRevenueRows(orders: any[]): { totalAmount: number; createdAt: string }[] {
+  return orders
+    .filter((o) => o.status !== 'cancelled' && (o.amountPaid ?? 0) > 0)
+    .map((o) => ({ totalAmount: o.amountPaid, createdAt: o.createdAt }));
+}
+
 export interface ProfitabilityMetrics {
   revenue: number;
   cogs: number; // Cost of Goods Sold from supplier invoices
@@ -66,17 +77,20 @@ export async function fetchProfitabilityData(period: DateRange) {
   const headers = getAuthHeaders();
 
   try {
-    const [salesRes, invoicesRes, utilitiesRes] = await Promise.all([
+    const [salesRes, ordersRes, invoicesRes, utilitiesRes] = await Promise.all([
       authFetch('/api/sales', { headers }),
+      authFetch('/api/db/orders', { headers }),
       authFetch('/api/db/purchases', { headers }),
       authFetch('/api/db/utilities', { headers }),
     ]);
 
     const sales = (await (salesRes.ok ? salesRes.json() : Promise.resolve([]))).sales ?? [];
+    const orders = await (ordersRes.ok ? ordersRes.json() : Promise.resolve([]));
     const invoices = await (invoicesRes.ok ? invoicesRes.json() : Promise.resolve([]));
     const utilities = await (utilitiesRes.ok ? utilitiesRes.json() : Promise.resolve([]));
 
-    const metrics = await calculateProfitability(sales, invoices, utilities, period);
+    const salesWithOrders = [...sales, ...ordersAsRevenueRows(Array.isArray(orders) ? orders : [])];
+    const metrics = await calculateProfitability(salesWithOrders, invoices, utilities, period);
     return metrics;
   } catch (error) {
     console.error('Error fetching profitability data:', error);

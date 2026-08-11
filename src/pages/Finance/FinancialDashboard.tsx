@@ -13,7 +13,7 @@ import {
 import { useLanguage } from '../../contexts/LanguageContext';
 import BilingualLabel from '../../components/BilingualLabel';
 import { authFetch, getAuthHeaders } from '../../lib/api-client';
-import { calculateProfitability, ProfitabilityMetrics } from '../../lib/profitabilityEngine';
+import { calculateProfitability, ordersAsRevenueRows, ProfitabilityMetrics } from '../../lib/profitabilityEngine';
 import {
   AreaChart,
   Area,
@@ -37,9 +37,15 @@ const FinancialDashboard: React.FC = () => {
   const riskScore = 82;
 
   useEffect(() => {
-    authFetch('/api/sales', { headers: getAuthHeaders() })
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setSales(Array.isArray(d) ? d : d.sales ?? []))
+    Promise.all([
+      authFetch('/api/sales', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : []),
+      authFetch('/api/db/orders', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : []),
+    ])
+      .then(([salesData, ordersData]) => {
+        const sales = Array.isArray(salesData) ? salesData : salesData.sales ?? [];
+        const orders = Array.isArray(ordersData) ? ordersData : [];
+        setSales([...sales, ...ordersAsRevenueRows(orders)]);
+      })
       .catch(() => {});
 
     authFetch('/api/db/purchases', { headers: getAuthHeaders() })

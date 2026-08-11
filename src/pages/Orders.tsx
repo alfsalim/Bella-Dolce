@@ -424,6 +424,26 @@ const Orders: React.FC = () => {
     if (!confirm(t('confirmDeleteOrder'))) return;
     setDeletingOrderId(order.id);
     try {
+      // Return quantities on delete — unless already cancelled (stock was already
+      // restored then, restoring twice would inflate it) or delivered (goods already
+      // left the shop, so there's nothing to give back).
+      if (order.status !== 'cancelled' && order.status !== 'delivered') {
+        for (const item of order.items) {
+          try {
+            const productRef = doc(db, 'products', item.productId);
+            const productSnap = await getDoc(productRef);
+            if (productSnap.exists()) {
+              const data = productSnap.data();
+              const newShopStock = (data.shopStock || 0) + item.quantity;
+              const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
+              await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
+            }
+          } catch (err) {
+            console.error(`Error returning stock for product ${item.productId}:`, err);
+          }
+        }
+      }
+
       await deleteDoc(doc(db, 'orders', order.id));
       if (profile) {
         logActivity(profile.id, profile.name, 'Order', `Order ${order.id} deleted`);
@@ -517,6 +537,23 @@ const Orders: React.FC = () => {
       };
 
       const { id } = await addDoc(collection(db, 'orders'), orderData);
+
+      // Deduct shopStock for each item (orders come from shop) — mirrors Checkout.tsx.
+      // stock = shopStock + freezerStock + wasteQuantity (invariant)
+      for (const item of validItems) {
+        try {
+          const productRef = doc(db, 'products', item.productId);
+          const productSnap = await getDoc(productRef);
+          if (productSnap.exists()) {
+            const data = productSnap.data();
+            const newShopStock = Math.max(0, (data.shopStock || 0) - item.quantity);
+            const newStock = newShopStock + (data.freezerStock || 0) + (data.wasteQuantity || 0);
+            await updateDoc(productRef, { shopStock: newShopStock, stock: newStock });
+          }
+        } catch (err) {
+          console.error(`Error deducting stock for product ${item.productId}:`, err);
+        }
+      }
 
       // Kitchen ticket prints immediately, regardless of payment status.
       const kitchenToastId = toast.loading(t('kitchenTicketPrinting'));

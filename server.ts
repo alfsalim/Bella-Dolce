@@ -2741,7 +2741,8 @@ async function startServer() {
             Name: item.name || item.productId,
             Quantity: item.quantity,
             UnitPrice: item.price || 0,
-            LineTotal: item.quantity * (item.price || 0)
+            LineTotal: item.quantity * (item.price || 0),
+            SpecificationsText: formatSpecificationsText(item.specifications)
           })),
           Subtotal: order.totalAmount || 0,
           TaxRate: 0,
