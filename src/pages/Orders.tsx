@@ -24,9 +24,10 @@ import {
   Plus,
   Trash2,
   Wallet,
-  Phone
+  Phone,
+  Pencil
 } from 'lucide-react';
-import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, limit, where, handleFirestoreError, OperationType, getDoc, getCountFromServer, addDoc } from '../lib/db';
+import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, limit, where, handleFirestoreError, OperationType, getDoc, getCountFromServer, addDoc, deleteDoc } from '../lib/db';
 import { authFetch, getAuthHeaders, readApiErrorMessage } from '../lib/api-client';
 import { toast } from 'react-hot-toast';
 import { Order, Product } from '../types';
@@ -90,6 +91,8 @@ const Orders: React.FC = () => {
 
   const [isSpecialOrderModalOpen, setIsSpecialOrderModalOpen] = useState(false);
   const [isSubmittingSpecialOrder, setIsSubmittingSpecialOrder] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [specialOrderForm, setSpecialOrderForm] = useState({
     firstName: '',
     lastName: '',
@@ -396,6 +399,44 @@ const Orders: React.FC = () => {
     (sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0
   );
 
+  const openEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    setSpecialOrderForm({
+      firstName: order.firstName || '',
+      lastName: order.lastName || '',
+      phone: order.phone || '0',
+      expectedDate: order.expectedDate,
+      expectedTime: order.expectedTime,
+      notes: order.notes || '',
+      downpayment: String(order.amountPaid ?? ''),
+      items: order.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        price: item.price,
+        expanded: false,
+        specifications: item.specifications || {},
+      })),
+    });
+    setIsSpecialOrderModalOpen(true);
+  };
+
+  const handleDeleteOrder = async (order: Order) => {
+    if (!confirm(t('confirmDeleteOrder'))) return;
+    setDeletingOrderId(order.id);
+    try {
+      await deleteDoc(doc(db, 'orders', order.id));
+      if (profile) {
+        logActivity(profile.id, profile.name, 'Order', `Order ${order.id} deleted`);
+      }
+      toast.success(t('orderDeletedSuccess'));
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      toast.error(t('purchaseSaveFailed') || 'Error');
+    } finally {
+      setDeletingOrderId(null);
+    }
+  };
+
   const handleCreateSpecialOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     const { firstName, lastName, phone, expectedDate, expectedTime, items, notes, downpayment } = specialOrderForm;
@@ -413,6 +454,38 @@ const Orders: React.FC = () => {
 
     setIsSubmittingSpecialOrder(true);
     try {
+      if (editingOrder) {
+        const totalAmount = validItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+        await updateDoc(doc(db, 'orders', editingOrder.id), {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone.trim(),
+          items: validItems.map((item) => {
+            const product = products.find((p) => p.id === item.productId);
+            return {
+              productId: item.productId,
+              name: product ? tProduct(product) : '',
+              quantity: item.quantity,
+              price: item.price,
+              specifications: item.specifications,
+            };
+          }),
+          totalAmount,
+          expectedDate,
+          expectedTime,
+          notes: notes.trim() || undefined,
+          updatedAt: new Date().toISOString(),
+        });
+
+        if (profile) {
+          logActivity(profile.id, profile.name, 'Order', `Order ${editingOrder.id} updated`);
+        }
+        toast.success(t('orderUpdatedSuccess'));
+        setIsSpecialOrderModalOpen(false);
+        setEditingOrder(null);
+        resetSpecialOrderForm();
+        return;
+      }
       const totalAmount = validItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
       const downpaymentAmount = Math.max(0, parseFloat(downpayment) || 0);
       const paymentStatus = totalAmount > 0 && downpaymentAmount >= totalAmount ? 'paid_full' : 'deposit';
@@ -682,11 +755,11 @@ const Orders: React.FC = () => {
             <div className="p-6 border-b border-slate-100 dark:border-[#2a1e17] flex items-center justify-between sticky top-0 bg-white dark:bg-[#1a1512] z-10">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <ClipboardList className="w-5 h-5 text-primary-600" />
-                {t('newSpecialOrder')}
+                {editingOrder ? t('editOrderAction') : t('newSpecialOrder')}
               </h2>
               <button
                 type="button"
-                onClick={() => { setIsSpecialOrderModalOpen(false); resetSpecialOrderForm(); }}
+                onClick={() => { setIsSpecialOrderModalOpen(false); setEditingOrder(null); resetSpecialOrderForm(); }}
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -762,17 +835,19 @@ const Orders: React.FC = () => {
                       onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
                     />
                   </div>
-                  <div>
-                    <label htmlFor="special-order-downpayment" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('downpayment')}</label>
-                    <input
-                      id="special-order-downpayment"
-                      type="number"
-                      min={0}
-                      className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
-                      value={specialOrderForm.downpayment}
-                      onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, downpayment: e.target.value }))}
-                    />
-                  </div>
+                  {!editingOrder && (
+                    <div>
+                      <label htmlFor="special-order-downpayment" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('downpayment')}</label>
+                      <input
+                        id="special-order-downpayment"
+                        type="number"
+                        min={0}
+                        className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
+                        value={specialOrderForm.downpayment}
+                        onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, downpayment: e.target.value }))}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -902,7 +977,7 @@ const Orders: React.FC = () => {
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    onClick={() => { setIsSpecialOrderModalOpen(false); resetSpecialOrderForm(); }}
+                    onClick={() => { setIsSpecialOrderModalOpen(false); setEditingOrder(null); resetSpecialOrderForm(); }}
                     className="btn-secondary"
                   >
                     {t('cancel')}
@@ -913,7 +988,7 @@ const Orders: React.FC = () => {
                     className="btn-primary gap-2 disabled:opacity-50"
                   >
                     <Wallet className="w-4 h-4" />
-                    {t('newSpecialOrder')}
+                    {editingOrder ? t('saveChanges') : t('newSpecialOrder')}
                   </button>
                 </div>
               </div>
@@ -1008,7 +1083,7 @@ const Orders: React.FC = () => {
             </div>
             {activeTab === 'orders' && (
               <button
-                onClick={() => setIsSpecialOrderModalOpen(true)}
+                onClick={() => { setEditingOrder(null); setIsSpecialOrderModalOpen(true); }}
                 className="btn-primary gap-2"
               >
                 <Plus className="w-4 h-4" />
@@ -1232,8 +1307,9 @@ const Orders: React.FC = () => {
                             <button
                               key={status}
                               onClick={() => updateOrderStatus(order.id, status)}
+                              disabled={order.status === 'cancelled'}
                               className={clsx(
-                                "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all transition-all",
+                                "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed",
                                 order.status === status
                                   ? "bg-white dark:bg-black text-primary-600 dark:text-primary-400 shadow-sm"
                                   : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
@@ -1246,7 +1322,7 @@ const Orders: React.FC = () => {
 
                         {/* Delivery Status Buttons / Close Order */}
                         {order.type === 'special' ? (
-                          order.paymentStatus !== 'closed' && (
+                          order.paymentStatus !== 'closed' && order.status !== 'cancelled' && (
                             <div className="flex items-center gap-2">
                               <input
                                 type="number"
@@ -1275,8 +1351,9 @@ const Orders: React.FC = () => {
                               <button
                                 key={ds}
                                 onClick={() => updateDeliveryStatus(order.id, ds)}
+                                disabled={order.status === 'cancelled'}
                                 className={clsx(
-                                  "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                                  "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed",
                                   (order.deliveryStatus || 'pending') === ds
                                     ? "bg-white dark:bg-black text-amber-600 dark:text-amber-400 shadow-sm"
                                     : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
@@ -1300,6 +1377,16 @@ const Orders: React.FC = () => {
                           <FileText className="w-4 h-4" />
                           <span className="hidden sm:inline">{t('issueInvoice')}</span>
                         </button>
+                        {order.type === 'special' && order.status !== 'cancelled' && (
+                          <button
+                            onClick={() => openEditOrder(order)}
+                            className="btn-secondary gap-2"
+                            title={t('editOrderAction')}
+                          >
+                            <Pencil className="w-4 h-4" />
+                            <span className="hidden sm:inline">{t('editOrderAction')}</span>
+                          </button>
+                        )}
                         {order.status !== 'cancelled' && order.status !== 'delivered' && (
                           <button
                             onClick={() => { setCancellingOrder(order); setCancelReason(''); }}
@@ -1308,6 +1395,17 @@ const Orders: React.FC = () => {
                           >
                             <XCircle className="w-4 h-4" />
                             <span className="hidden sm:inline">{t('cancelOrderAction')}</span>
+                          </button>
+                        )}
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleDeleteOrder(order)}
+                            disabled={deletingOrderId === order.id}
+                            className="btn-secondary gap-2 !text-red-600 !border-red-200 hover:!bg-red-50 dark:!text-red-400 dark:!border-red-900/40 dark:hover:!bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={t('deleteOrderAction')}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span className="hidden sm:inline">{t('deleteOrderAction')}</span>
                           </button>
                         )}
                       </div>
@@ -1375,7 +1473,7 @@ const Orders: React.FC = () => {
                     <td className="p-4 text-right">
                       <div className="flex justify-end items-center gap-3">
                         {order.type === 'special' ? (
-                          order.paymentStatus !== 'closed' && (
+                          order.paymentStatus !== 'closed' && order.status !== 'cancelled' && (
                             <div className="flex items-center gap-2">
                               <input
                                 type="number"
@@ -1403,8 +1501,9 @@ const Orders: React.FC = () => {
                               <button
                                 key={status}
                                 onClick={() => updateOrderStatus(order.id, status)}
+                                disabled={order.status === 'cancelled'}
                                 className={clsx(
-                                  "px-2 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all",
+                                  "px-2 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed",
                                   order.status === status
                                     ? "bg-white dark:bg-black text-primary-600 dark:text-primary-400 shadow-sm"
                                     : "text-slate-400 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-400"
@@ -1425,6 +1524,15 @@ const Orders: React.FC = () => {
                         >
                           <FileText className="w-4 h-4" />
                         </button>
+                        {order.type === 'special' && order.status !== 'cancelled' && (
+                          <button
+                            onClick={() => openEditOrder(order)}
+                            className="p-2 text-slate-400 dark:text-slate-600 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                            title={t('editOrderAction')}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
                         {order.status !== 'cancelled' && order.status !== 'delivered' && (
                           <button
                             onClick={() => { setCancellingOrder(order); setCancelReason(''); }}
@@ -1432,6 +1540,16 @@ const Orders: React.FC = () => {
                             title={t('cancelOrderAction')}
                           >
                             <XCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                        {profile?.role === 'admin' && (
+                          <button
+                            onClick={() => handleDeleteOrder(order)}
+                            disabled={deletingOrderId === order.id}
+                            className="p-2 text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={t('deleteOrderAction')}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
