@@ -335,6 +335,9 @@ const Orders: React.FC = () => {
           totalAmount: t('totalAmount'),
           invoiceThankYou: t('invoiceThankYou'),
           walkInCustomer: t('walkInCustomer'),
+          notes: t('notes'),
+          amountPaid: t('amountPaid'),
+          balanceDue: t('balanceDue'),
         },
         orderId: selectedOrderForInvoice.id.slice(-8).toUpperCase(),
         date: format(new Date(selectedOrderForInvoice.createdAt), 'PPP'),
@@ -347,9 +350,19 @@ const Orders: React.FC = () => {
             name: product ? tProduct(product) : t('unknownProduct'),
             quantity: item.quantity,
             price: item.price,
+            specifications: [
+              item.specifications?.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
+              item.specifications?.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
+              item.specifications?.shape && `${t('shape')}: ${item.specifications.shape}`,
+              item.specifications?.size && `${t('size')}: ${item.specifications.size}`,
+              item.specifications?.addons && `${t('addons')}: ${item.specifications.addons}`,
+            ].filter((v): v is string => Boolean(v)),
           };
         }),
         totalAmount: selectedOrderForInvoice.totalAmount,
+        notes: selectedOrderForInvoice.notes,
+        amountPaid: selectedOrderForInvoice.amountPaid,
+        showBalance: selectedOrderForInvoice.type === 'special',
       });
       toast.success(t('pdfDownloaded'), { id: toastId });
     } catch (error) {
@@ -725,7 +738,7 @@ const Orders: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-8 print:p-0 print:text-black" id="invoice-content">
+            <div className="p-8 print:hidden" id="invoice-content">
               <div className="flex justify-between items-start mb-12">
                 <div>
                   <h1 className="text-4xl font-display font-bold text-primary-600 mb-2 print:text-primary-600">{t('invoiceDocumentTitle')}</h1>
@@ -837,6 +850,79 @@ const Orders: React.FC = () => {
               <div className="mt-24 pt-12 border-t border-slate-100 dark:border-[#2a1e17] text-center print:border-slate-100">
                 <p className="text-slate-400 text-sm italic print:text-slate-400">{t('invoiceThankYou')}</p>
               </div>
+            </div>
+
+            {/* Receipt-printer layout — 80mm single column, shown only when printing (see @page in index.css) */}
+            <div className="hidden print:block text-black text-xs leading-relaxed">
+              <div className="text-center mb-2">
+                <p className="font-bold text-sm">Bella Dolce</p>
+                <p>123 Bakery Street</p>
+                <p>City, Country</p>
+                <p>Phone: +123 456 789</p>
+              </div>
+              <div className="border-t border-black/30 my-2" />
+              <p className="font-bold">{t('invoiceDocumentTitle')} #{selectedOrderForInvoice.id.slice(-8).toUpperCase()}</p>
+              <p>{t('date')}: {format(new Date(selectedOrderForInvoice.createdAt), 'PPP')}</p>
+              <p>{t('status')}: {t(selectedOrderForInvoice.status)}</p>
+              <p>{t('billTo')}: {selectedOrderForInvoice.clientName || t('walkInCustomer')}</p>
+              {selectedOrderForInvoice.customerId && (
+                <p>{t('customerIdLabel').replace('{{id}}', selectedOrderForInvoice.customerId)}</p>
+              )}
+              <div className="border-t border-black/30 my-2" />
+              {selectedOrderForInvoice.items.map((item, idx) => {
+                const product = products.find(p => p.id === item.productId);
+                const specs = [
+                  item.specifications?.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
+                  item.specifications?.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
+                  item.specifications?.shape && `${t('shape')}: ${item.specifications.shape}`,
+                  item.specifications?.size && `${t('size')}: ${item.specifications.size}`,
+                  item.specifications?.addons && `${t('addons')}: ${item.specifications.addons}`,
+                ].filter(Boolean).join(' · ');
+                return (
+                  <div key={idx} className="mb-2">
+                    <p className="font-bold">{product ? tProduct(product) : t('unknownProduct')}</p>
+                    {specs && <p className="text-black/70">{specs}</p>}
+                    <div className="flex justify-between">
+                      <span>x{item.quantity} @ {item.price.toLocaleString()} {currencyUnit}</span>
+                      <span className="font-bold">{(item.quantity * item.price).toLocaleString()} {currencyUnit}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="border-t border-black/30 my-2" />
+              <div className="flex justify-between">
+                <span>{t('subtotal')}</span>
+                <span>{selectedOrderForInvoice.totalAmount.toLocaleString()} {currencyUnit}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{t('taxZeroPercent')}</span>
+                <span>0 {currencyUnit}</span>
+              </div>
+              <div className="flex justify-between font-bold text-sm mt-1">
+                <span>{t('totalAmount')}</span>
+                <span>{selectedOrderForInvoice.totalAmount.toLocaleString()} {currencyUnit}</span>
+              </div>
+              {selectedOrderForInvoice.type === 'special' && (
+                <>
+                  <div className="flex justify-between">
+                    <span>{t('amountPaid')}</span>
+                    <span>{(selectedOrderForInvoice.amountPaid || 0).toLocaleString()} {currencyUnit}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>{t('balanceDue')}</span>
+                    <span>{Math.max(0, selectedOrderForInvoice.totalAmount - (selectedOrderForInvoice.amountPaid || 0)).toLocaleString()} {currencyUnit}</span>
+                  </div>
+                </>
+              )}
+              {selectedOrderForInvoice.notes && (
+                <>
+                  <div className="border-t border-black/30 my-2" />
+                  <p className="font-bold">{t('notes')}</p>
+                  <p className="whitespace-pre-wrap">{selectedOrderForInvoice.notes}</p>
+                </>
+              )}
+              <div className="border-t border-black/30 my-2" />
+              <p className="text-center italic">{t('invoiceThankYou')}</p>
             </div>
           </div>
         </div>

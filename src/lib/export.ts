@@ -86,24 +86,6 @@ function banner(L: Record<string, string>, title: string, lines: string[], logoS
 </div>`;
 }
 
-function invoiceBanner(title: string, orderId: string, storeAddress: string[], logoSrc: string): string {
-  const addrLines = storeAddress.map((l) => `<div style="font-size:11px;color:${BANNER_MUTED};margin-top:2px;">${esc(l)}</div>`).join('');
-  const logoHtml = logoSrc
-    ? `<div style="text-align:center;margin-bottom:16px;"><img src="${logoSrc}" style="height:80px;width:auto;object-fit:contain;" /></div>`
-    : '';
-  return `
-<div style="background:${BANNER_BG};border-bottom:2px solid ${BANNER_BORDER};padding:28px 32px 24px;margin-bottom:0;">
-  ${logoHtml}
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;border-top:1px solid ${BANNER_BORDER};padding-top:16px;">
-    <div>
-      <div style="font-size:24px;font-weight:800;color:${BANNER_TEXT};letter-spacing:-0.02em;">${esc(title)}</div>
-      <div style="font-family:monospace;font-size:11px;color:${BANNER_MUTED};margin-top:5px;letter-spacing:0.08em;">#${esc(orderId)}</div>
-    </div>
-    <div style="text-align:end;">${addrLines}</div>
-  </div>
-</div>`;
-}
-
 function kpiCard(label: string, value: string): string {
   return `<div style="flex:1 1 42%;min-width:160px;background:#fff;border:1px solid #e8dcc8;border-radius:12px;padding:14px 16px;">
     <div style="font-size:9px;color:#8b7355;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">${esc(label)}</div>
@@ -208,6 +190,49 @@ async function flushChunks(pdf: jsPDF, elements: HTMLElement[], first: { value: 
 
 function newA4Pdf(): jsPDF {
   return new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+}
+
+// 80mm at 96 dpi — matches the receipt printer's PaperWidth (see PrintAgent appsettings.json).
+const RECEIPT_WIDTH_MM = 80;
+const RECEIPT_PAGE_PX = 302;
+
+async function renderReceiptHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasElement> {
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  return html2canvas(el, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    backgroundColor: '#ffffff',
+    width: RECEIPT_PAGE_PX,
+    windowWidth: RECEIPT_PAGE_PX,
+    onclone: (clonedDoc, clonedEl) => {
+      const style = clonedDoc.createElement('style');
+      style.textContent = `html,body{background:#ffffff!important;color:#000000!important;margin:0;padding:0;}*{box-shadow:none!important;background-image:none!important;}`;
+      (clonedDoc.head || clonedDoc.documentElement).appendChild(style);
+      sanitizeClone(clonedDoc, clonedEl as HTMLElement);
+    },
+  });
+}
+
+/** Renders a narrow single-column receipt to its own continuous-length PDF page (no A4 pagination — this is a paper roll, not a fixed sheet). */
+async function saveReceiptPdf(filename: string, innerHtml: string): Promise<void> {
+  const el = document.createElement('div');
+  el.innerHTML = innerHtml;
+  el.style.position = 'fixed';
+  el.style.top = '0';
+  el.style.left = '-9999px';
+  el.style.width = `${RECEIPT_PAGE_PX}px`;
+  document.body.appendChild(el);
+  try {
+    const canvas = await renderReceiptHtmlToCanvas(el);
+    const heightMM = (canvas.height * RECEIPT_WIDTH_MM) / canvas.width;
+    const pdf = new jsPDF({ unit: 'mm', format: [RECEIPT_WIDTH_MM, heightMM] });
+    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+    pdf.addImage(imgData, 'JPEG', 0, 0, RECEIPT_WIDTH_MM, heightMM);
+    pdf.save(filename);
+  } finally {
+    document.body.removeChild(el);
+  }
 }
 
 // ─── Public exports ───────────────────────────────────────────────────────────
@@ -586,83 +611,76 @@ export async function downloadInvoicePdf(opts: {
   status: string;
   clientName: string;
   customerId?: string;
-  items: { name: string; quantity: number; price: number }[];
+  items: { name: string; quantity: number; price: number; specifications?: string[] }[];
   totalAmount: number;
+  notes?: string;
+  amountPaid?: number;
+  showBalance?: boolean;
 }): Promise<void> {
   const { isRTL, currencyUnit: cu, labels: L } = opts;
-  const pdf = newA4Pdf();
-  const first = { value: true };
-  const logo = await getLogoDataUrl();
 
-  const itemRows = opts.items.map((item) => `
-    <tr style="border-bottom:1px solid #e8dcc8;">
-      <td style="padding:12px 16px;font-weight:700;color:#1c1208;">${esc(item.name)}</td>
-      <td style="padding:12px 16px;text-align:center;color:#8b7355;">×${item.quantity}</td>
-      <td style="padding:12px 16px;text-align:end;color:#8b7355;">${item.price.toLocaleString()} ${esc(cu)}</td>
-      <td style="padding:12px 16px;text-align:end;font-weight:800;color:#1c1208;">${(item.quantity * item.price).toLocaleString()} ${esc(cu)}</td>
-    </tr>`).join('');
+  const itemBlocks = opts.items.map((item) => `
+    <div style="margin-bottom:8px;">
+      <div style="font-weight:700;">${esc(item.name)}</div>
+      ${item.specifications && item.specifications.length ? `<div style="color:#555;font-size:10px;">${esc(item.specifications.join(' · '))}</div>` : ''}
+      <div style="display:flex;justify-content:space-between;">
+        <span>×${item.quantity} @ ${item.price.toLocaleString()} ${esc(cu)}</span>
+        <span style="font-weight:700;">${(item.quantity * item.price).toLocaleString()} ${esc(cu)}</span>
+      </div>
+    </div>`).join('');
 
-  const inner =
-    invoiceBanner(
-      L.invoiceDocumentTitle || 'INVOICE',
-      opts.orderId,
-      ['123 Bakery Street', 'City, Country', 'Phone: +123 456 789'],
-      logo,
-    ) +
-    `<div style="background:#fff;padding:28px 32px;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:32px;">
-        <div>
-          <div style="font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">${esc(L.billTo || 'BILL TO')}</div>
-          <div style="font-size:16px;font-weight:800;color:#0f172a;">${esc(opts.clientName || L.walkInCustomer || 'Walk-in Customer')}</div>
-          ${opts.customerId ? `<div style="font-size:11px;color:#64748b;margin-top:4px;">${esc(L.customerIdLabel?.replace('{{id}}', opts.customerId) || opts.customerId)}</div>` : ''}
-        </div>
-        <div style="text-align:end;">
-          <div style="display:flex;justify-content:flex-end;gap:16px;margin-bottom:6px;">
-            <span style="font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.date || 'DATE')}</span>
-            <span style="font-size:12px;font-weight:700;color:#0f172a;">${esc(opts.date)}</span>
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:16px;">
-            <span style="font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.status || 'STATUS')}</span>
-            <span style="font-size:12px;font-weight:800;color:#1e293b;text-transform:uppercase;">${esc(opts.status)}</span>
-          </div>
-        </div>
+  const balanceRows = opts.showBalance ? `
+    <div style="display:flex;justify-content:space-between;">
+      <span>${esc(L.amountPaid || 'AMOUNT PAID')}</span>
+      <span>${(opts.amountPaid || 0).toLocaleString()} ${esc(cu)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;">
+      <span>${esc(L.balanceDue || 'BALANCE DUE')}</span>
+      <span>${Math.max(0, opts.totalAmount - (opts.amountPaid || 0)).toLocaleString()} ${esc(cu)}</span>
+    </div>` : '';
+
+  const notesHtml = opts.notes ? `
+    <div style="border-top:1px solid #999;margin:8px 0;"></div>
+    <div style="font-weight:700;">${esc(L.notes || 'NOTES')}</div>
+    <div style="white-space:pre-wrap;">${esc(opts.notes)}</div>` : '';
+
+  const fontStack = isRTL ? '"Cairo", sans-serif' : "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+  const inner = `
+    <div dir="${isRTL ? 'rtl' : 'ltr'}" style="width:${RECEIPT_PAGE_PX}px;background:#fff;color:#000;font-family:${fontStack};font-size:11px;line-height:1.5;padding:8px;box-sizing:border-box;">
+      <div style="text-align:center;margin-bottom:8px;">
+        <div style="font-weight:700;font-size:13px;">Bella Dolce</div>
+        <div>123 Bakery Street</div>
+        <div>City, Country</div>
+        <div>Phone: +123 456 789</div>
       </div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:32px;">
-        <thead>
-          <tr style="border-bottom:2px solid #e2e8f0;">
-            <th style="padding:10px 16px;text-align:start;font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.invoiceItem || 'ITEM')}</th>
-            <th style="padding:10px 16px;text-align:center;font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.qtyAbbrev || 'QTY')}</th>
-            <th style="padding:10px 16px;text-align:end;font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.price || 'PRICE')}</th>
-            <th style="padding:10px 16px;text-align:end;font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.total || 'TOTAL')}</th>
-          </tr>
-        </thead>
-        <tbody>${itemRows || `<tr><td colspan="4" style="padding:16px;color:#94a3b8;">—</td></tr>`}</tbody>
-      </table>
-      <div style="display:flex;justify-content:flex-end;">
-        <div style="width:260px;">
-          <div style="display:flex;justify-content:space-between;padding:8px 0;color:#64748b;font-size:12px;">
-            <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.subtotal || 'SUBTOTAL')}</span>
-            <span style="font-weight:700;">${opts.totalAmount.toLocaleString()} ${esc(cu)}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:8px 0;color:#64748b;font-size:12px;">
-            <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;">${esc(L.taxZeroPercent || 'TAX (0%)')}</span>
-            <span style="font-weight:700;">0 ${esc(cu)}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:16px 0;border-top:2px solid #e2e8f0;margin-top:4px;">
-            <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#0f172a;">${esc(L.totalAmount || 'TOTAL')}</span>
-            <span style="font-size:20px;font-weight:800;color:#1e293b;">${opts.totalAmount.toLocaleString()} ${esc(cu)}</span>
-          </div>
-        </div>
+      <div style="border-top:1px solid #999;margin:8px 0;"></div>
+      <div style="font-weight:700;">${esc(L.invoiceDocumentTitle || 'INVOICE')} #${esc(opts.orderId)}</div>
+      <div>${esc(L.date || 'DATE')}: ${esc(opts.date)}</div>
+      <div>${esc(L.status || 'STATUS')}: ${esc(opts.status)}</div>
+      <div>${esc(L.billTo || 'BILL TO')}: ${esc(opts.clientName || L.walkInCustomer || 'Walk-in Customer')}</div>
+      ${opts.customerId ? `<div>${esc(L.customerIdLabel?.replace('{{id}}', opts.customerId) || opts.customerId)}</div>` : ''}
+      <div style="border-top:1px solid #999;margin:8px 0;"></div>
+      ${itemBlocks || `<div style="color:#888;">—</div>`}
+      <div style="border-top:1px solid #999;margin:8px 0;"></div>
+      <div style="display:flex;justify-content:space-between;">
+        <span>${esc(L.subtotal || 'SUBTOTAL')}</span>
+        <span>${opts.totalAmount.toLocaleString()} ${esc(cu)}</span>
       </div>
-      <div style="margin-top:48px;padding-top:24px;border-top:1px solid #f1f5f9;text-align:center;color:#94a3b8;font-size:11px;font-style:italic;">
-        ${esc(L.invoiceThankYou || 'Thank you for your business.')}
+      <div style="display:flex;justify-content:space-between;">
+        <span>${esc(L.taxZeroPercent || 'TAX (0%)')}</span>
+        <span>0 ${esc(cu)}</span>
       </div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:4px;">
+        <span>${esc(L.totalAmount || 'TOTAL')}</span>
+        <span>${opts.totalAmount.toLocaleString()} ${esc(cu)}</span>
+      </div>
+      ${balanceRows}
+      ${notesHtml}
+      <div style="border-top:1px solid #999;margin:8px 0;"></div>
+      <div style="text-align:center;font-style:italic;">${esc(L.invoiceThankYou || 'Thank you for your business.')}</div>
     </div>`;
 
-  const el = document.createElement('div');
-  el.innerHTML = wrapRoot(isRTL, inner, '#ffffff');
-  await flushChunks(pdf, [el], first);
-  pdf.save(opts.filename);
+  await saveReceiptPdf(opts.filename, inner);
 }
 
 // ─── Payslip PDF ──────────────────────────────────────────────────────────────

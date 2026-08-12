@@ -110,18 +110,35 @@
 
 @layer base {
   @media print {
+    /* Receipt printer paper — see PrintAgent appsettings.json PaperWidth (80mm). */
+    @page {
+      size: 80mm auto;
+      margin: 3mm 2mm;
+    }
+
     body {
       background: white !important;
       color: black !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    
-    /* Hide everything except the print-visible element */
-    #root > *:not(.print-visible) {
-      display: none !important;
+
+    /*
+     * Hide everything except the print-visible element, using visibility (not display)
+     * so it works no matter how deeply .print-visible is nested inside #root — a
+     * display:none on an ancestor would hide it regardless of its own display value,
+     * which is why the old `#root > *:not(.print-visible)` rule printed a blank page
+     * whenever .print-visible wasn't a direct child of #root.
+     */
+    body * {
+      visibility: hidden !important;
     }
-    
+
+    .print-visible,
+    .print-visible * {
+      visibility: visible !important;
+    }
+
     .print-visible {
       position: absolute !important;
       top: 0 !important;
@@ -130,7 +147,6 @@
       height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
-      visibility: visible !important;
       display: block !important;
       background: white !important;
       z-index: 9999 !important;
