@@ -740,13 +740,13 @@ const Orders: React.FC = () => {
                 </div>
               </div>
 
-              <table className="w-full mb-12">
+              <table className="w-full mb-12 table-fixed">
                 <thead>
                   <tr className="border-b-2 border-slate-100 dark:border-[#2a1e17] print:border-slate-100">
-                    <th className="py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('invoiceItem')}</th>
-                    <th className="py-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('qtyAbbrev')}</th>
-                    <th className="py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('price')}</th>
-                    <th className="py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('total')}</th>
+                    <th className="py-4 pr-4 w-1/2 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('invoiceItem')}</th>
+                    <th className="py-4 w-[15%] text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('qtyAbbrev')}</th>
+                    <th className="py-4 w-[17%] text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('price')}</th>
+                    <th className="py-4 w-[18%] text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-400">{t('total')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#2a1e17] print:divide-slate-100">
@@ -754,10 +754,10 @@ const Orders: React.FC = () => {
                     const product = products.find(p => p.id === item.productId);
                     return (
                       <tr key={idx}>
-                        <td className="py-4">
+                        <td className="py-4 pr-4">
                           <p className="font-bold text-slate-900 dark:text-white print:text-black">{product ? tProduct(product) : t('unknownProduct')}</p>
                           {item.specifications && Object.values(item.specifications).some(Boolean) && (
-                            <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-500">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-500 break-words">
                               {[
                                 item.specifications.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
                                 item.specifications.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
