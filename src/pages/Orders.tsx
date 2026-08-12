@@ -1025,7 +1025,7 @@ const Orders: React.FC = () => {
                     className="btn-primary gap-2 disabled:opacity-50"
                   >
                     <Wallet className="w-4 h-4" />
-                    {editingOrder ? t('saveChanges') : t('newSpecialOrder')}
+                    {editingOrder ? t('saveChanges') : t('createOrderAction')}
                   </button>
                 </div>
               </div>

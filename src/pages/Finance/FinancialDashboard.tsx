@@ -85,8 +85,10 @@ const FinancialDashboard: React.FC = () => {
     if (period === 'month') {
       const year = now.getFullYear();
       const month = now.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const buckets = Array.from({ length: daysInMonth }, (_, i) => ({
+      // Month-to-date: stop at today, not the end of the calendar month — otherwise
+      // the chart trails off with empty buckets for days that haven't happened yet.
+      const daysToDate = now.getDate();
+      const buckets = Array.from({ length: daysToDate }, (_, i) => ({
         name: String(i + 1),
         revenue: 0,
         expenses: 0,
@@ -104,10 +106,10 @@ const FinancialDashboard: React.FC = () => {
       return buckets;
     }
 
-    // year
+    // year — year-to-date: stop at the current month, same reasoning as month-to-date.
     const year = now.getFullYear();
     const monthNames = tf('monthNames') as unknown as string[] || ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-    const buckets = monthNames.map(name => ({ name, revenue: 0, expenses: 0 }));
+    const buckets = monthNames.slice(0, now.getMonth() + 1).map(name => ({ name, revenue: 0, expenses: 0 }));
     sales.forEach(s => {
       const d = new Date(s.createdAt);
       if (d.getFullYear() === year)
@@ -155,11 +157,13 @@ const FinancialDashboard: React.FC = () => {
       endDate = new Date(now);
       endDate.setHours(23, 59, 59, 999);
     } else if (period === 'month') {
+      // Month-to-date: end at today, not the end of the calendar month.
       startDate = new Date(year, month, 1);
-      endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      endDate = now;
     } else {
+      // Year-to-date: end at today, not the end of the calendar year.
       startDate = new Date(year, 0, 1);
-      endDate = new Date(year, 11, 31, 23, 59, 59, 999);
+      endDate = now;
     }
 
     let cancelled = false;

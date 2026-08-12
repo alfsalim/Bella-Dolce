@@ -270,9 +270,34 @@ const Reports: React.FC = () => {
     });
   });
 
-  const transactionsListSales = reportSalesByDate.filter(s =>
-    selectedCashier === 'all' || s.cashierId === selectedCashier
-  );
+  // Orders (even not yet closed) carry real cash collected via amountPaid — fold
+  // qualifying ones in as pseudo-sale rows so a downpayment shows up as a transaction
+  // here too. Scoped to this list only (not filteredSalesAnalytics) since the
+  // Analytics tab already surfaces order downpayments separately via
+  // specialOrdersDownpaymentCollected — merging here too would double-count there.
+  const reportOrdersByDate: Sale[] = filteredOrdersByRole
+    .filter((o) => o.status !== 'cancelled' && (o.amountPaid ?? 0) > 0)
+    .filter((o) => {
+      const date = new Date(o.createdAt);
+      return isWithinInterval(date, {
+        start: startOfDay(new Date(reportStart)),
+        end: new Date(reportEnd + 'T23:59:59')
+      });
+    })
+    .map((o) => ({
+      id: o.id,
+      cashierId: o.createdBy || 'order',
+      cashierName: (o.type === 'special' ? [o.firstName, o.lastName].filter(Boolean).join(' ') : o.clientName) || t('newSpecialOrder'),
+      totalAmount: o.amountPaid || 0,
+      paymentMethod: 'cash',
+      items: o.items,
+      comment: o.paymentStatus === 'closed' ? t('closeOrder') : t('downpayment'),
+      createdAt: o.createdAt,
+    }));
+
+  const transactionsListSales = [...reportSalesByDate, ...reportOrdersByDate]
+    .filter(s => selectedCashier === 'all' || s.cashierId === selectedCashier)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const transactionTotalPages = Math.ceil(transactionsListSales.length / PAGE_SIZE) || 1;
   const safeTransactionPage = Math.min(transactionPage, transactionTotalPages);
