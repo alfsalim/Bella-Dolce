@@ -25,7 +25,8 @@ import {
   Trash2,
   Wallet,
   Phone,
-  Pencil
+  Pencil,
+  RotateCcw
 } from 'lucide-react';
 import { db, collection, onSnapshot, query, orderBy, updateDoc, doc, limit, where, handleFirestoreError, OperationType, getDoc, getCountFromServer, addDoc, deleteDoc } from '../lib/db';
 import { authFetch, getAuthHeaders, readApiErrorMessage } from '../lib/api-client';
@@ -104,6 +105,7 @@ const Orders: React.FC = () => {
   });
   const [closeBalanceInput, setCloseBalanceInput] = useState<Record<string, string>>({});
   const [closingOrderId, setClosingOrderId] = useState<string | null>(null);
+  const [reopeningOrderId, setReopeningOrderId] = useState<string | null>(null);
 
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -666,6 +668,25 @@ const Orders: React.FC = () => {
       console.error('Error closing order:', error);
     } finally {
       setClosingOrderId(null);
+    }
+  };
+
+  const handleReopenOrder = async (order: Order) => {
+    setReopeningOrderId(order.id);
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        status: 'in-progress',
+        paymentStatus: 'paid_full',
+        updatedAt: new Date().toISOString(),
+      });
+      if (profile) {
+        logActivity(profile.id, profile.name, 'Order', `Order ${order.id} reopened`);
+      }
+      toast.success(t('orderReopenedSuccess'));
+    } catch (error) {
+      console.error('Error reopening order:', error);
+    } finally {
+      setReopeningOrderId(null);
     }
   };
 
@@ -1411,7 +1432,7 @@ const Orders: React.FC = () => {
                             <button
                               key={status}
                               onClick={() => updateOrderStatus(order.id, status)}
-                              disabled={order.status === 'cancelled'}
+                              disabled={order.status === 'cancelled' || order.paymentStatus === 'closed'}
                               className={clsx(
                                 "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed",
                                 order.status === status
@@ -1489,6 +1510,17 @@ const Orders: React.FC = () => {
                           >
                             <Pencil className="w-4 h-4" />
                             <span className="hidden sm:inline">{t('editOrderAction')}</span>
+                          </button>
+                        )}
+                        {order.type === 'special' && order.paymentStatus === 'closed' && (
+                          <button
+                            onClick={() => handleReopenOrder(order)}
+                            disabled={reopeningOrderId === order.id}
+                            className="btn-secondary gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={t('reopenOrderAction')}
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            <span className="hidden sm:inline">{t('reopenOrderAction')}</span>
                           </button>
                         )}
                         {order.status !== 'cancelled' && order.status !== 'delivered' && (
@@ -1605,7 +1637,7 @@ const Orders: React.FC = () => {
                               <button
                                 key={status}
                                 onClick={() => updateOrderStatus(order.id, status)}
-                                disabled={order.status === 'cancelled'}
+                                disabled={order.status === 'cancelled' || order.paymentStatus === 'closed'}
                                 className={clsx(
                                   "px-2 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed",
                                   order.status === status
@@ -1635,6 +1667,16 @@ const Orders: React.FC = () => {
                             title={t('editOrderAction')}
                           >
                             <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {order.type === 'special' && order.paymentStatus === 'closed' && (
+                          <button
+                            onClick={() => handleReopenOrder(order)}
+                            disabled={reopeningOrderId === order.id}
+                            className="p-2 text-slate-400 dark:text-slate-600 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={t('reopenOrderAction')}
+                          >
+                            <RotateCcw className="w-4 h-4" />
                           </button>
                         )}
                         {order.status !== 'cancelled' && order.status !== 'delivered' && (
