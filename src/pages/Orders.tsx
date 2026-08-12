@@ -476,6 +476,10 @@ const Orders: React.FC = () => {
     try {
       if (editingOrder) {
         const totalAmount = validItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+        const downpaymentAmount = Math.max(0, parseFloat(downpayment) || 0);
+        const paymentStatus = editingOrder.paymentStatus === 'closed'
+          ? 'closed'
+          : totalAmount > 0 && downpaymentAmount >= totalAmount ? 'paid_full' : 'deposit';
         await updateDoc(doc(db, 'orders', editingOrder.id), {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -491,6 +495,8 @@ const Orders: React.FC = () => {
             };
           }),
           totalAmount,
+          amountPaid: downpaymentAmount,
+          paymentStatus,
           expectedDate,
           expectedTime,
           notes: notes.trim() || undefined,
@@ -774,6 +780,18 @@ const Orders: React.FC = () => {
                     <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-widest print:text-black">{t('totalAmount')}</span>
                     <span className="text-2xl font-display font-bold text-primary-600 print:text-primary-600">{selectedOrderForInvoice.totalAmount.toLocaleString()} {currencyUnit}</span>
                   </div>
+                  {selectedOrderForInvoice.type === 'special' && (
+                    <>
+                      <div className="flex justify-between items-center text-slate-500 print:text-slate-500">
+                        <span className="text-[10px] font-bold uppercase tracking-widest">{t('amountPaid')}</span>
+                        <span className="font-bold">{(selectedOrderForInvoice.amountPaid || 0).toLocaleString()} {currencyUnit}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-500 print:text-slate-500">
+                        <span className="text-[10px] font-bold uppercase tracking-widest">{t('balanceDue')}</span>
+                        <span className="font-bold">{Math.max(0, selectedOrderForInvoice.totalAmount - (selectedOrderForInvoice.amountPaid || 0)).toLocaleString()} {currencyUnit}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -872,19 +890,18 @@ const Orders: React.FC = () => {
                       onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, phone: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
                     />
                   </div>
-                  {!editingOrder && (
-                    <div>
-                      <label htmlFor="special-order-downpayment" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{t('downpayment')}</label>
-                      <input
-                        id="special-order-downpayment"
-                        type="number"
-                        min={0}
-                        className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none"
-                        value={specialOrderForm.downpayment}
-                        onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, downpayment: e.target.value }))}
-                      />
-                    </div>
-                  )}
+                  <div>
+                    <label htmlFor="special-order-downpayment" className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1 block">{editingOrder ? t('amountPaid') : t('downpayment')}</label>
+                    <input
+                      id="special-order-downpayment"
+                      type="number"
+                      min={0}
+                      disabled={editingOrder?.paymentStatus === 'closed'}
+                      className="input w-full bg-slate-50/50 dark:bg-[#1a1512]/50 border-none disabled:opacity-50"
+                      value={specialOrderForm.downpayment}
+                      onChange={(e) => setSpecialOrderForm((prev) => ({ ...prev, downpayment: e.target.value }))}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -955,6 +972,21 @@ const Orders: React.FC = () => {
                           </button>
                         )}
                       </div>
+
+                      {item.productId && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 px-1">
+                          {item.quantity} x {item.price.toLocaleString()} {currencyUnit} = {(item.quantity * item.price).toLocaleString()} {currencyUnit}
+                          {Object.values(item.specifications).some(Boolean) && (
+                            <> — {[
+                              item.specifications.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
+                              item.specifications.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
+                              item.specifications.shape && `${t('shape')}: ${item.specifications.shape}`,
+                              item.specifications.size && `${t('size')}: ${item.specifications.size}`,
+                              item.specifications.addons && `${t('addons')}: ${item.specifications.addons}`,
+                            ].filter(Boolean).join(' · ')}</>
+                          )}
+                        </p>
+                      )}
 
                       {item.expanded && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-white/10">
@@ -1324,7 +1356,20 @@ const Orders: React.FC = () => {
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{product ? tProduct(product) : t('unknownProduct')}</p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">x{item.quantity}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {item.quantity} x {item.price.toLocaleString()} {currencyUnit} = {(item.quantity * item.price).toLocaleString()} {currencyUnit}
+                              </p>
+                              {item.specifications && Object.values(item.specifications).some(Boolean) && (
+                                <p className="text-[10px] text-slate-400 dark:text-slate-600 truncate">
+                                  {[
+                                    item.specifications.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
+                                    item.specifications.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
+                                    item.specifications.shape && `${t('shape')}: ${item.specifications.shape}`,
+                                    item.specifications.size && `${t('size')}: ${item.specifications.size}`,
+                                    item.specifications.addons && `${t('addons')}: ${item.specifications.addons}`,
+                                  ].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
                             </div>
                           </div>
                         );
