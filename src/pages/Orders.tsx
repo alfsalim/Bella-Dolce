@@ -34,7 +34,7 @@ import { toast } from 'react-hot-toast';
 import { Order, Product } from '../types';
 import { clsx } from 'clsx';
 import { format, addDays } from 'date-fns';
-import { downloadReceiptElementPdf } from '../lib/export';
+import { downloadReceiptElementPdf, printReceiptElementPdf } from '../lib/export';
 import { PAGE_SIZE } from '../constants';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
@@ -307,11 +307,17 @@ const Orders: React.FC = () => {
     setUserFilter('All');
   };
 
-  const handlePrintInvoice = () => {
-      toast.success(t('openingPrintDialog'));
-    setTimeout(() => {
-      window.print();
-    }, 100);
+  const handlePrintInvoice = async () => {
+    if (!invoiceReceiptRef.current) return;
+    toast.success(t('openingPrintDialog'));
+    try {
+      // Prints the same PDF the download button produces, rather than window.print() + @page CSS —
+      // printer drivers commonly ignore a custom @page size and fall back to A4.
+      await printReceiptElementPdf(invoiceReceiptRef.current);
+    } catch (error) {
+      console.error('Print error:', error);
+      toast.error(t('pdfError'));
+    }
   };
 
   const handleDownloadPDF = async () => {
@@ -704,10 +710,7 @@ const Orders: React.FC = () => {
                   <p className="text-slate-500 font-bold uppercase tracking-widest text-xs print:text-slate-500">#{selectedOrderForInvoice.id.slice(-8).toUpperCase()}</p>
                 </div>
                 <div className="text-right">
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1 print:text-black">Bella Dolce</h2>
-                  <p className="text-slate-500 text-sm print:text-slate-500">123 Bakery Street</p>
-                  <p className="text-slate-500 text-sm print:text-slate-500">City, Country</p>
-                  <p className="text-slate-500 text-sm print:text-slate-500">Phone: +123 456 789</p>
+                  <img src={LOGO_LIGHT_THEME_SRC} alt="Bella Dolce" className="h-16 w-auto ml-auto object-contain" referrerPolicy="no-referrer" />
                 </div>
               </div>
 

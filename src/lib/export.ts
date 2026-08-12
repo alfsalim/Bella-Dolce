@@ -196,7 +196,20 @@ function newA4Pdf(): jsPDF {
 const RECEIPT_WIDTH_MM = 80;
 const RECEIPT_PAGE_PX = 302;
 
+/** The clone starts life as `display:none` (Tailwind's `hidden`, only shown via `print:block`) — browsers can defer loading images inside a display:none subtree, so wait for them before capturing. */
+async function waitForImages(el: HTMLElement): Promise<void> {
+  const images = Array.from(el.querySelectorAll('img'));
+  await Promise.all(images.map((img) => {
+    if (img.complete) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      img.addEventListener('load', () => resolve(), { once: true });
+      img.addEventListener('error', () => resolve(), { once: true });
+    });
+  }));
+}
+
 async function renderReceiptHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasElement> {
+  await waitForImages(el);
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   return html2canvas(el, {
     scale: 2,
@@ -214,22 +227,18 @@ async function renderReceiptHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasEle
   });
 }
 
-/** Renders a narrow single-column receipt to its own continuous-length PDF page (no A4 pagination — this is a paper roll, not a fixed sheet). */
-async function saveReceiptPdf(filename: string, el: HTMLElement): Promise<void> {
+/** Builds (but does not save) a narrow, continuous-length receipt PDF (no A4 pagination — this is a paper roll, not a fixed sheet). */
+async function buildReceiptPdf(el: HTMLElement): Promise<jsPDF> {
   const canvas = await renderReceiptHtmlToCanvas(el);
   const heightMM = (canvas.height * RECEIPT_WIDTH_MM) / canvas.width;
   const pdf = new jsPDF({ unit: 'mm', format: [RECEIPT_WIDTH_MM, heightMM] });
   const imgData = canvas.toDataURL('image/jpeg', 0.85);
   pdf.addImage(imgData, 'JPEG', 0, 0, RECEIPT_WIDTH_MM, heightMM);
-  pdf.save(filename);
+  return pdf;
 }
 
-/**
- * Captures a clone of a live DOM node and turns it into a receipt-width PDF — used for the
- * invoice so the download always matches what actually prints (same `hidden print:block`
- * element in Orders.tsx is used for both, instead of two separately maintained templates).
- */
-export async function downloadReceiptElementPdf(sourceEl: HTMLElement, filename: string): Promise<void> {
+/** Clones a live DOM node and forces it visible/measurable off-screen, for html2canvas capture. Caller must remove the returned clone once done with it. */
+function prepareReceiptClone(sourceEl: HTMLElement): HTMLElement {
   const clone = sourceEl.cloneNode(true) as HTMLElement;
   clone.classList.remove('hidden');
   clone.style.display = 'block';
@@ -238,11 +247,51 @@ export async function downloadReceiptElementPdf(sourceEl: HTMLElement, filename:
   clone.style.left = '-9999px';
   clone.style.width = `${RECEIPT_PAGE_PX}px`;
   document.body.appendChild(clone);
+  return clone;
+}
+
+/**
+ * Captures a clone of a live DOM node and turns it into a receipt-width PDF — used for the
+ * invoice so the download always matches what actually prints (same `hidden print:block`
+ * element in Orders.tsx is used for both, instead of two separately maintained templates).
+ */
+export async function downloadReceiptElementPdf(sourceEl: HTMLElement, filename: string): Promise<void> {
+  const clone = prepareReceiptClone(sourceEl);
   try {
-    await saveReceiptPdf(filename, clone);
+    const pdf = await buildReceiptPdf(clone);
+    pdf.save(filename);
   } finally {
     document.body.removeChild(clone);
   }
+}
+
+/**
+ * Prints the same receipt-width PDF used for download, instead of relying on the browser's
+ * native window.print() + @page CSS — printer drivers frequently ignore a custom @page size
+ * and fall back to their default (e.g. A4), whereas a PDF's page size is fixed in the file
+ * itself and is what the "download PDF" flow already produces correctly.
+ */
+export async function printReceiptElementPdf(sourceEl: HTMLElement): Promise<void> {
+  const clone = prepareReceiptClone(sourceEl);
+  let pdf: jsPDF;
+  try {
+    pdf = await buildReceiptPdf(clone);
+  } finally {
+    document.body.removeChild(clone);
+  }
+
+  const blobUrl = pdf.output('bloburl') as unknown as string;
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.top = '-9999px';
+  iframe.style.left = '-9999px';
+  iframe.src = blobUrl;
+  document.body.appendChild(iframe);
+  await new Promise<void>((resolve) => { iframe.onload = () => resolve(); });
+  iframe.contentWindow?.print();
+  // Leave the iframe mounted long enough for the print dialog to read the PDF; the user's
+  // browser owns the dialog from here, so we just clean up well after handing off to it.
+  setTimeout(() => iframe.remove(), 60_000);
 }
 
 // ─── Public exports ───────────────────────────────────────────────────────────
