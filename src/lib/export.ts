@@ -215,23 +215,33 @@ async function renderReceiptHtmlToCanvas(el: HTMLElement): Promise<HTMLCanvasEle
 }
 
 /** Renders a narrow single-column receipt to its own continuous-length PDF page (no A4 pagination — this is a paper roll, not a fixed sheet). */
-async function saveReceiptPdf(filename: string, innerHtml: string): Promise<void> {
-  const el = document.createElement('div');
-  el.innerHTML = innerHtml;
-  el.style.position = 'fixed';
-  el.style.top = '0';
-  el.style.left = '-9999px';
-  el.style.width = `${RECEIPT_PAGE_PX}px`;
-  document.body.appendChild(el);
+async function saveReceiptPdf(filename: string, el: HTMLElement): Promise<void> {
+  const canvas = await renderReceiptHtmlToCanvas(el);
+  const heightMM = (canvas.height * RECEIPT_WIDTH_MM) / canvas.width;
+  const pdf = new jsPDF({ unit: 'mm', format: [RECEIPT_WIDTH_MM, heightMM] });
+  const imgData = canvas.toDataURL('image/jpeg', 0.85);
+  pdf.addImage(imgData, 'JPEG', 0, 0, RECEIPT_WIDTH_MM, heightMM);
+  pdf.save(filename);
+}
+
+/**
+ * Captures a clone of a live DOM node and turns it into a receipt-width PDF — used for the
+ * invoice so the download always matches what actually prints (same `hidden print:block`
+ * element in Orders.tsx is used for both, instead of two separately maintained templates).
+ */
+export async function downloadReceiptElementPdf(sourceEl: HTMLElement, filename: string): Promise<void> {
+  const clone = sourceEl.cloneNode(true) as HTMLElement;
+  clone.classList.remove('hidden');
+  clone.style.display = 'block';
+  clone.style.position = 'fixed';
+  clone.style.top = '0';
+  clone.style.left = '-9999px';
+  clone.style.width = `${RECEIPT_PAGE_PX}px`;
+  document.body.appendChild(clone);
   try {
-    const canvas = await renderReceiptHtmlToCanvas(el);
-    const heightMM = (canvas.height * RECEIPT_WIDTH_MM) / canvas.width;
-    const pdf = new jsPDF({ unit: 'mm', format: [RECEIPT_WIDTH_MM, heightMM] });
-    const imgData = canvas.toDataURL('image/jpeg', 0.85);
-    pdf.addImage(imgData, 'JPEG', 0, 0, RECEIPT_WIDTH_MM, heightMM);
-    pdf.save(filename);
+    await saveReceiptPdf(filename, clone);
   } finally {
-    document.body.removeChild(el);
+    document.body.removeChild(clone);
   }
 }
 
@@ -599,88 +609,6 @@ export async function downloadReportsPdf(opts: {
   }
 
   pdf.save(opts.filename);
-}
-
-export async function downloadInvoicePdf(opts: {
-  filename: string;
-  isRTL: boolean;
-  currencyUnit: string;
-  labels: Record<string, string>;
-  orderId: string;
-  date: string;
-  status: string;
-  clientName: string;
-  customerId?: string;
-  items: { name: string; quantity: number; price: number; specifications?: string[] }[];
-  totalAmount: number;
-  notes?: string;
-  amountPaid?: number;
-  showBalance?: boolean;
-}): Promise<void> {
-  const { isRTL, currencyUnit: cu, labels: L } = opts;
-
-  const itemBlocks = opts.items.map((item) => `
-    <div style="margin-bottom:8px;">
-      <div style="font-weight:700;">${esc(item.name)}</div>
-      ${item.specifications && item.specifications.length ? `<div style="color:#555;font-size:10px;">${esc(item.specifications.join(' · '))}</div>` : ''}
-      <div style="display:flex;justify-content:space-between;">
-        <span>×${item.quantity} @ ${item.price.toLocaleString()} ${esc(cu)}</span>
-        <span style="font-weight:700;">${(item.quantity * item.price).toLocaleString()} ${esc(cu)}</span>
-      </div>
-    </div>`).join('');
-
-  const balanceRows = opts.showBalance ? `
-    <div style="display:flex;justify-content:space-between;">
-      <span>${esc(L.amountPaid || 'AMOUNT PAID')}</span>
-      <span>${(opts.amountPaid || 0).toLocaleString()} ${esc(cu)}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;">
-      <span>${esc(L.balanceDue || 'BALANCE DUE')}</span>
-      <span>${Math.max(0, opts.totalAmount - (opts.amountPaid || 0)).toLocaleString()} ${esc(cu)}</span>
-    </div>` : '';
-
-  const notesHtml = opts.notes ? `
-    <div style="border-top:1px solid #999;margin:8px 0;"></div>
-    <div style="font-weight:700;">${esc(L.notes || 'NOTES')}</div>
-    <div style="white-space:pre-wrap;">${esc(opts.notes)}</div>` : '';
-
-  const fontStack = isRTL ? '"Cairo", sans-serif' : "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
-  const inner = `
-    <div dir="${isRTL ? 'rtl' : 'ltr'}" style="width:${RECEIPT_PAGE_PX}px;background:#fff;color:#000;font-family:${fontStack};font-size:11px;line-height:1.5;padding:8px;box-sizing:border-box;">
-      <div style="text-align:center;margin-bottom:8px;">
-        <div style="font-weight:700;font-size:13px;">Bella Dolce</div>
-        <div>123 Bakery Street</div>
-        <div>City, Country</div>
-        <div>Phone: +123 456 789</div>
-      </div>
-      <div style="border-top:1px solid #999;margin:8px 0;"></div>
-      <div style="font-weight:700;">${esc(L.invoiceDocumentTitle || 'INVOICE')} #${esc(opts.orderId)}</div>
-      <div>${esc(L.date || 'DATE')}: ${esc(opts.date)}</div>
-      <div>${esc(L.status || 'STATUS')}: ${esc(opts.status)}</div>
-      <div>${esc(L.billTo || 'BILL TO')}: ${esc(opts.clientName || L.walkInCustomer || 'Walk-in Customer')}</div>
-      ${opts.customerId ? `<div>${esc(L.customerIdLabel?.replace('{{id}}', opts.customerId) || opts.customerId)}</div>` : ''}
-      <div style="border-top:1px solid #999;margin:8px 0;"></div>
-      ${itemBlocks || `<div style="color:#888;">—</div>`}
-      <div style="border-top:1px solid #999;margin:8px 0;"></div>
-      <div style="display:flex;justify-content:space-between;">
-        <span>${esc(L.subtotal || 'SUBTOTAL')}</span>
-        <span>${opts.totalAmount.toLocaleString()} ${esc(cu)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;">
-        <span>${esc(L.taxZeroPercent || 'TAX (0%)')}</span>
-        <span>0 ${esc(cu)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:4px;">
-        <span>${esc(L.totalAmount || 'TOTAL')}</span>
-        <span>${opts.totalAmount.toLocaleString()} ${esc(cu)}</span>
-      </div>
-      ${balanceRows}
-      ${notesHtml}
-      <div style="border-top:1px solid #999;margin:8px 0;"></div>
-      <div style="text-align:center;font-style:italic;">${esc(L.invoiceThankYou || 'Thank you for your business.')}</div>
-    </div>`;
-
-  await saveReceiptPdf(opts.filename, inner);
 }
 
 // ─── Payslip PDF ──────────────────────────────────────────────────────────────

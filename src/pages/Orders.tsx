@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   ClipboardList,
@@ -34,13 +34,14 @@ import { toast } from 'react-hot-toast';
 import { Order, Product } from '../types';
 import { clsx } from 'clsx';
 import { format, addDays } from 'date-fns';
-import { downloadInvoicePdf } from '../lib/export';
+import { downloadReceiptElementPdf } from '../lib/export';
 import { PAGE_SIZE } from '../constants';
 import { logActivity } from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import DeliveryManagement from './DeliveryManagement';
 import EditableSelect from '../components/EditableSelect';
+import { LOGO_LIGHT_THEME_SRC } from '../components/BrandLogo';
 
 interface SpecialOrderItemDraft {
   productId: string;
@@ -73,7 +74,7 @@ const getDefaultExpectedDateTime = () => {
 };
 
 const Orders: React.FC = () => {
-  const { t, isRTL, tProduct, currencyUnit } = useLanguage();
+  const { t, tProduct, currencyUnit } = useLanguage();
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'orders' | 'tracking'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -89,6 +90,7 @@ const Orders: React.FC = () => {
   });
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<Order | null>(null);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const invoiceReceiptRef = useRef<HTMLDivElement>(null);
 
   const [isSpecialOrderModalOpen, setIsSpecialOrderModalOpen] = useState(false);
   const [isSubmittingSpecialOrder, setIsSubmittingSpecialOrder] = useState(false);
@@ -313,57 +315,14 @@ const Orders: React.FC = () => {
   };
 
   const handleDownloadPDF = async () => {
-    if (!selectedOrderForInvoice) return;
+    if (!selectedOrderForInvoice || !invoiceReceiptRef.current) return;
     const toastId = toast.loading(t('generatingPDF'));
     try {
-      await downloadInvoicePdf({
-        filename: `invoice-${selectedOrderForInvoice.id.slice(-8).toUpperCase()}.pdf`,
-        isRTL,
-        currencyUnit,
-        labels: {
-          invoiceDocumentTitle: t('invoiceDocumentTitle'),
-          billTo: t('billTo'),
-          customerIdLabel: t('customerIdLabel'),
-          date: t('date'),
-          status: t('status'),
-          invoiceItem: t('invoiceItem'),
-          qtyAbbrev: t('qtyAbbrev'),
-          price: t('price'),
-          total: t('total'),
-          subtotal: t('subtotal'),
-          taxZeroPercent: t('taxZeroPercent'),
-          totalAmount: t('totalAmount'),
-          invoiceThankYou: t('invoiceThankYou'),
-          walkInCustomer: t('walkInCustomer'),
-          notes: t('notes'),
-          amountPaid: t('amountPaid'),
-          balanceDue: t('balanceDue'),
-        },
-        orderId: selectedOrderForInvoice.id.slice(-8).toUpperCase(),
-        date: format(new Date(selectedOrderForInvoice.createdAt), 'PPP'),
-        status: t(selectedOrderForInvoice.status),
-        clientName: selectedOrderForInvoice.clientName || '',
-        customerId: selectedOrderForInvoice.customerId || undefined,
-        items: selectedOrderForInvoice.items.map((item) => {
-          const product = products.find((p) => p.id === item.productId);
-          return {
-            name: product ? tProduct(product) : t('unknownProduct'),
-            quantity: item.quantity,
-            price: item.price,
-            specifications: [
-              item.specifications?.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
-              item.specifications?.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
-              item.specifications?.shape && `${t('shape')}: ${item.specifications.shape}`,
-              item.specifications?.size && `${t('size')}: ${item.specifications.size}`,
-              item.specifications?.addons && `${t('addons')}: ${item.specifications.addons}`,
-            ].filter((v): v is string => Boolean(v)),
-          };
-        }),
-        totalAmount: selectedOrderForInvoice.totalAmount,
-        notes: selectedOrderForInvoice.notes,
-        amountPaid: selectedOrderForInvoice.amountPaid,
-        showBalance: selectedOrderForInvoice.type === 'special',
-      });
+      // Captures the exact same DOM node used for printing, so the PDF always matches print output.
+      await downloadReceiptElementPdf(
+        invoiceReceiptRef.current,
+        `invoice-${selectedOrderForInvoice.id.slice(-8).toUpperCase()}.pdf`
+      );
       toast.success(t('pdfDownloaded'), { id: toastId });
     } catch (error) {
       console.error('PDF generation error:', error);
@@ -852,13 +811,10 @@ const Orders: React.FC = () => {
               </div>
             </div>
 
-            {/* Receipt-printer layout — 80mm single column, shown only when printing (see @page in index.css) */}
-            <div className="hidden print:block text-black text-xs leading-relaxed">
+            {/* Receipt-printer layout — 80mm single column, shown when printing (see @page in index.css) and captured directly for the PDF download so both stay identical */}
+            <div ref={invoiceReceiptRef} className="hidden print:block bg-white text-black text-xs leading-relaxed">
               <div className="text-center mb-2">
-                <p className="font-bold text-sm">Bella Dolce</p>
-                <p>123 Bakery Street</p>
-                <p>City, Country</p>
-                <p>Phone: +123 456 789</p>
+                <img src={LOGO_LIGHT_THEME_SRC} alt="Bella Dolce" className="h-14 w-auto mx-auto object-contain" referrerPolicy="no-referrer" />
               </div>
               <div className="border-t border-black/30 my-2" />
               <p className="font-bold">{t('invoiceDocumentTitle')} #{selectedOrderForInvoice.id.slice(-8).toUpperCase()}</p>
