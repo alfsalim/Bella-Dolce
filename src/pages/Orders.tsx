@@ -819,7 +819,7 @@ const Orders: React.FC = () => {
               <div className="text-center mb-2">
                 <img src={LOGO_LIGHT_THEME_SRC} alt="Bella Dolce" className="h-14 w-auto mx-auto object-contain" referrerPolicy="no-referrer" />
               </div>
-              <div className="border-t border-black/30 my-2" />
+              <div className="border-t border-slate-300 my-2" />
               <p className="font-bold">{t('invoiceDocumentTitle')} #{selectedOrderForInvoice.id.slice(-8).toUpperCase()}</p>
               <p>{t('date')}: {format(new Date(selectedOrderForInvoice.createdAt), 'PPP')}</p>
               <p>{t('status')}: {t(selectedOrderForInvoice.status)}</p>
@@ -827,7 +827,7 @@ const Orders: React.FC = () => {
               {selectedOrderForInvoice.customerId && (
                 <p>{t('customerIdLabel').replace('{{id}}', selectedOrderForInvoice.customerId)}</p>
               )}
-              <div className="border-t border-black/30 my-2" />
+              <div className="border-t border-slate-300 my-2" />
               {selectedOrderForInvoice.items.map((item, idx) => {
                 const product = products.find(p => p.id === item.productId);
                 const specs = [
@@ -840,7 +840,7 @@ const Orders: React.FC = () => {
                 return (
                   <div key={idx} className="mb-2">
                     <p className="font-bold">{product ? tProduct(product) : t('unknownProduct')}</p>
-                    {specs && <p className="text-black/70">{specs}</p>}
+                    {specs && <p className="text-slate-600">{specs}</p>}
                     <div className="flex justify-between">
                       <span>x{item.quantity} @ {item.price.toLocaleString()} {currencyUnit}</span>
                       <span className="font-bold">{(item.quantity * item.price).toLocaleString()} {currencyUnit}</span>
@@ -848,7 +848,7 @@ const Orders: React.FC = () => {
                   </div>
                 );
               })}
-              <div className="border-t border-black/30 my-2" />
+              <div className="border-t border-slate-300 my-2" />
               <div className="flex justify-between">
                 <span>{t('subtotal')}</span>
                 <span>{selectedOrderForInvoice.totalAmount.toLocaleString()} {currencyUnit}</span>
@@ -875,12 +875,12 @@ const Orders: React.FC = () => {
               )}
               {selectedOrderForInvoice.notes && (
                 <>
-                  <div className="border-t border-black/30 my-2" />
+                  <div className="border-t border-slate-300 my-2" />
                   <p className="font-bold">{t('notes')}</p>
                   <p className="whitespace-pre-wrap">{selectedOrderForInvoice.notes}</p>
                 </>
               )}
-              <div className="border-t border-black/30 my-2" />
+              <div className="border-t border-slate-300 my-2" />
               <p className="text-center italic">{t('invoiceThankYou')}</p>
             </div>
           </div>

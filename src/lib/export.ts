@@ -95,7 +95,9 @@ function kpiCard(label: string, value: string): string {
 
 // ─── Rendering engine ─────────────────────────────────────────────────────────
 
-const UNSUPPORTED_COLOR_FN = /\b(oklch|lch|lab|color\(|hwb)\s*\(/i;
+// Note: "lab" alone would not catch "oklab(" — \b can't anchor mid-word right after "ok", so
+// oklab needs its own explicit alternative (same reason oklch is listed separately from lch).
+const UNSUPPORTED_COLOR_FN = /\b(oklch|oklab|lch|lab|color\(|hwb)\s*\(/i;
 
 function hasUnsupportedColor(v: string | null | undefined): boolean {
   if (!v || v === 'none') return false;
