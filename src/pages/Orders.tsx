@@ -413,7 +413,7 @@ const Orders: React.FC = () => {
         productId: item.productId,
         quantity: item.quantity,
         price: item.price,
-        expanded: false,
+        expanded: !!(item.specifications && Object.values(item.specifications).some(Boolean)),
         specifications: item.specifications || {},
       })),
     });
@@ -1332,8 +1332,12 @@ const Orders: React.FC = () => {
                   <div className="flex-1 p-6">
                     <div className="flex items-start justify-between mb-6">
                       <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-1">{order.description || t('noDescription')}</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{order.items.length} {t('items')}</p>
+                        {order.description && (
+                          <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-1">{order.description}</h3>
+                        )}
+                        <p className={order.description ? "text-sm text-slate-500 dark:text-slate-400" : "font-bold text-slate-900 dark:text-white text-lg"}>
+                          {order.items.length} {t('items')}
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-display font-bold text-primary-600 dark:text-primary-400">{order.totalAmount.toLocaleString()} {currencyUnit}</p>
@@ -1360,7 +1364,7 @@ const Orders: React.FC = () => {
                                 {item.quantity} x {item.price.toLocaleString()} {currencyUnit} = {(item.quantity * item.price).toLocaleString()} {currencyUnit}
                               </p>
                               {item.specifications && Object.values(item.specifications).some(Boolean) && (
-                                <p className="text-[10px] text-slate-400 dark:text-slate-600 truncate">
+                                <p className="text-[10px] text-slate-400 dark:text-slate-600 break-words">
                                   {[
                                     item.specifications.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
                                     item.specifications.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
