@@ -756,6 +756,17 @@ const Orders: React.FC = () => {
                       <tr key={idx}>
                         <td className="py-4">
                           <p className="font-bold text-slate-900 dark:text-white print:text-black">{product ? tProduct(product) : t('unknownProduct')}</p>
+                          {item.specifications && Object.values(item.specifications).some(Boolean) && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-500">
+                              {[
+                                item.specifications.flavor && `${t('flavor')}: ${item.specifications.flavor}`,
+                                item.specifications.glaze && `${t('glaze')}: ${item.specifications.glaze}`,
+                                item.specifications.shape && `${t('shape')}: ${item.specifications.shape}`,
+                                item.specifications.size && `${t('size')}: ${item.specifications.size}`,
+                                item.specifications.addons && `${t('addons')}: ${item.specifications.addons}`,
+                              ].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
                         </td>
                         <td className="py-4 text-center font-bold text-slate-700 dark:text-slate-300 print:text-slate-700">x{item.quantity}</td>
                         <td className="py-4 text-right font-bold text-slate-700 dark:text-slate-300 print:text-slate-700">{item.price.toLocaleString()} {currencyUnit}</td>
@@ -794,6 +805,13 @@ const Orders: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {selectedOrderForInvoice.notes && (
+                <div className="mt-12">
+                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 print:text-slate-400">{t('notes')}</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 print:text-slate-600 whitespace-pre-wrap">{selectedOrderForInvoice.notes}</p>
+                </div>
+              )}
 
               <div className="mt-24 pt-12 border-t border-slate-100 dark:border-[#2a1e17] text-center print:border-slate-100">
                 <p className="text-slate-400 text-sm italic print:text-slate-400">{t('invoiceThankYou')}</p>
